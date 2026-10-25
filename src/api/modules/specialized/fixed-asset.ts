@@ -6,6 +6,22 @@ const { supabase, responseHandle } = useSupabase()
 
 type Asset = Api.Fms.FixedAssetRecord
 
+export async function fetchFixedAssetVehicleOptions(
+  accountSetId: string,
+  keyword?: string,
+  selectedId?: string | null
+) {
+  return await responseHandle<Array<{ value: string; label: string }>>(
+    () =>
+      supabase.rpc('fms_list_asset_vehicle_options_secure', {
+        p_account_set_id: accountSetId,
+        p_keyword: normalizeNullableText(keyword),
+        p_selected_id: selectedId || null
+      }),
+    { showErrorMessage: false }
+  )
+}
+
 interface FixedAssetListPayload {
   records: Asset[]
   total: number

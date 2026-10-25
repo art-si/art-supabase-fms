@@ -80,7 +80,9 @@
     DataSelectColumn,
     DataSelectKey
   } from '@/components/core/forms/art-data-select/types'
-  import { ref, computed, watch } from 'vue'
+  import { ref, computed, watch, unref } from 'vue'
+  import { useTenantOperationGuard } from '@/hooks/core/useTenantOperationGuard'
+  import { useArtOverlaySession } from '@/hooks/core/useArtOverlay'
   import dayjs from 'dayjs'
   import { cloneDeep, sumBy } from 'lodash-es'
   import {
@@ -166,6 +168,12 @@
   const lines = ref<EditLine[]>([])
   const removedPersistedLine = ref(false)
   const { hasAuth } = useAuth()
+  const captureOperation = useTenantOperationGuard(
+    props.kind === 'estimate'
+      ? 'FinanceEstimatedReceivable:View'
+      : 'FinanceFinancialReceivable:View'
+  )
+  const session = useArtOverlaySession(() => Boolean(unref(drawerRef.value?.visible)))
   const { deleteGuardRef, deleteRecord } = useRecordDeleteGuard(
     'fms_receivable_document',
     '应收明细'
@@ -944,14 +952,20 @@
       if (version === generation) loading.value = false
     }
   }
-  async function save(): Promise<boolean> {
+  async function save(isCurrent: () => boolean): Promise<boolean> {
+    if (!isCurrent()) {
+      ElMessage.warning('操作范围或权限已变化，请重新打开应收单')
+      return false
+    }
     if (loading.value || loadError.value || !editable.value) return false
     if (!(await validateArtFormForSubmit(formRef.value))) return false
+    if (!isCurrent()) return false
     if (!lines.value.length) {
       ElMessage.warning('请至少添加一行应收明细')
       return false
     }
     const validation = await lineTable.value?.validate()
+    if (!isCurrent()) return false
     if (validation && !validation.valid) {
       ElMessage.warning(validation.firstError?.message || '请补全明细')
       return false
@@ -965,10 +979,12 @@
           priceBasis: form.value.inputTaxInclusivePrice ? 'taxed' : 'untaxed'
         }))
       })
+      if (!isCurrent()) return false
       ElMessage.success('应收单已保存')
       emit('success')
       return true
     } catch (error) {
+      if (!isCurrent()) return false
       if (
         removedPersistedLine.value &&
         currentId &&
@@ -978,11 +994,29 @@
         ]))
       )
         return false
-      notifyFriendlyError(error, '应收单未保存，请检查后重试')
+      if (isCurrent()) notifyFriendlyError(error, '应收单未保存，请检查后重试')
       return false
     }
   }
   async function open(id?: string, edit = false, copy = false): Promise<void> {
+    const addPermission =
+      props.kind === 'estimate'
+        ? 'FinanceEstimatedReceivable:Add'
+        : 'FinanceFinancialReceivable:Add'
+    const copyPermission =
+      props.kind === 'estimate'
+        ? 'FinanceEstimatedReceivable:Copy'
+        : 'FinanceFinancialReceivable:Copy'
+    const permission = id && !copy ? props.editPermission : addPermission
+    const scopeCurrent = captureOperation()
+    if (!scopeCurrent() || (edit && (!hasAuth(permission) || (copy && !hasAuth(copyPermission)))))
+      return
+    const version = session.invalidate()
+    const isCurrent = () =>
+      scopeCurrent() &&
+      session.isCurrent(version) &&
+      (!edit || (hasAuth(permission) && (!copy || hasAuth(copyPermission))))
+    const confirmSave = () => save(isCurrent)
     currentId = id
     copying = copy
     editable.value = edit
@@ -991,10 +1025,14 @@
       title: `${copy ? '复制' : edit ? (id ? '编辑' : '新增') : ''}${title.value}`,
       confirmText: '保存应收单',
       showConfirmButton: edit,
-      onConfirm: save
+      onConfirm: confirmSave,
+      onClose: () => {
+        session.invalidate()
+        generation++
+      }
     })
     await loadCurrent()
-    drawerRef.value?.setOptions({ onConfirm: save })
+    if (isCurrent()) drawerRef.value?.setOptions({ onConfirm: confirmSave })
   }
   watch(
     () => form.value.customerId,

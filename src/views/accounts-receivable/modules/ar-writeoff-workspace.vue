@@ -176,7 +176,7 @@
   </ArtPermissionGuard>
 </template>
 <script setup lang="tsx">
-  import { ref, computed, watch, onMounted } from 'vue'
+  import { ref, computed, watch, onMounted, unref, nextTick } from 'vue'
   import { useRoute } from 'vue-router'
   import dayjs from 'dayjs'
   import { sumBy, groupBy, compact } from 'lodash-es'
@@ -198,9 +198,12 @@
     type ArQuery
   } from '@/api/receivables'
   import { useAuth } from '@/hooks/core/useAuth'
+  import { useTenantOperationGuard } from '@/hooks/core/useTenantOperationGuard'
+  import { useArtOverlaySession } from '@/hooks/core/useArtOverlay'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
+  import { financePaths } from '@/router/business-paths'
   import { formatSensitiveCurrencyValue as money } from '@/utils/ui/format'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
   import ArtTable, { type ArtTableExpose } from '@/components/core/tables/art-table/index.vue'
@@ -222,6 +225,8 @@
   const primaryTable = ref<ArtTableExpose>()
   const secondaryTable = ref<ArtTableExpose>()
   const reasonDialog = ref<ArtDialogExpose>()
+  const captureWriteoffOperation = useTenantOperationGuard('FinanceReceiptWriteoff:View')
+  const writeoffSession = useArtOverlaySession(() => Boolean(unref(reasonDialog.value?.visible)))
   const checkDialog = ref<ArtDialogExpose>()
   const historyDialog = ref<ArtDialogExpose>()
   const recordDialog = ref<ArtDialogExpose>()
@@ -585,6 +590,15 @@
   ]
   async function execute(isSpecial: boolean): Promise<void> {
     if (busy.value || checking.value || loading.value || loadError.value) return
+    const permission = isSpecial
+      ? 'FinanceReceiptWriteoff:Special'
+      : 'FinanceReceiptWriteoff:Writeoff'
+    const scopeCurrent = captureWriteoffOperation()
+    const hasWriteoffPermissions = () =>
+      hasAuth(permission) &&
+      (!form.value.crossCustomer || hasAuth('FinanceReceiptWriteoff:CrossCustomer')) &&
+      (!form.value.crossCurrency || hasAuth('FinanceReceiptWriteoff:CrossCurrency'))
+    if (!scopeCurrent() || !hasWriteoffPermissions()) return
     const selected = isSpecial
       ? primarySelection.value
       : [...primarySelection.value, ...secondarySelection.value]
@@ -602,9 +616,19 @@
     special.value = isSpecial
     reasonForm.value.reason = ''
     requestId.value = crypto.randomUUID()
+    const sessionVersion = writeoffSession.invalidate()
+    const isCurrent = () =>
+      scopeCurrent() && writeoffSession.isCurrent(sessionVersion) && hasWriteoffPermissions()
     await reasonDialog.value?.handleOpen(undefined, {
       title: isSpecial ? '特殊核销确认' : '核销确认',
+      onClose: () => {
+        writeoffSession.invalidate()
+      },
       onConfirm: async () => {
+        if (!isCurrent()) {
+          ElMessage.warning('操作范围或权限已变化，请重新打开核销确认')
+          return false
+        }
         if (isSpecial && !reasonForm.value.reason.trim()) {
           ElMessage.warning('请填写特殊核销原因')
           return false
@@ -612,10 +636,12 @@
         busy.value = true
         try {
           await executeArWriteoff(payload(isSpecial))
+          if (!isCurrent()) return false
           ElMessage.success('核销已完成')
           await load()
-          return true
+          return isCurrent()
         } catch (error) {
+          if (!isCurrent()) return false
           notifyFriendlyError(error, '核销未完成，请查验单据后重试')
           return false
         } finally {
@@ -827,4 +853,46 @@
   onMounted(async () => {
     if (typeof route.query.sourceDocumentId === 'string') await historyDialog.value?.handleOpen()
   })
+  watch(
+    () =>
+      route.path === financePaths.receiptWriteoff
+        ? [route.query.organizationId, route.query.customerId]
+        : [],
+    async ([organizationId, customerId]) => {
+      version++
+      loading.value = false
+      if (typeof organizationId !== 'string' || typeof customerId !== 'string') return
+      const isCurrent = captureWriteoffOperation()
+      if (!isCurrent()) return
+      form.value.organizationId = ''
+      form.value.customerId = ''
+      await nextTick()
+      if (!isCurrent()) return
+      loading.value = true
+      try {
+        const [organizations, customers] = await Promise.all([
+          fetchArOptions('initialized_organization', useTenantScopeStore().effectiveTenantId),
+          fetchArOptions('customer', useTenantScopeStore().effectiveTenantId)
+        ])
+        if (!isCurrent()) return
+        if (
+          !organizations.some((row) => row.id === organizationId) ||
+          !customers.some((row) => row.id === customerId)
+        ) {
+          ElMessage.warning('来源组织尚未结束初始化或资料不在当前范围，请手工选择核销条件')
+          return
+        }
+        form.value.organizationId = organizationId
+        form.value.customerId = customerId
+        await nextTick()
+        if (isCurrent()) await load()
+      } catch (error) {
+        if (isCurrent())
+          notifyFriendlyError(error, '来源核销条件未加载，请刷新重试或手工选择组织和往来单位')
+      } finally {
+        if (isCurrent()) loading.value = false
+      }
+    },
+    { immediate: true, flush: 'post' }
+  )
 </script>

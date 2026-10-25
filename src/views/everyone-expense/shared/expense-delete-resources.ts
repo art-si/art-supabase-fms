@@ -9,6 +9,16 @@ import {
 
 type ExpenseDocumentKind = 'application' | 'loan' | 'repayment' | 'reimbursement'
 
+export function canDeleteExpenseDocument(
+  kind: ExpenseDocumentKind,
+  document: { status?: unknown; sourceType?: unknown }
+): boolean {
+  return kind === 'reimbursement'
+    ? document.sourceType === 'travel' &&
+        (document.status === 'draft' || document.status === 'rejected')
+    : document.status === 'draft'
+}
+
 /** Re-read document state for deletion checks and retries; backend deletion remains authoritative. */
 export async function resolveExpenseDeleteResources(
   kind: ExpenseDocumentKind,
@@ -25,8 +35,9 @@ export async function resolveExpenseDeleteResources(
             label: data.applicationNo,
             status: data.status,
             statusDictCode: 'fmsExpenseDocumentStatus',
-            blockReason:
-              data.status === 'draft' ? undefined : '仅草稿可删除，已提交的申请需保留业务历史。',
+            blockReason: canDeleteExpenseDocument(kind, data)
+              ? undefined
+              : '仅草稿可删除，已提交的申请需保留业务历史。',
             to: { path: financePaths.travelApplication, query: { applicationId: id } }
           }
         }
@@ -38,10 +49,9 @@ export async function resolveExpenseDeleteResources(
             label: data.loanNo,
             status: data.status,
             statusDictCode: 'fmsExpenseDocumentStatus',
-            blockReason:
-              data.status === 'draft'
-                ? undefined
-                : '仅草稿可删除，已提交或已结算的借款需保留业务历史。',
+            blockReason: canDeleteExpenseDocument(kind, data)
+              ? undefined
+              : '仅草稿可删除，已提交或已结算的借款需保留业务历史。',
             to: { path: financePaths.loanApplication, query: { loanId: id } }
           }
         }
@@ -53,10 +63,9 @@ export async function resolveExpenseDeleteResources(
             label: data.repaymentNo,
             status: data.status,
             statusDictCode: 'fmsRepaymentStatus',
-            blockReason:
-              data.status === 'draft'
-                ? undefined
-                : '仅草稿可删除，已提交或已收款的还款单需保留业务历史。',
+            blockReason: canDeleteExpenseDocument(kind, data)
+              ? undefined
+              : '仅草稿可删除，已提交或已收款的还款单需保留业务历史。',
             to: { path: financePaths.repayment, query: { openRepayment: id } }
           }
         }
@@ -71,7 +80,7 @@ export async function resolveExpenseDeleteResources(
             blockReason:
               data.sourceType !== 'travel'
                 ? '运单费用报销需在原业务中处理，不能从人人费用删除。'
-                : ['draft', 'rejected'].includes(data.status)
+                : canDeleteExpenseDocument(kind, data)
                   ? undefined
                   : '仅草稿或已驳回的差旅报销单可删除，审批及付款历史需保留。',
             to: getExpenseReimbursementDetailPath(id)

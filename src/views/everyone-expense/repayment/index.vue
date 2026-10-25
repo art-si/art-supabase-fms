@@ -50,7 +50,10 @@
 
 <script setup lang="tsx">
   import { ElMessage } from 'element-plus'
-  import { resolveExpenseDeleteResources } from '../shared/expense-delete-resources'
+  import {
+    canDeleteExpenseDocument,
+    resolveExpenseDeleteResources
+  } from '../shared/expense-delete-resources'
   import { orderBy, uniqBy } from 'lodash-es'
   import { storeToRefs } from 'pinia'
   import { useRoute } from 'vue-router'
@@ -73,6 +76,7 @@
   import { useRecordDeleteGuard } from '@/hooks/core/useRecordDeleteGuard'
   import { notifyFriendlyError, useArtFeedback } from '@/hooks/core/useArtFeedback'
   import { useAuth } from '@/hooks/core/useAuth'
+  import { useTenantOperationGuard } from '@/hooks/core/useTenantOperationGuard'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import { buildSupabasePageRange } from '@/utils/supabase/pagination'
   import { documentGroupSpan } from '@/utils/business/document-detail-list'
@@ -132,6 +136,9 @@
   const submittingId = ref<string | null>(null)
   const printing = ref(false)
   const route = useRoute()
+  const capturePrintOperation = useTenantOperationGuard('FinanceRepayment:Print')
+  const captureViewOperation = useTenantOperationGuard('FinanceRepayment:View')
+  const captureSubmitOperation = useTenantOperationGuard('FinanceRepayment:Submit')
   const statusOptions = useDictionaryOptions('fmsRepaymentStatus')
   const displayModeOptions = useDictionaryOptions('commonDocumentDisplayMode')
   const search = ref<RepaymentSearch>({
@@ -188,7 +195,10 @@
       icon: 'ri:delete-bin-line',
       permission: 'FinanceRepayment:Delete',
       selectionRequired: true,
-      disabled: search.value.displayMode !== 'document' || deleteBusy.value,
+      disabled: ({ selectedRows }) =>
+        search.value.displayMode !== 'document' ||
+        deleteBusy.value ||
+        selectedRows.some((row) => !canDeleteExpenseDocument('repayment', row)),
       onClick: ({ selectedRows }) => deleteSelected(selectedRows as TravelRepayment[])
     },
     {
@@ -443,7 +453,8 @@
           permission="FinanceRepayment:View"
           onClick={() => dialogRef.value?.handleOpen({ row, readonly: true })}
         />
-        {['approved', 'awaiting_collection'].includes(row.status) ? (
+        {['approved', 'awaiting_collection'].includes(row.status) &&
+        row.amount > row.receivedAmount ? (
           <ArtButtonTable
             icon="ri:bank-card-line"
             label={row.isDemo ? '模拟收款' : '确认收款'}
@@ -513,17 +524,23 @@
     })
   }
   async function submitOne(row: TravelRepayment): Promise<void> {
-    if (submittingId.value) return
+    if (submittingId.value || !hasAuth('FinanceRepayment:Submit')) return
+    const isCurrent = captureSubmitOperation()
+    submittingId.value = row.id
     try {
       await confirmAction(`提交还款单“${row.repaymentNo}”后，明细将锁定。`, '提交还款审批', {
         confirmButtonText: '提交审批'
       })
-      submittingId.value = row.id
+      if (!isCurrent()) {
+        ElMessage.warning('操作范围或权限已变化，请重新查询后提交')
+        return
+      }
       await submitTravelRepayment(row.id)
+      if (!isCurrent()) return
       ElMessage.success('还款单已提交审批')
       await refreshTable()
     } catch (error) {
-      if (error !== 'cancel' && error !== 'close')
+      if (isCurrent() && error !== 'cancel' && error !== 'close')
         notifyFriendlyError(error, '还款单提交失败，请核对借款余额后重试')
     } finally {
       submittingId.value = null
@@ -531,15 +548,17 @@
   }
   async function printSelected(rows: TableRecord[]): Promise<void> {
     if (!hasAuth('FinanceRepayment:Print') || printing.value || !rows.length) return
+    const isCurrent = capturePrintOperation()
     printing.value = true
     try {
       const selected = uniqBy(rows.map(parentOf), (row) => row.id)
       const details = await Promise.all(selected.map((row) => fetchTravelRepaymentDetail(row.id)))
+      if (!isCurrent()) return
       const records = details.flatMap((result) => (result.data ? [result.data] : []))
       if (records.length !== selected.length) throw new Error('部分还款单已变化，请刷新后重试')
       await printRef.value?.print(records)
     } catch (error) {
-      notifyFriendlyError(error, '还款单打印内容加载失败，请重试')
+      if (isCurrent()) notifyFriendlyError(error, '还款单打印内容加载失败，请重试')
     } finally {
       printing.value = false
     }
@@ -554,14 +573,17 @@
   watch(
     () => route.query.openRepayment,
     async (id) => {
-      if (typeof id !== 'string' || !id) return
+      if (typeof id !== 'string' || !id || !hasAuth('FinanceRepayment:View')) return
+      const isCurrent = captureViewOperation()
       try {
         const result = await fetchTravelRepaymentDetail(id)
+        if (!isCurrent()) return
         if (!result.data) throw new Error('关联还款单不可用')
         await nextTick()
-        await dialogRef.value?.handleOpen({ row: result.data, readonly: true })
+        if (!isCurrent()) return
+        await dialogRef.value?.handleOpen({ row: result.data, readonly: true, isCurrent })
       } catch (error) {
-        notifyFriendlyError(error, '关联还款单定位失败，请刷新后重试')
+        if (isCurrent()) notifyFriendlyError(error, '关联还款单定位失败，请刷新后重试')
       }
     },
     { immediate: true }

@@ -216,6 +216,7 @@ export async function deleteTravelRepayments(ids: string[]) {
 
 export async function recordTravelRepaymentCollection(input: {
   repaymentId: string
+  idempotencyKey: string
   amount: number
   receiptDate: string
   bankReference: string | null
@@ -225,6 +226,7 @@ export async function recordTravelRepaymentCollection(input: {
     () =>
       supabase.rpc('record_fms_travel_repayment_collection_secure', {
         p_repayment_id: input.repaymentId,
+        p_idempotency_key: input.idempotencyKey,
         p_amount: input.amount,
         p_receipt_date: input.receiptDate,
         p_bank_reference: normalizeNullableText(input.bankReference),

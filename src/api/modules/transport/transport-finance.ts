@@ -65,6 +65,7 @@ const toCostListRpcParams = (
 const createCostWritePayload = (params: WaybillCost) => ({
   costNo: params.costNo?.trim() || '',
   waybillId: params.waybillId,
+  maintenanceRecordId: params.maintenanceRecordId ?? null,
   expenseItemId: params.expenseItemId,
   amount: Number(params.amount),
   occurredOn: params.occurredOn,

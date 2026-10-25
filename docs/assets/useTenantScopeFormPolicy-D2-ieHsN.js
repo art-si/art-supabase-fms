@@ -1,1 +1,0 @@
-import{Vi as e,r as t,sn as n}from"./sys-DaNMvRNq.js";import{t as r}from"./tenant-scope-Dth-J2wf.js";function i(){let{isAllTenants:i,effectiveTenantId:a}=n(r()),o=t();return{effectiveTenantId:e(()=>a.value??null),defaultWriteTenantId:e(()=>a.value??o.getUserInfo.tenantId??null),shouldExposeTenantField:e(()=>i.value),isTenantScopeItem:e=>e.key===`tenantId`}}export{i as t};

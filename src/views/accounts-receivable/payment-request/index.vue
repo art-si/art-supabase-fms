@@ -72,6 +72,7 @@
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { useArtFeedback, notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { useAuth } from '@/hooks/core/useAuth'
+  import { useTenantOperationGuard } from '@/hooks/core/useTenantOperationGuard'
   import { formatSensitiveCurrencyValue as money } from '@/utils/ui/format'
   import { financePaths } from '@/router/business-paths'
   import ArtTableQuery, {
@@ -108,6 +109,7 @@
   const route = useRoute()
   const router = useRouter()
   const { hasAuth } = useAuth()
+  const captureActionOperation = useTenantOperationGuard('FinanceReceivablePaymentRequest:View')
   const { confirmAction, confirmDelete } = useArtFeedback()
   const search = reactive({ keyword: '', status: '', businessDateRange: [] })
   const statuses = useDictionaryOptions('arDocumentStatus')
@@ -190,7 +192,16 @@
     }
   ])
   async function act(selectedIds: string[], action: 'submit' | 'approve' | 'pay'): Promise<void> {
-    if (busy.value || !selectedIds.length) return
+    const requiredPermission =
+      action === 'submit'
+        ? 'FinanceReceivablePaymentRequest:Submit'
+        : action === 'approve'
+          ? 'FinanceReceivablePaymentRequest:Approve'
+          : 'FinanceReceivablePaymentRequest:Pay'
+    if (busy.value || !selectedIds.length || !hasAuth(requiredPermission)) return
+    const currentScope = captureActionOperation()
+    const isCurrent = () => currentScope() && hasAuth(requiredPermission)
+    let attempted = false
     busy.value = true
     try {
       if (action === 'pay') {
@@ -204,17 +215,26 @@
           throw error
         }
       }
-      for (const id of selectedIds) await actArPaymentRequest(id, action)
+      if (!isCurrent()) {
+        ElMessage.warning('操作范围或权限已变化，请重新查询后操作')
+        return
+      }
+      for (const id of selectedIds) {
+        if (!isCurrent()) return
+        attempted = true
+        await actArPaymentRequest(id, action)
+      }
+      if (!isCurrent()) return
       ElMessage.success(
         action === 'pay' ? '付款已登记' : action === 'approve' ? '付款申请已审核' : '付款申请已提交'
       )
     } catch (error) {
-      notifyFriendlyError(error, '付款申请操作未完成，请核对状态后重试')
+      if (isCurrent()) notifyFriendlyError(error, '付款申请操作未完成，请核对状态后重试')
     } finally {
       try {
-        await table.value?.refreshData()
+        if (attempted && isCurrent()) await table.value?.refreshData()
       } catch (error) {
-        notifyFriendlyError(error, '状态已处理，但列表未刷新，请重新查询')
+        if (isCurrent()) notifyFriendlyError(error, '状态已处理，但列表未刷新，请重新查询')
       }
       busy.value = false
     }
@@ -296,7 +316,11 @@
   ]
   async function remove(selectedIds: string[]): Promise<void> {
     if (busy.value || !selectedIds.length) return
+    const currentScope = captureActionOperation()
+    const isCurrent = () => currentScope() && hasAuth('FinanceReceivablePaymentRequest:Delete')
+    if (!isCurrent()) return
     const result = await fetchArWorkspace('payment_request', { ids: selectedIds, size: 500 })
+    if (!isCurrent()) return
     if (result.data.length !== selectedIds.length)
       throw new Error('所选付款申请已变化，请重新查询后再删除')
     const options = {
@@ -306,21 +330,28 @@
       dependencyMeta: createArDeleteMetadata('payment_request', hasAuth)
     }
     if (!deleteGuard.value || (await deleteGuard.value.inspect(options))) return
+    if (!isCurrent()) return
     try {
       await confirmDelete(`确认删除 ${result.data.length} 张草稿付款申请并释放其占用额度？`)
     } catch {
       return
     }
+    if (!isCurrent()) {
+      ElMessage.warning('操作范围或权限已变化，请重新查询后再删除')
+      return
+    }
     busy.value = true
     try {
       await deleteArRecords('payment_request', selectedIds)
+      if (!isCurrent()) return
       ElMessage.success('草稿申请已删除，额度已释放')
     } catch (error) {
-      if (!(await deleteGuard.value?.inspect(options)))
+      if (!isCurrent()) return
+      if (!(await deleteGuard.value?.inspect(options)) && isCurrent())
         notifyFriendlyError(error, '付款申请删除未完成，请重新检查关联记录')
     } finally {
       try {
-        await table.value?.refreshData()
+        if (isCurrent()) await table.value?.refreshData()
       } finally {
         busy.value = false
       }
@@ -348,6 +379,7 @@
   useRouteDocumentDrawer({
     routeName: String(route.name || ''),
     queryKey: 'recordId',
+    clearQueryOnOpen: false,
     canOpen: () => hasAuth('FinanceReceivablePaymentRequest:View'),
     fetchDocument: async (id) => {
       const result = await fetchArWorkspace('payment_request', {

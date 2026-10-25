@@ -134,6 +134,7 @@ export {
   fetchAssetDepreciationLines,
   fetchAssetDepreciationRuns,
   fetchFixedAssetDetail,
+  fetchFixedAssetVehicleOptions,
   fetchFixedAssetList,
   fetchFixedAssetSummary,
   saveAssetCategory,

@@ -31,11 +31,15 @@
           search-placeholder="搜索姓名或工号"
         />
       </template>
+      <template #earningItems><PayrollItemsEditor v-model="earningRows" /></template>
+      <template #deductionItems><PayrollItemsEditor v-model="deductionRows" /></template>
+      <template #employerCostItems><PayrollItemsEditor v-model="employerRows" /></template>
     </ArtForm>
   </ArtDialog>
 </template>
 <script setup lang="ts">
   import { normalizeNullableNumber } from '@/utils/form/normalize'
+  import { round, sumBy } from 'lodash-es'
   import { replaceReactiveModel } from '@/utils/form/model'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
@@ -51,6 +55,8 @@
   import { fetchPayrollEmployeeOptions, savePayrollLine } from '@fms/api'
   import { canEditField } from '@/utils/field-permission'
   import { formatCurrencyValue } from '@/utils/ui'
+  import PayrollItemsEditor from './payroll-items-editor.vue'
+  import { buildPayrollItems, readPayrollItems, type PayrollItemRow } from './payroll-items'
   defineOptions({ name: 'FinancePayrollLineDialog' })
   const emit = defineEmits<{ success: [] }>()
   const dialogRef = ref<ArtDialogExpose>()
@@ -60,6 +66,9 @@
   }>()
   const runId = ref('')
   const runTenantId = ref('')
+  const earningRows = ref<PayrollItemRow[]>([])
+  const deductionRows = ref<PayrollItemRow[]>([])
+  const employerRows = ref<PayrollItemRow[]>([])
   const form = reactive({
     employeeId: '',
     grossAmount: 0,
@@ -84,6 +93,24 @@
       }
     ]
   }
+  watch(
+    [earningRows, deductionRows, employerRows],
+    () => {
+      form.grossAmount = round(
+        sumBy(earningRows.value, (row) => row.amount ?? 0),
+        2
+      )
+      form.deductionAmount = round(
+        sumBy(deductionRows.value, (row) => row.amount ?? 0),
+        2
+      )
+      form.employerCostAmount = round(
+        sumBy(employerRows.value, (row) => row.amount ?? 0),
+        2
+      )
+    },
+    { deep: true }
+  )
   const items = computed<FormItem[]>(() => [
     { label: '员工快照', key: 'employeeSection', type: 'divider', span: 24 },
     {
@@ -93,23 +120,26 @@
       span: 24
     },
     { label: '薪资构成', key: 'amountSection', type: 'divider', span: 24 },
+    { label: '收入项目', key: 'earningItems', span: 24 },
+    { label: '扣款项目', key: 'deductionItems', span: 24 },
+    { label: '企业承担', key: 'employerCostItems', span: 24 },
     {
       label: '应发金额',
       key: 'grossAmount',
-      type: 'number',
-      props: { min: 0, precision: 2, controlsPosition: 'right', class: 'w-full!' }
+      type: 'text',
+      props: { formatter: () => formatCurrencyValue(form.grossAmount) }
     },
     {
       label: '扣款金额',
       key: 'deductionAmount',
-      type: 'number',
-      props: { min: 0, precision: 2, controlsPosition: 'right', class: 'w-full!' }
+      type: 'text',
+      props: { formatter: () => formatCurrencyValue(form.deductionAmount) }
     },
     {
       label: '企业成本',
       key: 'employerCostAmount',
-      type: 'number',
-      props: { min: 0, precision: 2, controlsPosition: 'right', class: 'w-full!' }
+      type: 'text',
+      props: { formatter: () => formatCurrencyValue(form.employerCostAmount) }
     },
     {
       label: '实发金额',
@@ -144,14 +174,18 @@
   async function submit(): Promise<boolean> {
     try {
       if (!(await validateArtFormForSubmit(formRef.value))) return false
+      const earnings = buildPayrollItems(earningRows.value)
+      const deductions = buildPayrollItems(deductionRows.value)
+      const employer = buildPayrollItems(employerRows.value)
+      if (deductions.total > earnings.total) throw new Error('扣款金额不能超过应发金额')
       const result = await savePayrollLine(runId.value, {
         employeeId: form.employeeId,
-        earningItems: { gross: form.grossAmount },
-        deductionItems: { deduction: form.deductionAmount },
-        employerCostItems: { employerCost: form.employerCostAmount },
-        grossAmount: form.grossAmount,
-        deductionAmount: form.deductionAmount,
-        employerCostAmount: form.employerCostAmount,
+        earningItems: earnings.items,
+        deductionItems: deductions.items,
+        employerCostItems: employer.items,
+        grossAmount: earnings.total,
+        deductionAmount: deductions.total,
+        employerCostAmount: employer.total,
         remark: form.remark
       })
       if (result.error) throw result.error
@@ -174,6 +208,26 @@
     runId.value = run.id
     runTenantId.value = run.tenantId
     currentLine.value = line
+    try {
+      earningRows.value = readPayrollItems(
+        line?.earningItems,
+        normalizeNullableNumber(line?.grossAmount) ?? 0,
+        '未分类收入'
+      )
+      deductionRows.value = readPayrollItems(
+        line?.deductionItems,
+        normalizeNullableNumber(line?.deductionAmount) ?? 0,
+        '未分类扣款'
+      )
+      employerRows.value = readPayrollItems(
+        line?.employerCostItems,
+        normalizeNullableNumber(line?.employerCostAmount) ?? 0,
+        '未分类企业成本'
+      )
+    } catch (error) {
+      notifyFriendlyError(error, '薪酬项目加载失败，请刷新后重试')
+      return
+    }
     Object.assign(form, {
       employeeId: line?.employeeId || '',
       grossAmount: normalizeNullableNumber(line?.grossAmount) ?? 0,

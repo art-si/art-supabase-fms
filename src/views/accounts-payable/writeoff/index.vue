@@ -14,6 +14,9 @@
         @refresh="load"
       >
         <template #actions>
+          <ElButton v-auth="'FinancePayableWriteoff:View'" @click="automationManager?.handleOpen()"
+            ><ArtSvgIcon icon="ri:time-line" />后台核销</ElButton
+          >
           <ElButton v-auth="'FinancePayableWriteoff:Scheme'" @click="schemeDialog?.handleOpen()"
             ><ArtSvgIcon icon="ri:settings-3-line" />核销方案</ElButton
           >
@@ -262,6 +265,7 @@
         <ArtTable :data="workspace.schemes" :columns="schemeColumns" :pagination="false" />
       </ArtDialog>
       <ReferenceEditor ref="schemeEditor" kind="scheme" @success="load" />
+      <AutomationDialog ref="automationManager" />
       <PayableAutomaticWriteoff ref="automaticDialog" @success="load" @refresh="load" />
       <ArtDialog ref="recordDialog" title="应付核销单" size="lg" :show-footer="false"
         ><ArtDescriptions
@@ -299,6 +303,7 @@
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
   import ArtTable from '@/components/core/tables/art-table/index.vue'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
+  import AutomationDialog from './modules/automation-dialog.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import ArtDescriptions from '@/components/core/base/art-descriptions/index.vue'
@@ -401,6 +406,7 @@
   const primaryTable = ref<InstanceType<typeof ArtTable>>()
   const secondaryTable = ref<InstanceType<typeof ArtTable>>()
   const schemeDialog = ref<ArtDialogExpose>()
+  const automationManager = ref<InstanceType<typeof AutomationDialog>>()
   const schemeEditor = ref<InstanceType<typeof ReferenceEditor>>()
   const recordDialog = ref<ArtDialogExpose>()
   const currentRecord = ref<PayableWriteoffRecord>()

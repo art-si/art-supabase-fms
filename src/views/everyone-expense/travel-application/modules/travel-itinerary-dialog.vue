@@ -20,6 +20,7 @@
           filterable
           clearable
           placeholder="选择省 / 市 / 区"
+          popper-class="travel-region-popper"
           aria-label="出发地"
         />
       </template>
@@ -32,6 +33,7 @@
           filterable
           clearable
           placeholder="选择省 / 市 / 区"
+          popper-class="travel-region-popper"
           aria-label="目的地"
         />
       </template>
@@ -246,3 +248,24 @@
   }
   defineExpose({ handleOpen })
 </script>
+
+<style lang="scss">
+  @media (width <= 640px) {
+    .travel-region-popper {
+      max-width: calc(100vw - 24px);
+
+      .el-cascader-menu {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .el-cascader-node {
+        padding-inline: 24px 20px;
+      }
+
+      .el-cascader-node__label {
+        padding-inline: 0;
+      }
+    }
+  }
+</style>

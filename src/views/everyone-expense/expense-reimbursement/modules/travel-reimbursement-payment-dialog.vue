@@ -32,6 +32,7 @@
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { formatCurrencyValue } from '@/utils/ui'
+  import { createTenantScopeReadGuard } from '@/utils/tenant-scope-context'
   import {
     fetchFundAccountOptions,
     fetchTravelReimbursementDetail,
@@ -155,11 +156,13 @@
   }
 
   async function handleOpen(data: OpenData): Promise<void> {
+    const assertScope = createTenantScopeReadGuard()
     try {
       const [detailResult, accountsResult] = await Promise.all([
         fetchTravelReimbursementDetail(data.row.id),
         fetchFundAccountOptions({ status: 'active', baseCurrencyOnly: true })
       ])
+      assertScope()
       const record = detailResult.data
       if (
         !record ||
@@ -205,6 +208,7 @@
         onConfirm: async () => {
           try {
             if (!(await validateArtFormForSubmit(formRef.value))) return false
+            assertScope()
             if (
               !row.value ||
               model.value.amount <= 0 ||

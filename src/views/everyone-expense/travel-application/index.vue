@@ -65,8 +65,12 @@
   import MasterDeleteProcessingNotice from '@/components/business/master-delete-processing-notice/index.vue'
   import { useRecordDeleteGuard } from '@/hooks/core/useRecordDeleteGuard'
   import { useAuth } from '@/hooks/core/useAuth'
+  import { useTenantOperationGuard } from '@/hooks/core/useTenantOperationGuard'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
-  import { resolveExpenseDeleteResources } from '../shared/expense-delete-resources'
+  import {
+    canDeleteExpenseDocument,
+    resolveExpenseDeleteResources
+  } from '../shared/expense-delete-resources'
   import BusinessWorkspaceHeader from '@/components/business/business-workspace-header/index.vue'
   import BusinessTableWorkspaceActions from '@/components/business/business-table-workspace-actions/index.vue'
   import ArtEmployeeSelect from '@/components/business/art-employee-select/index.vue'
@@ -99,6 +103,8 @@
   const printing = ref(false)
   const route = useRoute()
   const { hasAuth } = useAuth()
+  const capturePrintOperation = useTenantOperationGuard('FinanceTravelApplication:Print')
+  const captureViewOperation = useTenantOperationGuard('FinanceTravelApplication:View')
   const { deleteGuardRef, deleteRecord, deleteRecords, deleteBusy } = useRecordDeleteGuard(
     'fms_travel_application',
     '出差申请单'
@@ -172,7 +178,10 @@
       icon: 'ri:delete-bin-line',
       permission: 'FinanceTravelApplication:Delete',
       selectionRequired: true,
-      disabled: search.value.displayMode !== 'document' || deleteBusy.value,
+      disabled: ({ selectedRows }) =>
+        search.value.displayMode !== 'document' ||
+        deleteBusy.value ||
+        selectedRows.some((row) => !canDeleteExpenseDocument('application', row)),
       onClick: ({ selectedRows }) => deleteSelected(selectedRows as TravelApplication[])
     },
     {
@@ -448,15 +457,17 @@
   }
   async function printSelected(rows: TableRecord[]): Promise<void> {
     if (!hasAuth('FinanceTravelApplication:Print') || printing.value || !rows.length) return
+    const isCurrent = capturePrintOperation()
     printing.value = true
     try {
       const selected = uniqBy(rows.map(applicationOf), (row) => row.id)
       const details = await Promise.all(selected.map((row) => fetchTravelApplicationDetail(row.id)))
+      if (!isCurrent()) return
       const records = details.flatMap((result) => (result.data ? [result.data] : []))
       if (records.length !== selected.length) throw new Error('部分申请已变化，请刷新后重试')
       await printRef.value?.print(records)
     } catch (error) {
-      notifyFriendlyError(error, '出差申请打印内容加载失败，请重试')
+      if (isCurrent()) notifyFriendlyError(error, '出差申请打印内容加载失败，请重试')
     } finally {
       printing.value = false
     }
@@ -471,16 +482,19 @@
   watch(
     () => route.query.applicationId,
     async (id) => {
-      if (typeof id !== 'string' || !id) return
+      if (typeof id !== 'string' || !id || !hasAuth('FinanceTravelApplication:View')) return
+      const isCurrent = captureViewOperation()
       try {
         const { data } = await fetchTravelApplicationDetail(id)
+        if (!isCurrent()) return
         if (!data) throw new Error('关联申请不可用')
         search.value.displayMode = 'document'
         search.value.keyword = data.applicationNo
         await nextTick()
+        if (!isCurrent()) return
         await tableRef.value?.getData()
       } catch (error) {
-        notifyFriendlyError(error, '关联出差申请定位失败，请刷新后重试')
+        if (isCurrent()) notifyFriendlyError(error, '关联出差申请定位失败，请刷新后重试')
       }
     },
     { immediate: true }

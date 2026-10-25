@@ -65,6 +65,7 @@
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { formatCurrencyValue } from '@/utils/ui'
+  import { createTenantScopeReadGuard } from '@/utils/tenant-scope-context'
   import {
     fetchFundAccountOptions,
     fetchTravelLoanDetail,
@@ -107,19 +108,26 @@
     Math.max(0, (loan.value?.approvedAmount ?? 0) - (loan.value?.paidAmount ?? 0))
   )
   const payeeOptions = computed(() =>
-    (loan.value?.payees ?? []).map((payee) => ({
-      label: `${payee.payeeName} · ${payee.bankName} · ${formatCurrencyValue(payee.amount)}`,
-      value: payee.id
-    }))
+    (loan.value?.payees ?? [])
+      .filter((payee) => remainingForPayee(payee) > 0)
+      .map((payee) => ({
+        label: `${payee.payeeName} · ${payee.bankName} · 待付 ${formatCurrencyValue(remainingForPayee(payee))}`,
+        value: payee.id
+      }))
   )
   const selectedPayee = computed<TravelLoanPayee | undefined>(() =>
     loan.value?.payees?.find((payee) => payee.id === model.value.loanPayeeId)
   )
+  const selectedRemaining = computed(() =>
+    Math.min(remainingAmount.value, remainingForPayee(selectedPayee.value))
+  )
   const eligibleAccounts = computed(() =>
-    fundAccounts.value.filter((account) =>
-      demo.value
-        ? account.accountName.startsWith('界面验收')
-        : !account.accountName.startsWith('界面验收')
+    fundAccounts.value.filter(
+      (account) =>
+        account.tenantId === loan.value?.tenantId &&
+        (demo.value
+          ? account.accountName.startsWith('界面验收')
+          : !account.accountName.startsWith('界面验收'))
     )
   )
   const items = computed<FormItem[]>(() => [
@@ -151,7 +159,7 @@
       type: 'number',
       props: {
         min: 0.01,
-        max: remainingAmount.value,
+        max: selectedRemaining.value,
         precision: 2,
         class: 'w-full!'
       }
@@ -194,18 +202,27 @@
     return Math.max(0, payee.amount - paid)
   }
   function setPayee(): void {
-    model.value.amount = Math.min(remainingAmount.value, remainingForPayee(selectedPayee.value))
+    model.value.amount = selectedRemaining.value
   }
   async function handleOpen(data: OpenData): Promise<void> {
+    const assertScope = createTenantScopeReadGuard()
     try {
       const [detailResult, accountsResult] = await Promise.all([
         fetchTravelLoanDetail(data.row.id),
         fetchFundAccountOptions({ status: 'active', baseCurrencyOnly: true })
       ])
+      assertScope()
       if (!detailResult.data || accountsResult.error) {
         throw new Error('借款单或资金账户不可用')
       }
       loan.value = detailResult.data
+      if (
+        loan.value.isDemo !== data.demo ||
+        !['approved', 'awaiting_payment'].includes(loan.value.status) ||
+        (loan.value.approvedAmount ?? 0) <= (loan.value.paidAmount ?? 0)
+      ) {
+        throw new Error('借款状态或待付金额已变化，请刷新列表后重试')
+      }
       demo.value = data.demo
       fundAccounts.value = accountsResult.data ?? []
       idempotencyKey.value = crypto.randomUUID()
@@ -230,6 +247,7 @@
         onConfirm: async () => {
           try {
             if (!(await validateArtFormForSubmit(formRef.value))) return false
+            assertScope()
             if (!loan.value || !selectedPayee.value || !model.value.fundAccountId) return false
             if (
               model.value.amount <= 0 ||

@@ -18,22 +18,35 @@ export function useLoanPushRoute(
     async (id, _, onCleanup) => {
       if (typeof id !== 'string' || !id) return
       let active = true
+      let consuming = false
+      let consumedPath: string | undefined
       onCleanup(() => {
-        active = false
+        if (!consuming) active = false
       })
-      const isCurrent = () => active && route.name === target && route.query.fromLoan === id
+      const isCurrent = () =>
+        active &&
+        route.name === target &&
+        (consumedPath ? route.fullPath === consumedPath : route.query.fromLoan === id)
       const assertScope = createTenantScopeReadGuard()
       try {
         const result = await prepareTravelLoanPush(id, kind)
         assertScope()
         if (!isCurrent()) return
         if (!result.data) throw new Error('借款下推资料不可用')
+        // Consume the entry before opening: ArtDialog closes when fullPath changes.
+        consuming = true
+        const destination = router.resolve({ query: omit(route.query, ['fromLoan']) })
+        await router.replace(destination)
         await nextTick()
+        consuming = false
+        consumedPath = destination.fullPath
+        assertScope()
         if (isCurrent()) await openDraft(result.data, isCurrent)
       } catch (error) {
         if (isCurrent()) notifyFriendlyError(error, '借款下推失败，请核对可用余额和目标单据权限')
       } finally {
-        if (isCurrent()) {
+        consuming = false
+        if (!consumedPath && isCurrent()) {
           try {
             await router.replace({ query: omit(route.query, ['fromLoan']) })
           } catch (error) {

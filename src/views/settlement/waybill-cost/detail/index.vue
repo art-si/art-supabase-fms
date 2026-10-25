@@ -49,6 +49,10 @@
         <ArtSvgIcon icon="ri:route-line" aria-hidden="true" />
         查看关联运单
       </ElButton>
+      <ElButton v-if="maintenanceSourceRoute" @click="router.push(maintenanceSourceRoute)">
+        <ArtSvgIcon icon="ri:tools-line" aria-hidden="true" />
+        查看关联维修记录
+      </ElButton>
     </ArtPageHeader>
 
     <section v-if="detail.data" class="waybill-cost-detail__overview art-card-xs">
@@ -181,6 +185,7 @@
 <script setup lang="ts">
   import { formatCoordinateValue } from '@/utils/ui/coordinates'
   import { useMediaQuery } from '@vueuse/core'
+  import { useAuth } from '@/hooks/core/useAuth'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import type { ArtDescriptionItem } from '@/components/core/base/art-descriptions/types'
   import type { FilePreviewTarget } from '@/hooks/core/useFilePreview'
@@ -224,6 +229,7 @@
 
   const route = useRoute()
   const router = useRouter()
+  const { hasAuth } = useAuth()
   const isNarrow = useMediaQuery('(max-width: 1440px)')
   const descriptionColumns = computed(() => (isNarrow.value ? 2 : 4))
   const detail = reactive<DetailState>({
@@ -246,6 +252,17 @@
   const canReadExpenseEvidence = computed(() =>
     isReadableFieldAccess(getFieldAccess(detail.data?.fieldAccess, 'expenseEvidence'))
   )
+  const maintenanceSourceRoute = computed(() => {
+    const source = detail.data
+    if (
+      source?.sourceType !== 'vehicle_maintenance' ||
+      !source.sourceId ||
+      !hasAuth('VehicleMaintenance:View') ||
+      !router.hasRoute('VehicleMaintenanceDetail')
+    )
+      return undefined
+    return { name: 'VehicleMaintenanceDetail', params: { id: source.sourceId } }
+  })
 
   const waybillNo = computed(
     () => detail.data?.waybillNoSnapshot || detail.data?.waybill?.waybillNo || '--'

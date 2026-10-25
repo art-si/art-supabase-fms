@@ -41,6 +41,7 @@
   const dialogRef = ref<ArtDialogExpose<TravelRepayment>>()
   const formRef = ref<InstanceType<typeof ArtForm>>()
   const currentRow = ref<TravelRepayment>()
+  const idempotencyKey = ref('')
   const model = ref<CollectionInput>({
     amount: 0,
     receiptDate: dayjs().format('YYYY-MM-DD'),
@@ -81,6 +82,7 @@
   }
   async function handleOpen(row: TravelRepayment): Promise<void> {
     currentRow.value = row
+    idempotencyKey.value = crypto.randomUUID()
     const remaining = Math.max(0, row.amount - row.receivedAmount)
     model.value = {
       amount: remaining,
@@ -100,12 +102,16 @@
             notifyFriendlyError(new Error('收款金额无效'), '本次收款金额应大于零且不超过未收金额')
             return false
           }
-          await recordTravelRepaymentCollection({ repaymentId: row.id, ...model.value })
+          await recordTravelRepaymentCollection({
+            repaymentId: row.id,
+            idempotencyKey: idempotencyKey.value,
+            ...model.value
+          })
           ElMessage.success(row.isDemo ? '模拟收款已记录' : '收款已登记')
           emit('success')
           return true
         } catch (error) {
-          notifyFriendlyError(error, '还款收款登记失败，请核对金额后重试')
+          notifyFriendlyError(error, '还款收款结果未确认，请核对收款记录后重试当前表单')
           return false
         }
       }

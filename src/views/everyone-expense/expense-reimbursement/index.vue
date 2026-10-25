@@ -33,6 +33,7 @@
       <TravelReimbursementDialog ref="dialogRef" @success="refreshTable" />
       <TravelReimbursementPaymentDialog ref="paymentDialogRef" @success="refreshTable" />
       <ReimbursementPrintSheet ref="printSheetRef" />
+      <ExpenseDelegationDialog ref="delegationDialog" />
       <MasterDataDeleteGuard ref="deleteGuardRef" />
     </div>
   </ArtPermissionGuard>
@@ -57,6 +58,7 @@
   import { notifyFriendlyError, useArtFeedback } from '@/hooks/core/useArtFeedback'
   import { useRecordDeleteGuard } from '@/hooks/core/useRecordDeleteGuard'
   import { useAuth } from '@/hooks/core/useAuth'
+  import { useTenantOperationGuard } from '@/hooks/core/useTenantOperationGuard'
   import { buildSupabasePageRange } from '@/utils/supabase/pagination'
   import { documentGroupSpan } from '@/utils/business/document-detail-list'
   import { formatCurrencyValue } from '@/utils/ui'
@@ -74,8 +76,12 @@
   import TravelReimbursementDialog from './modules/travel-reimbursement-dialog.vue'
   import TravelReimbursementPaymentDialog from './modules/travel-reimbursement-payment-dialog.vue'
   import ReimbursementPrintSheet from './modules/reimbursement-print-sheet.vue'
+  import ExpenseDelegationDialog from './modules/expense-delegation-dialog.vue'
   import { useLoanPushRoute } from '../shared/use-loan-push-route'
-  import { resolveExpenseDeleteResources } from '../shared/expense-delete-resources'
+  import {
+    canDeleteExpenseDocument,
+    resolveExpenseDeleteResources
+  } from '../shared/expense-delete-resources'
   import { uniqBy } from 'lodash-es'
 
   defineOptions({ name: 'FinanceExpenseReimbursement' })
@@ -94,7 +100,10 @@
   const router = useRouter()
   const { confirmAction } = useArtFeedback()
   const { hasAuth } = useAuth()
+  const capturePrintOperation = useTenantOperationGuard('FinanceExpenseReimbursement:Print')
+  const captureSubmitOperation = useTenantOperationGuard('FinanceExpenseReimbursement:Submit')
   const tableRef = ref<ArtTableQueryExpose>()
+  const delegationDialog = ref<InstanceType<typeof ExpenseDelegationDialog>>()
   const dialogRef = ref<DialogExpose>()
   useLoanPushRoute('reimbursement', async (sourceLoan, isCurrent) => {
     await dialogRef.value?.handleOpen({ sourceLoan, isCurrent })
@@ -186,6 +195,13 @@
   ])
   const headerActions = computed<ArtTableQueryHeaderAction[]>(() => [
     {
+      key: 'delegation',
+      label: '费用委托',
+      icon: 'ri:user-shared-line',
+      permission: 'FinanceExpenseReimbursement:Delegate',
+      onClick: () => delegationDialog.value?.handleOpen()
+    },
+    {
       type: 'add',
       permission: 'FinanceExpenseReimbursement:Add',
       label: '新增差旅报销',
@@ -206,7 +222,10 @@
       icon: 'ri:delete-bin-line',
       permission: 'FinanceExpenseReimbursement:Delete',
       selectionRequired: true,
-      disabled: search.value.displayMode !== 'document' || deleteBusy.value,
+      disabled: ({ selectedRows }) =>
+        search.value.displayMode !== 'document' ||
+        deleteBusy.value ||
+        selectedRows.some((row) => !canDeleteExpenseDocument('reimbursement', row)),
       onClick: ({ selectedRows }) => deleteSelected(selectedRows as Reimbursement[])
     },
     {
@@ -491,6 +510,7 @@
             icon="ri:file-copy-line"
             label="复制"
             permission="FinanceExpenseReimbursement:Copy"
+            disabled={!hasAuth('FinanceExpenseReimbursement:Add')}
             onClick={() => dialogRef.value?.handleOpen({ row, copy: true })}
           />
         ) : null}
@@ -508,6 +528,7 @@
             icon="ri:send-plane-line"
             label="提交审批"
             permission="FinanceExpenseReimbursement:Submit"
+            disabled={Boolean(submittingId.value)}
             loading={submittingId.value === row.id}
             onClick={() => void submitTravelReimbursement(row)}
           />
@@ -575,17 +596,19 @@
   }
   async function printSelected(rows: TableRecord[]): Promise<void> {
     if (!hasAuth('FinanceExpenseReimbursement:Print') || printing.value || !rows.length) return
+    const isCurrent = capturePrintOperation()
     printing.value = true
     try {
       const selected = uniqBy(rows.map(parentOf), (row) => row.id)
       const details = await Promise.all(
         selected.map((row) => fetchExpenseReimbursementDetail(row.id))
       )
+      if (!isCurrent()) return
       const records = details.flatMap((result) => (result.data ? [result.data] : []))
       if (records.length !== selected.length) throw new Error('部分报销单已变化，请刷新后重试')
       await printSheetRef.value?.print(records)
     } catch (error) {
-      notifyFriendlyError(error, '报销单打印内容加载失败，请重试')
+      if (isCurrent()) notifyFriendlyError(error, '报销单打印内容加载失败，请重试')
     } finally {
       printing.value = false
     }
@@ -599,7 +622,9 @@
   )
 
   async function submitTravelReimbursement(row: Reimbursement): Promise<void> {
-    if (submittingId.value) return
+    if (submittingId.value || !hasAuth('FinanceExpenseReimbursement:Submit')) return
+    const isCurrent = captureSubmitOperation()
+    submittingId.value = row.id
     try {
       await confirmAction(
         `提交报销单“${row.reimbursementNo}”后，费用和收款内容将锁定。`,
@@ -608,11 +633,14 @@
           confirmButtonText: '提交审批'
         }
       )
-      submittingId.value = row.id
+      if (!isCurrent()) {
+        ElMessage.warning('操作范围或权限已变化，请重新查询后提交')
+        return
+      }
       await submitExpenseReimbursement(row)
-      await refreshTable()
+      if (isCurrent()) await refreshTable()
     } catch (error) {
-      if (error !== 'cancel' && error !== 'close')
+      if (isCurrent() && error !== 'cancel' && error !== 'close')
         notifyFriendlyError(error, '报销单提交失败，请核对费用和收款信息后重试')
     } finally {
       submittingId.value = null

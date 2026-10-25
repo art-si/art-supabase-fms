@@ -1,5 +1,23 @@
 import { round } from 'lodash-es'
 
+/** Table action contexts are untyped records; require a readable refundable balance. */
+export function canCreateReceiptRefund(
+  source:
+    | {
+        status?: unknown
+        supplierId?: unknown
+        refundableAmount?: unknown
+      }
+    | undefined
+): boolean {
+  return (
+    source?.status === 'confirmed' &&
+    !source.supplierId &&
+    typeof source.refundableAmount === 'number' &&
+    source.refundableAmount > 0
+  )
+}
+
 export type ReceivableBasis = 'quantity' | 'amount'
 export type ReceivablePriceBasis = 'untaxed' | 'taxed'
 export type ReceivableDiscountMethod = 'none' | 'rate' | 'amount'

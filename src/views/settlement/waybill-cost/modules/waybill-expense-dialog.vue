@@ -48,6 +48,14 @@
         </ArtTableSingleSelect>
       </template>
 
+      <template #maintenanceRecordId>
+        <MaintenanceSourceSelector
+          :key="form.data.waybillId"
+          :waybill-id="form.data.waybillId"
+          @select="applyMaintenanceSource"
+          @clear="form.data.maintenanceRecordId = null"
+        />
+      </template>
       <template v-if="canViewExpenseLocation" #locationPicker>
         <ArtAddressPicker
           ref="addressPickerRef"
@@ -130,6 +138,7 @@
   import { useAuth } from '@/hooks/core/useAuth'
   import TreeUtils from '@/utils/tree'
   import ExpenseOcrPanel from './expense-ocr-panel.vue'
+  import MaintenanceSourceSelector from './maintenance-source-selector.vue'
 
   defineOptions({ name: 'FinanceWaybillExpenseDialog' })
 
@@ -213,6 +222,9 @@
     id: undefined,
     costNo: '',
     waybillId: '',
+    maintenanceRecordId: null,
+    sourceType: null,
+    sourceId: null,
     expenseItemId: '',
     costType: 'other',
     amount: 0,
@@ -263,6 +275,8 @@
   )
   const canUseOcr = computed(
     () =>
+      !formData.maintenanceRecordId &&
+      formData.sourceType !== 'vehicle_maintenance' &&
       canEditCostAmounts.value &&
       canEditPaymentDetails.value &&
       canEditExpenseLocation.value &&
@@ -320,6 +334,14 @@
         description: formData.id ? undefined : expenseNumber.description.value
       },
       { label: '运单/车牌', key: 'waybillId', type: 'input' },
+      {
+        label: '维修来源',
+        key: 'maintenanceRecordId',
+        type: 'input',
+        span: 24,
+        hidden: Boolean(formData.id) || !hasAuth('VehicleMaintenance:View'),
+        description: '选择后自动带入维修金额；费用项目请选择维修保养，审核后计入成本。'
+      },
       { label: '费用信息', key: 'expenseSection', type: 'divider', span: 24 },
       {
         label: '费用项目',
@@ -348,7 +370,10 @@
           precision: 2,
           controlsPosition: 'right',
           class: '!w-full',
-          disabled: !canEditCostAmounts.value
+          disabled:
+            !canEditCostAmounts.value ||
+            Boolean(formData.maintenanceRecordId) ||
+            formData.sourceType === 'vehicle_maintenance'
         }
       },
       {
@@ -470,6 +495,15 @@
   })
 
   const selectedWaybill = computed(() => selection.waybills[0])
+  function applyMaintenanceSource(source: { id: string; amount: number }): void {
+    Object.assign(form.data, { maintenanceRecordId: source.id, amount: source.amount })
+  }
+  watch(
+    () => form.data.waybillId,
+    () => {
+      if (!form.data.id) form.data.maintenanceRecordId = null
+    }
+  )
   const expenseLocationModel = computed({
     get: () => form.data.expenseLocation || '',
     set: (value: string) => {

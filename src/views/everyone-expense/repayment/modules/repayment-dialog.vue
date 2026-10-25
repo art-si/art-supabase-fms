@@ -207,6 +207,7 @@
 </template>
 
 <script setup lang="tsx">
+  import { unref } from 'vue'
   import ArtDescriptions from '@/components/core/base/art-descriptions/index.vue'
   import { ElMessage } from 'element-plus'
   import dayjs from 'dayjs'
@@ -214,6 +215,9 @@
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { getDeleteReferenceContext } from '@/utils/supabase/delete-reference'
   import { useRecordDeleteGuard } from '@/hooks/core/useRecordDeleteGuard'
+  import { useAuth } from '@/hooks/core/useAuth'
+  import { useTenantOperationGuard } from '@/hooks/core/useTenantOperationGuard'
+  import { useArtOverlaySession } from '@/hooks/core/useArtOverlay'
   import { createTenantScopeReadGuard } from '@/utils/tenant-scope-context'
   import { useTenantScopeFormPolicy } from '@/hooks/core/useTenantScopeFormPolicy'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
@@ -253,7 +257,11 @@
   const emit = defineEmits<{ success: [] }>()
   const { defaultWriteTenantId } = useTenantScopeFormPolicy()
   const dialogRef = ref<ArtDialogExpose<OpenData>>()
+  const { hasAuth } = useAuth()
+  const captureOperation = useTenantOperationGuard('FinanceRepayment:View')
+  const session = useArtOverlaySession(() => Boolean(unref(dialogRef.value?.visible)))
   const lineDialogRef = ref<ArtDialogExpose>()
+  const lineSession = useArtOverlaySession(() => Boolean(unref(lineDialogRef.value?.visible)))
   const formRef = ref<InstanceType<typeof ArtForm>>()
   const lineFormRef = ref<InstanceType<typeof ArtForm>>()
   const {
@@ -398,18 +406,18 @@
           <BusinessTableRowActions>
             <ArtButtonTable
               type="edit"
-              permission="FinanceRepayment:Edit"
+              permission={model.value.id ? 'FinanceRepayment:Edit' : 'FinanceRepayment:Add'}
               onClick={() => openLine(row)}
             />
             <ArtButtonTable
               icon="ri:file-copy-line"
               label="复制明细"
-              permission="FinanceRepayment:CopyItem"
+              permission={model.value.id ? 'FinanceRepayment:CopyItem' : 'FinanceRepayment:Add'}
               onClick={() => openLine(row, true)}
             />
             <ArtButtonTable
               type="delete"
-              permission="FinanceRepayment:DeleteItem"
+              permission={model.value.id ? 'FinanceRepayment:DeleteItem' : 'FinanceRepayment:Add'}
               onClick={() => void removeLine(row)}
             />
           </BusinessTableRowActions>
@@ -429,6 +437,20 @@
     { prop: 'remark', label: '备注', minWidth: 150, showOverflowTooltip: true }
   ]
   async function openLine(row?: TravelRepaymentItemInput, copy = false): Promise<void> {
+    const scopeCurrent = captureOperation()
+    const parentVersion = session.version.value
+    const parentId = model.value.id
+    const permissions = parentId ? ['FinanceRepayment:Edit'] : ['FinanceRepayment:Add']
+    if (parentId && copy) permissions.push('FinanceRepayment:CopyItem')
+    const contextCurrent = () =>
+      scopeCurrent() &&
+      session.isCurrent(parentVersion) &&
+      model.value.id === parentId &&
+      !readonly.value &&
+      permissions.every((permission) => hasAuth(permission))
+    if (!contextCurrent()) return
+    const version = lineSession.invalidate()
+    const isCurrent = () => contextCurrent() && lineSession.isCurrent(version)
     editingLineIndex.value = row && !copy ? lines.value.indexOf(row) : null
     lineModel.value = {
       id: copy ? undefined : row?.id,
@@ -441,8 +463,16 @@
       subtitle: '费用项目、借款事项、币种和汇率取自原借款；金额可按本次还款调整。',
       confirmText: row && !copy ? '保存明细' : '添加明细',
       onOpen: () => lineFormRef.value?.clearValidate(),
+      onClose: () => {
+        lineSession.invalidate()
+      },
       onConfirm: async () => {
+        if (!isCurrent()) {
+          ElMessage.warning('操作范围或权限已变化，请重新打开还款明细')
+          return false
+        }
         if (!(await validateArtFormForSubmit(lineFormRef.value))) return false
+        if (!isCurrent()) return false
         const source = selectedLoan.value?.items.find(
           (item) => item.id === lineModel.value.loanItemId
         )
@@ -478,10 +508,25 @@
     })
   }
   async function handleOpen(data: OpenData = {}): Promise<void> {
+    const scopeCurrent = captureOperation()
+    const version = session.invalidate()
+    const permissions = data.readonly
+      ? []
+      : data.copy
+        ? ['FinanceRepayment:Add', 'FinanceRepayment:Copy']
+        : [data.row ? 'FinanceRepayment:Edit' : 'FinanceRepayment:Add']
+    const contextCurrent = () =>
+      scopeCurrent() &&
+      session.version.value === version &&
+      permissions.every((permission) => hasAuth(permission)) &&
+      (!data.isCurrent || data.isCurrent())
+    if (!contextCurrent()) return
+    const isCurrent = () => contextCurrent() && session.isCurrent(version)
     const assertScope = createTenantScopeReadGuard()
     try {
       readonly.value = Boolean(data.readonly)
       const detail = data.row ? (await fetchTravelRepaymentDetail(data.row.id)).data : null
+      if (!contextCurrent()) return
       model.value = detail
         ? {
             id: data.copy ? undefined : detail.id,
@@ -513,6 +558,7 @@
         fetchRepayableLoans(model.value.tenantId),
         detail ? fetchTravelLoanDetail(detail.loanId) : Promise.resolve(null)
       ])
+      if (!contextCurrent()) return
       loanOptions.value = options.data ?? []
       const linkedLoan = sourceLoan?.data
       if (data.copy && linkedLoan && !loanOptions.value.some((loan) => loan.id === linkedLoan.id)) {
@@ -534,7 +580,7 @@
         })
       }
       assertScope()
-      if (data.isCurrent && !data.isCurrent()) return
+      if (!contextCurrent()) return
       await dialogRef.value?.handleOpen(data, {
         title: data.readonly
           ? `查看还款单 · ${detail?.repaymentNo ?? ''}`
@@ -547,18 +593,28 @@
         confirmText: '保存草稿',
         showFooter: !data.readonly,
         onOpen: () => formRef.value?.clearValidate(),
+        onClose: () => {
+          session.invalidate()
+        },
         onConfirm: async () => {
+          if (!isCurrent() || data.readonly) {
+            ElMessage.warning('操作范围或权限已变化，请重新打开还款单')
+            return false
+          }
           try {
             if (!(await validateArtFormForSubmit(formRef.value))) return false
+            if (!isCurrent()) return false
             if (!lines.value.length) {
               notifyFriendlyError(new Error('缺少明细'), '请添加至少一条还款明细')
               return false
             }
             await saveTravelRepaymentDraft(model.value, lines.value)
+            if (!isCurrent()) return false
             ElMessage.success(data.copy ? '已复制为新的还款草稿' : '还款草稿已保存')
             emit('success')
             return true
           } catch (error) {
+            if (!isCurrent()) return false
             if (
               removedLines.value.length &&
               (await inspectDeleteReferences(
@@ -567,13 +623,14 @@
               ))
             )
               return false
-            notifyFriendlyError(error, '还款单保存失败，请核对关联借款和金额后重试')
+            if (isCurrent())
+              notifyFriendlyError(error, '还款单保存失败，请核对关联借款和金额后重试')
             return false
           }
         }
       })
     } catch (error) {
-      if (data.isCurrent && !data.isCurrent()) return
+      if (!contextCurrent()) return
       notifyFriendlyError(error, '还款单打开失败，请重试')
     }
   }

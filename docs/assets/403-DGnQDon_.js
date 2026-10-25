@@ -1,1 +1,0 @@
-import{Qi as e,Ui as t,_a as n}from"./sys-DaNMvRNq.js";import{t as r}from"./art-permission-guard-D_CDRbf-.js";var i=e({name:`Exception403`,__name:`index`,setup(e){return(e,i)=>(n(),t(r,{"force-denied":``,"resource-name":`目标页面`,"show-relogin":``,"viewport-centered":``}))}});export{i as default};

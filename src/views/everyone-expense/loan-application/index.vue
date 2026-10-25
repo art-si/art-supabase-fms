@@ -63,7 +63,10 @@
 </template>
 
 <script setup lang="tsx">
-  import { resolveExpenseDeleteResources } from '../shared/expense-delete-resources'
+  import {
+    canDeleteExpenseDocument,
+    resolveExpenseDeleteResources
+  } from '../shared/expense-delete-resources'
   import { orderBy, uniqBy } from 'lodash-es'
   import { storeToRefs } from 'pinia'
   import { useRoute, useRouter } from 'vue-router'
@@ -87,6 +90,7 @@
   import MasterDeleteProcessingNotice from '@/components/business/master-delete-processing-notice/index.vue'
   import { useRecordDeleteGuard } from '@/hooks/core/useRecordDeleteGuard'
   import { useAuth } from '@/hooks/core/useAuth'
+  import { useTenantOperationGuard } from '@/hooks/core/useTenantOperationGuard'
   import ArtEmployeeSelect from '@/components/business/art-employee-select/index.vue'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
@@ -122,6 +126,9 @@
   const route = useRoute()
   const router = useRouter()
   const { hasAuth } = useAuth()
+  const capturePrintOperation = useTenantOperationGuard('FinanceLoanApplication:Print')
+  const captureViewOperation = useTenantOperationGuard('FinanceLoanApplication:View')
+  const captureSubmitOperation = useTenantOperationGuard('FinanceLoanApplication:Submit')
   const { deleteGuardRef, deleteRecord, deleteRecords, deleteBusy } = useRecordDeleteGuard(
     'fms_travel_loan',
     '借款单'
@@ -200,7 +207,10 @@
       icon: 'ri:delete-bin-line',
       permission: 'FinanceLoanApplication:Delete',
       selectionRequired: true,
-      disabled: search.value.displayMode !== 'document' || deleteBusy.value,
+      disabled: ({ selectedRows }) =>
+        search.value.displayMode !== 'document' ||
+        deleteBusy.value ||
+        selectedRows.some((row) => !canDeleteExpenseDocument('loan', row)),
       onClick: ({ selectedRows }) => deleteSelected(selectedRows as TravelLoan[])
     },
     {
@@ -252,7 +262,12 @@
   const loanOf = (row: TableRecord): TravelLoan => ('loan' in row ? row.loan : row)
   function selectedLoan(rows: unknown[]): TravelLoan | undefined {
     const loans = uniqBy((rows as TableRecord[]).map(loanOf), (row) => row.id)
-    return loans.length === 1 && loans[0]?.status === 'paid' ? loans[0] : undefined
+    const loan = loans[0]
+    return loans.length === 1 &&
+      loan?.status === 'paid' &&
+      (loan.availableAmount ?? loan.remainingBalance ?? 0) > 0
+      ? loan
+      : undefined
   }
   function loanPushActions(rows: unknown[]): ButtonMoreItem[] {
     const disabled = !selectedLoan(rows)
@@ -465,7 +480,7 @@
         <ArtButtonTable
           type="edit"
           permission="FinanceLoanApplication:Edit"
-          disabled={row.status !== 'draft'}
+          disabled={!['draft', 'rejected'].includes(row.status)}
           onClick={() => dialogRef.value?.handleOpen({ row })}
         />
         <ArtButtonTable
@@ -491,7 +506,8 @@
             onClick={() => void submitLoan(row)}
           />
         ) : null}
-        {['approved', 'awaiting_payment'].includes(row.status) ? (
+        {['approved', 'awaiting_payment'].includes(row.status) &&
+        (row.approvedAmount ?? 0) > (row.paidAmount ?? 0) ? (
           row.isDemo ? (
             <ArtButtonTable
               icon="ri:bank-card-line"
@@ -512,21 +528,26 @@
     )
   }
   async function submitLoan(row: TravelLoan): Promise<void> {
-    if (submittingId.value) return
+    if (submittingId.value || !hasAuth('FinanceLoanApplication:Submit')) return
+    const isCurrent = captureSubmitOperation()
+    submittingId.value = row.id
     try {
       await confirmAction(`提交借款单“${row.loanNo}”后，借款与收款明细将锁定。`, '提交借款审批', {
         confirmButtonText: '提交审批'
       })
-      submittingId.value = row.id
+      if (!isCurrent()) {
+        ElMessage.warning('操作范围或权限已变化，请重新查询后提交')
+        return
+      }
       await startWorkflow({
         businessType: 'fms_travel_loan',
         businessId: row.id,
         businessTitle: `借款单 ${row.loanNo}`,
         context: { loanNo: row.loanNo }
       })
-      await refreshTable()
+      if (isCurrent()) await refreshTable()
     } catch (error) {
-      if (error !== 'cancel' && error !== 'close')
+      if (isCurrent() && error !== 'cancel' && error !== 'close')
         notifyFriendlyError(error, '借款单提交失败，请核对借款与收款明细后重试')
     } finally {
       submittingId.value = null
@@ -562,15 +583,17 @@
   }
   async function printSelected(rows: TableRecord[]): Promise<void> {
     if (!hasAuth('FinanceLoanApplication:Print') || printing.value || !rows.length) return
+    const isCurrent = capturePrintOperation()
     printing.value = true
     try {
       const selected = uniqBy(rows.map(loanOf), (row) => row.id)
       const details = await Promise.all(selected.map((row) => fetchTravelLoanDetail(row.id)))
+      if (!isCurrent()) return
       const records = details.flatMap((result) => (result.data ? [result.data] : []))
       if (records.length !== selected.length) throw new Error('部分借款单已变化，请刷新后重试')
       await printRef.value?.print(records)
     } catch (error) {
-      notifyFriendlyError(error, '借款单打印内容加载失败，请重试')
+      if (isCurrent()) notifyFriendlyError(error, '借款单打印内容加载失败，请重试')
     } finally {
       printing.value = false
     }
@@ -585,16 +608,19 @@
   watch(
     () => route.query.loanId,
     async (id) => {
-      if (typeof id !== 'string' || !id) return
+      if (typeof id !== 'string' || !id || !hasAuth('FinanceLoanApplication:View')) return
+      const isCurrent = captureViewOperation()
       try {
         const result = await fetchTravelLoanDetail(id)
+        if (!isCurrent()) return
         if (!result.data) throw new Error('关联借款单不可用')
         search.value.displayMode = 'document'
         search.value.keyword = result.data.loanNo
         await nextTick()
+        if (!isCurrent()) return
         await tableRef.value?.getData()
       } catch (error) {
-        notifyFriendlyError(error, '关联借款单定位失败，请刷新后重试')
+        if (isCurrent()) notifyFriendlyError(error, '关联借款单定位失败，请刷新后重试')
       }
     },
     { immediate: true }

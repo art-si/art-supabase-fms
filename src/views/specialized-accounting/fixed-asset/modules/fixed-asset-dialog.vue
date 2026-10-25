@@ -42,6 +42,7 @@
     fetchAccountSetOptions,
     fetchAssetCategoryList,
     fetchFixedAssetDetail,
+    fetchFixedAssetVehicleOptions,
     saveFixedAsset
   } from '@fms/api'
   import { canEditField, canViewField } from '@/utils/field-permission'
@@ -60,12 +61,38 @@
   )
   const categoriesLoading = ref(false)
   const categoriesFailed = ref(false)
+  const vehicleOptions = ref<Array<{ value: string; label: string }>>([])
+  const vehiclesLoading = ref(false)
+  let vehicleRequestId = 0
+  async function loadVehicles(keyword = ''): Promise<void> {
+    const requestId = ++vehicleRequestId
+    if (!form.accountSetId || !canView('assetReferences')) {
+      vehicleOptions.value = []
+      vehiclesLoading.value = false
+      return
+    }
+    vehiclesLoading.value = true
+    try {
+      const result = await fetchFixedAssetVehicleOptions(form.accountSetId, keyword, form.vehicleId)
+      if (requestId !== vehicleRequestId) return
+      if (result.error) throw result.error
+      vehicleOptions.value = result.data ?? []
+    } catch (error) {
+      if (requestId === vehicleRequestId) {
+        vehicleOptions.value = []
+        notifyFriendlyError(error, '车辆选项加载失败，请重新搜索车牌')
+      }
+    } finally {
+      if (requestId === vehicleRequestId) vehiclesLoading.value = false
+    }
+  }
   let categoryRequestId = 0
   const initial = (): Api.Fms.SaveFixedAssetPayload => ({
     accountSetId: '',
     categoryId: '',
     assetNo: '',
     assetName: '',
+    vehicleId: null,
     acquisitionDate: dayjs().format('YYYY-MM-DD'),
     readyForUseDate: dayjs().format('YYYY-MM-DD'),
     depreciationStartDate: dayjs().format('YYYY-MM-DD'),
@@ -145,6 +172,36 @@
     ]
 
     if (canView('assetReferences')) {
+      result.push(
+        canEdit('assetReferences')
+          ? {
+              label: '关联车辆',
+              key: 'vehicleId',
+              type: 'select',
+              span: 24,
+              props: {
+                options: vehicleOptions.value,
+                clearable: true,
+                filterable: true,
+                remote: true,
+                remoteMethod: loadVehicles,
+                loading: vehiclesLoading.value,
+                disabled: !form.accountSetId,
+                placeholder: '非车辆资产可留空，输入车牌搜索'
+              }
+            }
+          : {
+              label: '关联车辆',
+              key: '__vehicleDisplay',
+              type: 'text',
+              span: 24,
+              props: {
+                formatter: () =>
+                  vehicleOptions.value.find((item) => item.value === currentRecord.value?.vehicleId)
+                    ?.label || (currentRecord.value?.vehicleId ? '车辆资料暂不可用' : '未关联车辆')
+              }
+            }
+      )
       const referenceItems: Array<[string, 'serialNo' | 'specification' | 'sourceNo', string]> = [
         ['序列号', 'serialNo', '设备序列号或唯一标识'],
         ['规格型号', 'specification', '资产规格、品牌或型号'],
@@ -300,7 +357,9 @@
     () => form.accountSetId,
     async (value) => {
       if (!form.id) form.categoryId = ''
+      if (!form.id) form.vehicleId = null
       await loadCategories(value)
+      await loadVehicles()
     }
   )
   watch(
@@ -352,6 +411,7 @@
         ...(canEdit('assetReferences')
           ? {
               specification: normalizeNullableText(form.specification),
+              vehicleId: form.vehicleId || null,
               serialNo: normalizeNullableText(form.serialNo),
               sourceType: form.sourceType || null,
               sourceId: form.sourceId || null,
@@ -399,6 +459,7 @@
           categoryId: record.categoryId,
           assetNo: record.assetNo,
           assetName: record.assetName,
+          vehicleId: canViewField(record.fieldAccess, 'assetReferences') ? record.vehicleId : null,
           acquisitionDate: record.acquisitionDate,
           readyForUseDate: record.readyForUseDate,
           depreciationStartDate: record.depreciationStartDate,
@@ -433,6 +494,7 @@
         form.accountSetId = accountSetId ?? accountSetOptions.value[0]?.value ?? ''
       }
       if (form.accountSetId) await loadCategories(form.accountSetId)
+      await loadVehicles()
     }
     await dialogRef.value?.handleOpen(undefined, {
       title: row ? `编辑资产 · ${row.assetNo}` : '新建固定资产',

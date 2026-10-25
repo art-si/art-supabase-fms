@@ -74,12 +74,18 @@
               <BusinessTableRowActions>
                 <ArtButtonTable
                   type="edit"
-                  permission="FinanceTravelApplication:Edit"
+                  :permission="
+                    model.id ? 'FinanceTravelApplication:Edit' : 'FinanceTravelApplication:Add'
+                  "
                   @click="editLine(index)"
                 />
                 <ArtButtonTable
                   type="delete"
-                  permission="FinanceTravelApplication:DeleteLine"
+                  :permission="
+                    model.id
+                      ? 'FinanceTravelApplication:DeleteLine'
+                      : 'FinanceTravelApplication:Add'
+                  "
                   @click="removeLine(index)"
                 />
               </BusinessTableRowActions>
@@ -109,12 +115,19 @@
   import { ElMessage } from 'element-plus'
   import dayjs from 'dayjs'
   import { storeToRefs } from 'pinia'
-  import type { EmployeeIntegrationItem } from '@/api/integration/employees'
+  import {
+    fetchEmployeeReferencesByIds,
+    type EmployeeIntegrationItem
+  } from '@/api/integration/employees'
   import { fetchEnabledOrganizationTree } from '@/api/system-manage'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { useTenantScopeFormPolicy } from '@/hooks/core/useTenantScopeFormPolicy'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { useRecordDeleteGuard } from '@/hooks/core/useRecordDeleteGuard'
+  import { useAuth } from '@/hooks/core/useAuth'
+  import { useTenantOperationGuard } from '@/hooks/core/useTenantOperationGuard'
+  import { useArtOverlaySession } from '@/hooks/core/useArtOverlay'
+  import { unref } from 'vue'
   import { getDeleteReferenceContext } from '@/utils/supabase/delete-reference'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { formatCurrencyValue } from '@/utils/ui'
@@ -161,6 +174,9 @@
 
   const emit = defineEmits<{ success: [] }>()
   const dialogRef = ref<ArtDialogExpose<OpenData>>()
+  const { hasAuth } = useAuth()
+  const captureOperation = useTenantOperationGuard('FinanceTravelApplication:View')
+  const session = useArtOverlaySession(() => Boolean(unref(dialogRef.value?.visible)))
   const formRef = ref<InstanceType<typeof ArtForm>>()
   const itineraryDialogRef = ref<ItineraryDialogExpose>()
   const { deleteGuardRef, deleteRecord, inspectDeleteReferences } = useRecordDeleteGuard(
@@ -210,6 +226,7 @@
       key: 'assignmentId',
       label: '职位',
       type: 'select',
+      params: { tenantId: model.value.tenantId, employeeId: model.value.applicantEmployeeId },
       api: () =>
         model.value.applicantEmployeeId
           ? fetchTravelAssignmentOptions(model.value.tenantId, model.value.applicantEmployeeId)
@@ -315,8 +332,20 @@
   }
 
   async function handleOpen(data: OpenData = {}): Promise<void> {
+    const scopeCurrent = captureOperation()
+    const version = session.invalidate()
+    const permissions = data.copy
+      ? ['FinanceTravelApplication:Add', 'FinanceTravelApplication:Copy']
+      : [data.row ? 'FinanceTravelApplication:Edit' : 'FinanceTravelApplication:Add']
+    const contextCurrent = () =>
+      scopeCurrent() &&
+      session.version.value === version &&
+      permissions.every((permission) => hasAuth(permission))
+    if (!contextCurrent()) return
+    const isCurrent = () => contextCurrent() && session.isCurrent(version)
     try {
       const detail = data.row ? (await fetchTravelApplicationDetail(data.row.id)).data : null
+      if (!contextCurrent()) return
       model.value = detail
         ? {
             id: data.copy ? undefined : detail.id,
@@ -349,7 +378,7 @@
         remark: line.remark
       }))
       removedLines.value = []
-      selectedApplicant.value = detail
+      const applicantReferences = detail
         ? [
             {
               id: detail.applicantEmployeeId,
@@ -362,13 +391,19 @@
               employmentStatus: ''
             }
           ]
-        : getUserInfo.value.hrEmployee
-          ? [{ ...getUserInfo.value.hrEmployee, tenantId: model.value.tenantId }]
+        : model.value.applicantEmployeeId
+          ? await fetchEmployeeReferencesByIds(model.value.tenantId, [
+              model.value.applicantEmployeeId
+            ])
           : []
+      if (!contextCurrent()) return
+      selectedApplicant.value = applicantReferences
       await selectPrimaryAssignment()
+      if (!contextCurrent()) return
       const organizationsResult = await fetchEnabledOrganizationTree({
         tenantId: model.value.tenantId
       })
+      if (!contextCurrent()) return
       organizations.value = organizationsResult.data ?? []
       await dialogRef.value?.handleOpen(data, {
         title: detail
@@ -377,9 +412,17 @@
         subtitle: '本阶段保存草稿及行程；审批和差旅报销将在后续流程中接入。',
         confirmText: '保存草稿',
         onOpen: () => formRef.value?.clearValidate(),
+        onClose: () => {
+          session.invalidate()
+        },
         onConfirm: async () => {
+          if (!isCurrent()) {
+            ElMessage.warning('操作范围或权限已变化，请重新打开出差申请')
+            return false
+          }
           try {
             if (!(await validateArtFormForSubmit(formRef.value))) return false
+            if (!isCurrent()) return false
             if (!applicantCompanyName.value || !expenseCompanyName.value) {
               notifyFriendlyError(
                 new Error('公司信息未配置'),
@@ -388,10 +431,12 @@
               return false
             }
             await saveTravelApplicationDraft(model.value, lines.value)
+            if (!isCurrent()) return false
             ElMessage.success(data.copy ? '出差申请已复制为新草稿' : '出差申请草稿已保存')
             emit('success')
             return true
           } catch (error) {
+            if (!isCurrent()) return false
             if (
               removedLines.value.length &&
               (await inspectDeleteReferences(
@@ -401,12 +446,14 @@
             ) {
               return false
             }
-            notifyFriendlyError(error, '出差申请保存失败，请核对员工、费用项目和行程后重试')
+            if (isCurrent())
+              notifyFriendlyError(error, '出差申请保存失败，请核对员工、费用项目和行程后重试')
             return false
           }
         }
       })
     } catch (error) {
+      if (!contextCurrent()) return
       notifyFriendlyError(error, '出差申请加载失败，请刷新列表后重试')
     }
   }

@@ -142,6 +142,7 @@
 </template>
 
 <script setup lang="tsx">
+  import { unref } from 'vue'
   import { ElMessage } from 'element-plus'
   import dayjs from 'dayjs'
   import { round, sumBy } from 'lodash-es'
@@ -153,6 +154,9 @@
   import { useTenantScopeFormPolicy } from '@/hooks/core/useTenantScopeFormPolicy'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { useRecordDeleteGuard } from '@/hooks/core/useRecordDeleteGuard'
+  import { useAuth } from '@/hooks/core/useAuth'
+  import { useTenantOperationGuard } from '@/hooks/core/useTenantOperationGuard'
+  import { useArtOverlaySession } from '@/hooks/core/useArtOverlay'
   import { getDeleteReferenceContext } from '@/utils/supabase/delete-reference'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { normalizeNullableText, normalizeNonNullableText } from '@/utils/form/normalize'
@@ -223,6 +227,9 @@
 
   const emit = defineEmits<{ success: [] }>()
   const dialogRef = ref<ArtDialogExpose<OpenData>>()
+  const { hasAuth } = useAuth()
+  const captureOperation = useTenantOperationGuard('FinanceExpenseReimbursement:View')
+  const session = useArtOverlaySession(() => Boolean(unref(dialogRef.value?.visible)))
   const formRef = ref<InstanceType<typeof ArtForm>>()
   const lineDialogRef = ref<LineDialogExpose>()
   const payeeDialogRef = ref<PayeeDialogExpose>()
@@ -308,6 +315,7 @@
       key: 'assignmentId',
       label: '职位',
       type: 'select',
+      params: { tenantId: model.value.tenantId, employeeId: model.value.applicantEmployeeId },
       api: () =>
         model.value.applicantEmployeeId
           ? fetchTravelAssignmentOptions(model.value.tenantId, model.value.applicantEmployeeId)
@@ -420,11 +428,11 @@
     }
   )
   watch(
-    () => model.value.multipleReimbursees,
-    (enabled) => {
+    () => [model.value.multipleReimbursees, model.value.applicantEmployeeId] as const,
+    ([enabled, applicantEmployeeId]) => {
       if (!enabled)
         lines.value.forEach((line) => {
-          line.reimburseeEmployeeId = model.value.applicantEmployeeId
+          line.reimburseeEmployeeId = applicantEmployeeId
         })
     }
   )
@@ -490,19 +498,31 @@
         <BusinessTableRowActions>
           <ArtButtonTable
             type="edit"
-            permission="FinanceExpenseReimbursement:Edit"
+            permission={
+              model.value.id
+                ? 'FinanceExpenseReimbursement:Edit'
+                : 'FinanceExpenseReimbursement:Add'
+            }
             onClick={() => editLine(row)}
           />
           <ArtButtonTable
             type="add"
             icon="ri:file-copy-line"
             label="复制"
-            permission="FinanceExpenseReimbursement:Copy"
+            permission={
+              model.value.id
+                ? 'FinanceExpenseReimbursement:Copy'
+                : 'FinanceExpenseReimbursement:Add'
+            }
             onClick={() => copyLine(row)}
           />
           <ArtButtonTable
             type="delete"
-            permission="FinanceExpenseReimbursement:DeleteLine"
+            permission={
+              model.value.id
+                ? 'FinanceExpenseReimbursement:DeleteLine'
+                : 'FinanceExpenseReimbursement:Add'
+            }
             onClick={() => void removeLine(row)}
           />
         </BusinessTableRowActions>
@@ -543,19 +563,31 @@
         <BusinessTableRowActions>
           <ArtButtonTable
             type="edit"
-            permission="FinanceExpenseReimbursement:Edit"
+            permission={
+              model.value.id
+                ? 'FinanceExpenseReimbursement:Edit'
+                : 'FinanceExpenseReimbursement:Add'
+            }
             onClick={() => editPayee(row)}
           />
           <ArtButtonTable
             type="add"
             icon="ri:file-copy-line"
             label="复制"
-            permission="FinanceExpenseReimbursement:Copy"
+            permission={
+              model.value.id
+                ? 'FinanceExpenseReimbursement:Copy'
+                : 'FinanceExpenseReimbursement:Add'
+            }
             onClick={() => copyPayee(row)}
           />
           <ArtButtonTable
             type="delete"
-            permission="FinanceExpenseReimbursement:DeletePayee"
+            permission={
+              model.value.id
+                ? 'FinanceExpenseReimbursement:DeletePayee'
+                : 'FinanceExpenseReimbursement:Add'
+            }
             onClick={() => void removePayee(row)}
           />
         </BusinessTableRowActions>
@@ -669,10 +701,23 @@
   }
 
   async function handleOpen(data: OpenData = {}): Promise<void> {
+    const scopeCurrent = captureOperation()
+    const version = session.invalidate()
+    const permissions = data.copy
+      ? ['FinanceExpenseReimbursement:Add', 'FinanceExpenseReimbursement:Copy']
+      : [data.row ? 'FinanceExpenseReimbursement:Edit' : 'FinanceExpenseReimbursement:Add']
+    const contextCurrent = () =>
+      scopeCurrent() &&
+      session.version.value === version &&
+      permissions.every((permission) => hasAuth(permission)) &&
+      (!data.isCurrent || data.isCurrent())
+    if (!contextCurrent()) return
+    const isCurrent = () => contextCurrent() && session.isCurrent(version)
     const assertScope = createTenantScopeReadGuard()
     try {
       loanOptions.value = []
       const detail = data.row ? (await fetchTravelReimbursementDetail(data.row.id)).data : null
+      if (!contextCurrent()) return
       if (detail && detail.sourceType !== 'travel') throw new Error('运单报销单不可按差旅报销编辑')
       if (
         detail &&
@@ -800,6 +845,7 @@
         fetchExpenseItemTree({ tenantId: model.value.tenantId, isEnabled: true }),
         fetchExpenseProjectOptions(model.value.tenantId)
       ])
+      if (!contextCurrent()) return
       organizations.value = organizationsResult.data ?? []
       expenseNames.value = new Map(
         expenseTreeUtils
@@ -809,14 +855,16 @@
       projectNames.value = new Map(
         (projectResult.data ?? []).map((project) => [project.id, project.projectName])
       )
-      selectedApplicant.value = model.value.applicantEmployeeId
+      const applicantReferences = model.value.applicantEmployeeId
         ? await fetchEmployeeReferencesByIds(model.value.tenantId, [
             model.value.applicantEmployeeId
           ])
         : []
+      if (!contextCurrent()) return
+      selectedApplicant.value = applicantReferences
       await selectPrimaryAssignment()
       assertScope()
-      if (data.isCurrent && !data.isCurrent()) return
+      if (!contextCurrent()) return
       await dialogRef.value?.handleOpen(data, {
         title:
           detail && !data.copy
@@ -831,9 +879,17 @@
           : '保存草稿后可提交审批；关联借款时，财务仅支付抵扣后的现金差额。',
         confirmText: '保存草稿',
         onOpen: () => formRef.value?.clearValidate(),
+        onClose: () => {
+          session.invalidate()
+        },
         onConfirm: async () => {
+          if (!isCurrent()) {
+            ElMessage.warning('操作范围或权限已变化，请重新打开报销单')
+            return false
+          }
           try {
             if (!(await validateArtFormForSubmit(formRef.value))) return false
+            if (!isCurrent()) return false
             if (!lines.value.length) {
               notifyFriendlyError(new Error('缺少费用明细'), '请先添加至少一条费用明细')
               return false
@@ -878,10 +934,12 @@
               remark: normalizeNullableText(payee.remark)
             }))
             await saveTravelReimbursementDraft(payload, linePayloads, payeePayloads)
+            if (!isCurrent()) return false
             ElMessage.success('费用报销草稿已保存')
             emit('success')
             return true
           } catch (error) {
+            if (!isCurrent()) return false
             if (
               removedLines.value.length &&
               (await inspectLineReferences(
@@ -890,6 +948,7 @@
               ))
             )
               return false
+            if (!isCurrent()) return false
             if (
               removedPayees.value.length &&
               (await inspectPayeeReferences(
@@ -898,13 +957,14 @@
               ))
             )
               return false
-            notifyFriendlyError(error, '费用报销保存失败，请核对明细和收款信息后重试')
+            if (isCurrent())
+              notifyFriendlyError(error, '费用报销保存失败，请核对明细和收款信息后重试')
             return false
           }
         }
       })
     } catch (error) {
-      if (data.isCurrent && !data.isCurrent()) return
+      if (!contextCurrent()) return
       notifyFriendlyError(error, '费用报销单加载失败，请刷新列表后重试')
     }
   }

@@ -1,5 +1,5 @@
 <template>
-  <ArtDialog ref="dialogRef" size="lg">
+  <ArtDialog ref="dialogRef" size="lg" @close="() => void invalidateSession()">
     <ElAlert
       v-if="payeeOptionsLoaded && !payeeOptions.length"
       class="mb-3"
@@ -22,7 +22,9 @@
 </template>
 
 <script setup lang="ts">
+  import { ElMessage } from 'element-plus'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
+  import { useArtOverlaySession } from '@/hooks/core/useArtOverlay'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { normalizeNonNullableText, normalizeNullableText } from '@/utils/form/normalize'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
@@ -45,6 +47,11 @@
   }
   const emit = defineEmits<{ save: [payee: TravelLoanPayeeInput] }>()
   const dialogRef = ref<ArtDialogExpose<OpenData>>()
+  const {
+    version: sessionVersion,
+    invalidate: invalidateSession,
+    isCurrent
+  } = useArtOverlaySession(() => Boolean(unref(dialogRef.value?.visible)))
   const formRef = ref<InstanceType<typeof ArtForm>>()
   const settlementOptions = useDictionaryOptions('fmsSettlementMethod')
   const payeeTypeOptions = useDictionaryOptions('fmsPayeeType')
@@ -82,12 +89,35 @@
       label: '收款人',
       type: 'select',
       api: async () => {
+        const session = sessionVersion.value
         const result =
           documentType.value === 'loan'
             ? await fetchLoanPayeeOptions(tenantId.value, employeeId.value)
             : await fetchReimbursementPayeeOptions(tenantId.value, employeeId.value)
+        if (!isCurrent(session)) return { ...result, data: [] }
         payeeOptions.value = result.data ?? []
         payeeOptionsLoaded.value = true
+        if (
+          model.value.payeeInformationId &&
+          !payeeOptions.value.some((payee) => payee.id === model.value.payeeInformationId)
+        ) {
+          return {
+            ...result,
+            data: [
+              ...payeeOptions.value,
+              {
+                id: model.value.payeeInformationId,
+                payeeName: `${model.value.payeeName || '原收款资料'}（不可用）`,
+                accountName: model.value.accountName,
+                bankName: model.value.bankName,
+                bankAccount: model.value.bankAccount,
+                employeeId: null,
+                isDefault: false,
+                disabled: true
+              }
+            ]
+          }
+        }
         return result
       },
       resultField: 'data',
@@ -139,11 +169,13 @@
   function selectPayee(id: string): void {
     const payee = payeeOptions.value.find((item) => item.id === id)
     if (!payee) return
+    model.value.payeeName = payee.payeeName
     model.value.bankAccount = payee.bankAccount
     model.value.accountName = payee.accountName
     model.value.bankName = payee.bankName
   }
   async function handleOpen(data: OpenData): Promise<void> {
+    invalidateSession()
     tenantId.value = data.tenantId
     employeeId.value = data.employeeId
     documentType.value = data.documentType
@@ -153,6 +185,7 @@
       settlementMethod: data.payee?.settlementMethod ?? 'bank_transfer',
       payeeType: 'person',
       payeeInformationId: data.payee?.payeeInformationId ?? '',
+      payeeName: data.payee?.payeeName,
       bankAccount: data.payee?.bankAccount ?? '',
       accountName: data.payee?.accountName ?? null,
       bankName: data.payee?.bankName ?? '',
@@ -166,7 +199,17 @@
       confirmText: data.payee && !data.copy ? '保存收款明细' : '添加收款明细',
       onOpen: () => formRef.value?.clearValidate(),
       onConfirm: async () => {
+        const session = sessionVersion.value
         if (!(await validateArtFormForSubmit(formRef.value))) return false
+        if (!isCurrent(session)) return false
+        if (!payeeOptionsLoaded.value) {
+          ElMessage.warning('收款资料仍在加载，请稍候重试')
+          return false
+        }
+        if (!payeeOptions.value.some((payee) => payee.id === model.value.payeeInformationId)) {
+          ElMessage.warning('原收款资料已失效或不再授权，请重新选择可用收款资料')
+          return false
+        }
         if (model.value.amount <= 0) return false
         emit('save', {
           ...model.value,

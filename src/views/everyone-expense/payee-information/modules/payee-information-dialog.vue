@@ -37,6 +37,9 @@
 <script setup lang="ts">
   import { ElMessage } from 'element-plus'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
+  import { useAuth } from '@/hooks/core/useAuth'
+  import { useTenantOperationGuard } from '@/hooks/core/useTenantOperationGuard'
+  import { useArtOverlaySession } from '@/hooks/core/useArtOverlay'
   import TreeUtils from '@/utils/tree'
   import { useTenantScopeFormPolicy } from '@/hooks/core/useTenantScopeFormPolicy'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
@@ -59,6 +62,9 @@
 
   const emit = defineEmits<{ success: [] }>()
   const dialogRef = ref<ArtDialogExpose<OpenData>>()
+  const session = useArtOverlaySession(() => Boolean(unref(dialogRef.value?.visible)))
+  let employeeRequestVersion = 0
+  let canMaintain = () => false
   const formRef = ref<InstanceType<typeof ArtForm>>()
   const { defaultWriteTenantId } = useTenantScopeFormPolicy()
   const currencyOptions = useDictionaryOptions('mdmCurrency')
@@ -69,6 +75,11 @@
   })
   const selectedEmployee = ref<EmployeeIntegrationItem[]>([])
   const selectedUser = ref<EmployeeIntegrationItem[]>([])
+  const { hasAuth } = useAuth()
+  const captureAdd = useTenantOperationGuard('FinancePayeeInformation:Add')
+  const captureEdit = useTenantOperationGuard('FinancePayeeInformation:Edit')
+  const captureCopy = useTenantOperationGuard('FinancePayeeInformation:Copy')
+  const captureGet = useTenantOperationGuard('FinancePayeeInformation:Get')
 
   const initial = (): FormModel => ({
     tenantId: defaultWriteTenantId.value ?? '',
@@ -189,13 +200,40 @@
     _id: string | string[] | undefined,
     rows: EmployeeIntegrationItem[]
   ): Promise<void> {
+    const requestVersion = ++employeeRequestVersion
+    const version = session.version.value
     const selected = rows[0]
-    if (!selected) return
+    if (!canMaintain()) return
+    const previousPayeeName = model.value.payeeName
+    if (!selected) {
+      if (model.value.accountName === previousPayeeName) model.value.accountName = null
+      model.value.payeeName = ''
+      model.value.organizationId = null
+      model.value.costCompanyId = null
+      return
+    }
+    if (!model.value.accountName || model.value.accountName === previousPayeeName)
+      model.value.accountName = selected.employeeName
     model.value.payeeName = selected.employeeName
     model.value.organizationId = selected.organizationId ?? null
-    model.value.accountName ||= selected.employeeName
+    model.value.costCompanyId = null
     if (!selected.organizationId) return
-    const response = await fetchEnabledOrganizationTree({ tenantId: model.value.tenantId })
+    let response: Awaited<ReturnType<typeof fetchEnabledOrganizationTree>>
+    try {
+      response = await fetchEnabledOrganizationTree({ tenantId: model.value.tenantId })
+      if (response.error) throw response.error
+    } catch (error) {
+      if (requestVersion === employeeRequestVersion && session.isCurrent(version) && canMaintain())
+        notifyFriendlyError(error, '员工所属公司未加载，请重新选择员工后重试')
+      return
+    }
+    if (
+      requestVersion !== employeeRequestVersion ||
+      !session.isCurrent(version) ||
+      !canMaintain() ||
+      model.value.employeeId !== selected.id
+    )
+      return
     const tree = response.data ?? []
     const path = organizationTreeUtils.getPathToNode(tree, selected.organizationId) ?? []
     const companyId = path
@@ -206,6 +244,15 @@
 
   async function handleOpen(data: OpenData = {}): Promise<void> {
     const row = data.row
+    const isCurrent = row && !data.copy ? captureEdit() : captureAdd()
+    const isCurrentAction = data.copy ? captureCopy() : data.getEmployee ? captureGet() : () => true
+    const canContinue = () => isCurrent() && isCurrentAction()
+    if (!hasAuth('FinancePayeeInformation:View') || !canContinue()) return
+    session.invalidate()
+    employeeRequestVersion++
+    const version = session.version.value
+    const isCurrentSession = () => canContinue() && session.isCurrent(version)
+    canMaintain = isCurrentSession
     model.value = {
       ...initial(),
       ...(row
@@ -251,6 +298,11 @@
         ]
       : []
     await dialogRef.value?.handleOpen(data, {
+      onClose: () => {
+        session.invalidate()
+        employeeRequestVersion++
+        return true
+      },
       title: data.getEmployee
         ? '一键获取员工收款信息'
         : row && !data.copy
@@ -265,14 +317,24 @@
       onOpen: () => formRef.value?.clearValidate(),
       onConfirm: async () => {
         try {
+          if (!isCurrentSession()) {
+            ElMessage.warning('操作范围或权限已变化，请重新打开收款信息')
+            return false
+          }
           if (!(await validateArtFormForSubmit(formRef.value))) return false
+          if (!isCurrentSession()) {
+            ElMessage.warning('操作范围或权限已变化，请重新打开收款信息')
+            return false
+          }
           const { id, ...payload } = model.value
           await savePayeeInformation(payload, id)
+          if (!isCurrentSession()) return false
           ElMessage.success(id ? '收款信息已更新' : '收款信息已保存')
           emit('success')
           return true
         } catch (error) {
-          notifyFriendlyError(error, '收款信息保存失败，请检查银行、员工及租户信息后重试')
+          if (isCurrentSession())
+            notifyFriendlyError(error, '收款信息保存失败，请检查银行、员工及租户信息后重试')
           return false
         }
       }

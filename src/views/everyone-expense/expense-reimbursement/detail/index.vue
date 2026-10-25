@@ -51,7 +51,7 @@
           </span>
         </div>
       </template>
-      <ElButton v-if="primaryWaybillId" @click="openPrimaryWaybill">
+      <ElButton v-if="primaryWaybillId && canViewWaybill" @click="openPrimaryWaybill">
         <ArtSvgIcon icon="ri:route-line" aria-hidden="true" />
         查看关联运单
       </ElButton>
@@ -154,11 +154,15 @@
         <div v-else class="grid gap-4">
           <article v-for="item in detail.data.items ?? []" :key="item.id" class="min-w-0">
             <RouterLink
+              v-if="item.costId && canViewCosts"
               class="mb-3 inline-block break-all text-sm font-medium text-[var(--art-primary-text)]"
               :to="getWaybillCostDetailPath(item.costId)"
             >
               {{ item.costNoSnapshot || '查看费用详情' }}
             </RouterLink>
+            <span v-else class="mb-3 inline-block break-all text-sm font-medium">
+              {{ item.costNoSnapshot || '--' }}
+            </span>
             <ArtDescriptions
               :data="item"
               :items="expenseMobileItems"
@@ -299,6 +303,9 @@
   import { getWaybillCostDetailPath } from '@/router/business-paths'
   import { createDateTimeFormatter } from '@/utils/ui/format'
   import { formatCurrencyValue } from '@/utils/ui'
+  import { useDetailRecord } from '@/hooks/core/useDetailRecord'
+  import { createTenantScopeReadGuard } from '@/utils/tenant-scope-context'
+  import { useAuth } from '@/hooks/core/useAuth'
   import {
     isReadableFieldAccess,
     canViewField,
@@ -313,13 +320,6 @@
   type TravelLine = Api.Fms.ExpenseReimbursementTravelLine
   type TravelPayee = Api.Fms.ExpenseReimbursementPayee
 
-  interface DetailState {
-    data?: Reimbursement
-    error: Error | null
-    loaded: boolean
-    loading: boolean
-  }
-
   interface OverviewItem {
     label: string
     value: string
@@ -330,17 +330,32 @@
 
   const route = useRoute()
   const router = useRouter()
+  const { hasAuth, hasAnyAuth } = useAuth()
+  const canViewCosts = computed(() => hasAuth('FinanceWaybillCost:View'))
+  const canViewWaybill = computed(() =>
+    hasAnyAuth(['TmsPendingWaybillList:View', 'TmsLoadedWaybillList:View'])
+  )
+  const active = ref(true)
   const isMobile = useMediaQuery('(max-width: 640px)')
   const isNarrow = useMediaQuery('(max-width: 1440px)')
-  const detail = reactive<DetailState>({
-    data: undefined,
-    error: null,
-    loaded: false,
-    loading: false
+  const recordState = useDetailRecord<Reimbursement>(async (id) => {
+    if (!id) throw new Error('缺少报销单标识')
+    const assertScope = createTenantScopeReadGuard()
+    const result = await fetchExpenseReimbursementDetail(id)
+    assertScope()
+    return result
+  }, '报销详情加载失败，请稍后重试')
+  const detail = reactive({
+    data: recordState.detail,
+    error: recordState.loadError,
+    loaded: computed(() => Boolean(recordState.activeId.value) && !recordState.loading.value),
+    loading: recordState.loading
   })
 
   const descriptionColumns = computed(() => (isMobile.value ? 1 : isNarrow.value ? 2 : 4))
-  const primaryWaybillId = computed(() => detail.data?.items?.[0]?.waybillId)
+  const primaryWaybillId = computed(
+    () => detail.data?.items?.find((item) => item.waybillId)?.waybillId
+  )
   const amountAccess = computed(() =>
     getFieldAccess(detail.data?.fieldAccess, 'reimbursementAmounts')
   )
@@ -579,27 +594,33 @@
       prop: 'costNoSnapshot',
       label: '费用单号',
       minWidth: 190,
-      formatter: (row) => (
-        <RouterLink
-          class="expense-reimbursement-detail__document-link"
-          to={getWaybillCostDetailPath(row.costId)}
-        >
-          {row.costNoSnapshot || '--'}
-        </RouterLink>
-      )
+      formatter: (row) =>
+        row.costId && canViewCosts.value ? (
+          <RouterLink
+            class="expense-reimbursement-detail__document-link"
+            to={getWaybillCostDetailPath(row.costId)}
+          >
+            {row.costNoSnapshot || '--'}
+          </RouterLink>
+        ) : (
+          row.costNoSnapshot || '--'
+        )
     },
     {
       prop: 'waybillNoSnapshot',
       label: '运单号',
       minWidth: 180,
-      formatter: (row) => (
-        <RouterLink
-          class="expense-reimbursement-detail__document-link"
-          to={{ name: 'TmsWaybillDetail', params: { id: row.waybillId } }}
-        >
-          {row.waybillNoSnapshot || '--'}
-        </RouterLink>
-      )
+      formatter: (row) =>
+        row.waybillId && canViewWaybill.value ? (
+          <RouterLink
+            class="expense-reimbursement-detail__document-link"
+            to={{ name: 'TmsWaybillDetail', params: { id: row.waybillId } }}
+          >
+            {row.waybillNoSnapshot || '--'}
+          </RouterLink>
+        ) : (
+          row.waybillNoSnapshot || '--'
+        )
     },
     {
       prop: 'expenseItemNameSnapshot',
@@ -757,14 +778,17 @@
       key: 'waybillNoSnapshot',
       label: '运单号',
       field: 'waybillNoSnapshot',
-      render: (_value, row) => (
-        <RouterLink
-          class="break-all text-[var(--art-primary-text)]"
-          to={{ name: 'TmsWaybillDetail', params: { id: row.waybillId } }}
-        >
-          {row.waybillNoSnapshot || '--'}
-        </RouterLink>
-      )
+      render: (_value, row) =>
+        row.waybillId && canViewWaybill.value ? (
+          <RouterLink
+            class="break-all text-[var(--art-primary-text)]"
+            to={{ name: 'TmsWaybillDetail', params: { id: row.waybillId } }}
+          >
+            {row.waybillNoSnapshot || '--'}
+          </RouterLink>
+        ) : (
+          row.waybillNoSnapshot || '--'
+        )
     },
     { key: 'expenseItemNameSnapshot', label: '费用项目', field: 'expenseItemNameSnapshot' },
     { key: 'occurredOnSnapshot', label: '发生日期', field: 'occurredOnSnapshot', format: 'date' },
@@ -780,28 +804,36 @@
       : [])
   ])
 
-  onMounted(() => {
-    void loadDetail()
+  watch(
+    () => route.params.id,
+    async () => {
+      await nextTick()
+      if (
+        active.value &&
+        (!recordState.activeId.value ||
+          recordState.activeId.value !== String(route.params.id || ''))
+      )
+        void loadDetail()
+    },
+    { immediate: true, flush: 'post' }
+  )
+  onActivated(() => {
+    active.value = true
+    if (!recordState.activeId.value) void loadDetail()
+  })
+  onDeactivated(() => {
+    active.value = false
+    recordState.openDetail('')
+  })
+  onScopeDispose(() => {
+    active.value = false
+    recordState.openDetail('')
   })
 
   async function loadDetail(): Promise<void> {
     const reimbursementId = String(route.params.id || '')
-    if (!reimbursementId) {
-      Object.assign(detail, { error: new Error('缺少报销单标识'), loaded: true })
-      return
-    }
-
-    detail.loading = true
-    detail.error = null
-    try {
-      const { data } = await fetchExpenseReimbursementDetail(reimbursementId)
-      detail.data = data ?? undefined
-    } catch (error) {
-      detail.error = error instanceof Error ? error : new Error('报销详情加载失败，请稍后重试')
-    } finally {
-      detail.loaded = true
-      detail.loading = false
-    }
+    recordState.openDetail(reimbursementId)
+    await recordState.loadDetail(reimbursementId)
   }
 
   function createFiles(urls: string[] | undefined, prefix: string): FilePreviewTarget[] {
@@ -809,7 +841,7 @@
   }
 
   function openPrimaryWaybill(): void {
-    if (!primaryWaybillId.value) return
+    if (!primaryWaybillId.value || !canViewWaybill.value) return
     void router.push({ name: 'TmsWaybillDetail', params: { id: primaryWaybillId.value } })
   }
 

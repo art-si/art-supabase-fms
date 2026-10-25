@@ -1,1 +1,0 @@
-import{Qi as e,Ui as t,_a as n}from"./sys-DaNMvRNq.js";import{t as r}from"./receivable-workspace-RZ3knEWa.js";var i=e({name:`FinanceEstimatedReceivable`,__name:`index`,setup(e){return(e,i)=>(n(),t(r,{kind:`estimate`}))}});export{i as default};

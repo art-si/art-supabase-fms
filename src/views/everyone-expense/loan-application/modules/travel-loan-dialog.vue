@@ -121,11 +121,18 @@
   import dayjs from 'dayjs'
   import { storeToRefs } from 'pinia'
   import type { ColumnOption } from '@/types'
-  import type { EmployeeIntegrationItem } from '@/api/integration/employees'
+  import {
+    fetchEmployeeReferencesByIds,
+    type EmployeeIntegrationItem
+  } from '@/api/integration/employees'
   import { fetchEnabledOrganizationTree } from '@/api/system-manage'
   import { useTenantScopeFormPolicy } from '@/hooks/core/useTenantScopeFormPolicy'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { useRecordDeleteGuard } from '@/hooks/core/useRecordDeleteGuard'
+  import { useAuth } from '@/hooks/core/useAuth'
+  import { useTenantOperationGuard } from '@/hooks/core/useTenantOperationGuard'
+  import { useArtOverlaySession } from '@/hooks/core/useArtOverlay'
+  import { unref } from 'vue'
   import { getDeleteReferenceContext } from '@/utils/supabase/delete-reference'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { formatCurrencyValue } from '@/utils/ui'
@@ -187,6 +194,9 @@
 
   const emit = defineEmits<{ success: [] }>()
   const dialogRef = ref<ArtDialogExpose<OpenData>>()
+  const { hasAuth } = useAuth()
+  const captureOperation = useTenantOperationGuard('FinanceLoanApplication:View')
+  const session = useArtOverlaySession(() => Boolean(unref(dialogRef.value?.visible)))
   const formRef = ref<InstanceType<typeof ArtForm>>()
   const itemDialogRef = ref<ItemDialogExpose>()
   const payeeDialogRef = ref<PayeeDialogExpose>()
@@ -252,6 +262,7 @@
       key: 'assignmentId',
       label: '职位',
       type: 'select',
+      params: { tenantId: model.value.tenantId, employeeId: model.value.applicantEmployeeId },
       api: () =>
         model.value.applicantEmployeeId
           ? fetchTravelAssignmentOptions(model.value.tenantId, model.value.applicantEmployeeId)
@@ -347,18 +358,24 @@
         <BusinessTableRowActions>
           <ArtButtonTable
             type="edit"
-            permission="FinanceLoanApplication:Edit"
+            permission={
+              model.value.id ? 'FinanceLoanApplication:Edit' : 'FinanceLoanApplication:Add'
+            }
             onClick={() => editItem(row)}
           />
           <ArtButtonTable
             icon="ri:file-copy-line"
             label="复制借款明细"
-            permission="FinanceLoanApplication:CopyItem"
+            permission={
+              model.value.id ? 'FinanceLoanApplication:CopyItem' : 'FinanceLoanApplication:Add'
+            }
             onClick={() => copyItem(row)}
           />
           <ArtButtonTable
             type="delete"
-            permission="FinanceLoanApplication:DeleteItem"
+            permission={
+              model.value.id ? 'FinanceLoanApplication:DeleteItem' : 'FinanceLoanApplication:Add'
+            }
             onClick={() => removeItem(row)}
           />
         </BusinessTableRowActions>
@@ -404,18 +421,24 @@
         <BusinessTableRowActions>
           <ArtButtonTable
             type="edit"
-            permission="FinanceLoanApplication:Edit"
+            permission={
+              model.value.id ? 'FinanceLoanApplication:Edit' : 'FinanceLoanApplication:Add'
+            }
             onClick={() => editPayee(row)}
           />
           <ArtButtonTable
             icon="ri:file-copy-line"
             label="复制收款明细"
-            permission="FinanceLoanApplication:CopyPayee"
+            permission={
+              model.value.id ? 'FinanceLoanApplication:CopyPayee' : 'FinanceLoanApplication:Add'
+            }
             onClick={() => copyPayee(row)}
           />
           <ArtButtonTable
             type="delete"
-            permission="FinanceLoanApplication:DeletePayee"
+            permission={
+              model.value.id ? 'FinanceLoanApplication:DeletePayee' : 'FinanceLoanApplication:Add'
+            }
             onClick={() => removePayee(row)}
           />
         </BusinessTableRowActions>
@@ -533,12 +556,13 @@
       }
     })
   }
-  async function loadOptions(): Promise<void> {
+  async function loadOptions(isCurrent: () => boolean): Promise<void> {
     const [organizationsResult, expenseResult, projectResult] = await Promise.all([
       fetchEnabledOrganizationTree({ tenantId: model.value.tenantId }),
       fetchExpenseItemTree({ tenantId: model.value.tenantId, isEnabled: true }),
       fetchExpenseProjectOptions(model.value.tenantId)
     ])
+    if (!isCurrent()) return
     organizations.value = organizationsResult.data ?? []
     expenseNames.value = new Map(
       expenseTreeUtils
@@ -550,8 +574,21 @@
     )
   }
   async function handleOpen(data: OpenData = {}): Promise<void> {
+    const scopeCurrent = captureOperation()
+    const version = session.invalidate()
+    const permissions = data.copy
+      ? ['FinanceLoanApplication:Add', 'FinanceLoanApplication:Copy']
+      : [data.row?.id ? 'FinanceLoanApplication:Edit' : 'FinanceLoanApplication:Add']
+    const contextCurrent = () =>
+      scopeCurrent() &&
+      session.version.value === version &&
+      permissions.every((permission) => hasAuth(permission))
+    if (!contextCurrent()) return
+    const isCurrent = () => contextCurrent() && session.isCurrent(version)
     try {
       const detail = data.row ? (await fetchTravelLoanDetail(data.row.id)).data : null
+      if (!contextCurrent()) return
+      const editingRejected = !data.copy && detail?.status === 'rejected'
       model.value = detail
         ? {
             id: data.copy ? undefined : detail.id,
@@ -592,7 +629,7 @@
       }))
       removedItems.value = []
       removedPayees.value = []
-      selectedApplicant.value = detail
+      const applicantReferences = detail
         ? [
             {
               id: detail.applicantEmployeeId,
@@ -605,23 +642,39 @@
               employmentStatus: ''
             }
           ]
-        : getUserInfo.value.hrEmployee
-          ? [{ ...getUserInfo.value.hrEmployee, tenantId: model.value.tenantId }]
+        : model.value.applicantEmployeeId
+          ? await fetchEmployeeReferencesByIds(model.value.tenantId, [
+              model.value.applicantEmployeeId
+            ])
           : []
-      await loadOptions()
+      if (!contextCurrent()) return
+      selectedApplicant.value = applicantReferences
+      await loadOptions(contextCurrent)
+      if (!contextCurrent()) return
       await selectPrimaryAssignment()
+      if (!contextCurrent()) return
       await dialogRef.value?.handleOpen(data, {
         title: data.copy
           ? `复制借款单 · ${detail?.loanNo ?? ''}`
           : detail
             ? `编辑借款单 · ${detail.loanNo}`
             : '新增借款单',
-        subtitle: '保存草稿后可提交审批；审核通过后可登记付款。',
-        confirmText: '保存草稿',
+        subtitle: editingRejected
+          ? '修改后保留驳回状态和审批记录，可重新提交审批。'
+          : '保存草稿后可提交审批；审核通过后可登记付款。',
+        confirmText: editingRejected ? '保存修改' : '保存草稿',
         onOpen: () => formRef.value?.clearValidate(),
+        onClose: () => {
+          session.invalidate()
+        },
         onConfirm: async () => {
+          if (!isCurrent()) {
+            ElMessage.warning('操作范围或权限已变化，请重新打开借款单')
+            return false
+          }
           try {
             if (!(await validateArtFormForSubmit(formRef.value))) return false
+            if (!isCurrent()) return false
             if (!applicantCompanyName.value || !expenseCompanyName.value) {
               notifyFriendlyError(
                 new Error('公司信息未配置'),
@@ -630,28 +683,38 @@
               return false
             }
             await saveTravelLoanDraft(model.value, loanItems.value, payees.value)
-            ElMessage.success(data.copy ? '已复制为新的借款草稿' : '借款草稿已保存')
+            if (!isCurrent()) return false
+            ElMessage.success(
+              data.copy
+                ? '已复制为新的借款草稿'
+                : editingRejected
+                  ? '借款修改已保存，可重新提交审批'
+                  : '借款草稿已保存'
+            )
             emit('success')
             return true
           } catch (error) {
+            if (!isCurrent()) return false
             const constraint = getDeleteReferenceContext(error)?.constraint
             if (
               removedItems.value.length &&
               (await inspectItemReferences(removedItems.value, constraint))
             )
               return false
+            if (!isCurrent()) return false
             if (
               removedPayees.value.length &&
               (await inspectPayeeReferences(removedPayees.value, constraint))
             )
               return false
+            if (!isCurrent()) return false
             notifyFriendlyError(error, '借款单保存失败，请核对明细、收款账户和租户信息后重试')
             return false
           }
         }
       })
     } catch (error) {
-      notifyFriendlyError(error, '借款单加载失败，请刷新列表后重试')
+      if (contextCurrent()) notifyFriendlyError(error, '借款单加载失败，请刷新列表后重试')
     }
   }
   defineExpose({ handleOpen })

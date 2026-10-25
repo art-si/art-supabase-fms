@@ -103,6 +103,7 @@
 <script setup lang="tsx">
   import { createArDeleteMetadata } from './ar-delete-metadata'
   import { useRouteDocumentDrawer } from '@/hooks/core/useRouteDocumentDrawer'
+  import { useRouteOperationGuard } from '@/hooks/core/useRouteTableContext'
   import ArCreditPaymentDialog from './ar-credit-payment-dialog.vue'
   import ArPrintSheet, { type ArPrintRecord } from './ar-print-sheet.vue'
   import FinanceVoucherPreview from '@/components/business/finance-voucher-preview/index.vue'
@@ -132,6 +133,7 @@
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { useAuth } from '@/hooks/core/useAuth'
+  import { useTenantOperationGuard } from '@/hooks/core/useTenantOperationGuard'
   import { useArtFeedback, notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { formatSensitiveCurrencyValue as money } from '@/utils/ui/format'
   import { financePaths } from '@/router/business-paths'
@@ -163,6 +165,7 @@
   const props = defineProps<{ kind: 'estimate' | 'financial' }>()
   const route = useRoute()
   const router = useRouter()
+  const captureRouteOperation = useRouteOperationGuard()
   const { hasAuth } = useAuth()
   const { confirmDelete } = useArtFeedback()
   const printSheet = ref<InstanceType<typeof ArPrintSheet>>()
@@ -213,11 +216,14 @@
     }
   }
   const permissions = computed(() => permissionCatalog[props.kind])
+  const captureDocumentOperation = useTenantOperationGuard(permissions.value.View)
   const title = computed(() => (props.kind === 'estimate' ? '暂估应收单' : '财务应收单'))
   const description = computed(() =>
     props.kind === 'estimate'
       ? '统一销售出库与运输履约暂估，跟踪关联金额、开票冲回和收入成本确认。'
-      : '审核确认财务应收，按明细控制收款占用、核销、开票与退款。'
+      : hasAuth('FinanceFinancialReceivable:Writeoff') && !canOpenWriteoff()
+        ? '应收核销另需收款核销工作台查看及核销权限，请联系管理员授权。'
+        : '审核确认财务应收，按明细控制收款占用、核销、开票与退款。'
   )
   const search = reactive({
     keyword: '',
@@ -423,9 +429,12 @@
             label: '应收核销',
             permission: 'FinanceFinancialReceivable:Writeoff',
             selectionRequired: true,
-            onClick: async () => {
-              await router.push(financePaths.receiptWriteoff)
-            }
+            disabled: (ctx: ArtTableQueryHeaderActionContext) =>
+              busy.value ||
+              ctx.selectedRows.length !== 1 ||
+              !canOpenWriteoff() ||
+              !canWriteoffDocument(ctx.selectedRows[0]),
+            onClick: async (ctx: ArtTableQueryHeaderActionContext) => openWriteoff(ids(ctx)[0])
           },
           {
             key: 'adjust',
@@ -474,7 +483,9 @@
       key: 'voucher',
       label: '生成凭证',
       slot: 'ar-voucher',
-      permission: permissions.value.VoucherPreview,
+      permission: hasAuth(permissions.value.VoucherGenerate)
+        ? permissions.value.VoucherGenerate
+        : permissions.value.VoucherPreview,
       selectionRequired: true
     },
     {
@@ -554,16 +565,19 @@
     }
   }
   async function command(action: string, id: string): Promise<void> {
-    if (!id) return
+    if (busy.value || !id) return
     busy.value = true
+    const isCurrentRoute = captureRouteOperation()
     try {
       if (action === 'financial') {
         const newId = await pushFinancialReceivable(id)
         ElMessage.success('财务应收草稿已生成')
+        if (!isCurrentRoute()) return
         await router.push({ path: financePaths.financialReceivable, query: { recordId: newId } })
       } else if (action === 'revenue') {
         const newId = await pushArRevenueCost(id)
         ElMessage.success('收入成本确认单已就绪')
+        if (!isCurrentRoute()) return
         await router.push({ path: financePaths.revenueCost, query: { recordId: newId } })
       } else if (action === 'receipt')
         await settlementDrawer.value?.openReceipt(await getDocument(id))
@@ -580,18 +594,94 @@
       busy.value = false
     }
   }
-  async function voucher(id: string, generate: boolean): Promise<void> {
-    if (!id) return
+  function canOpenWriteoff(): boolean {
+    return (
+      hasAuth('FinanceFinancialReceivable:Writeoff') &&
+      hasAuth('FinanceReceiptWriteoff:View') &&
+      hasAuth('FinanceReceiptWriteoff:Writeoff')
+    )
+  }
+  function canWriteoffDocument(
+    row:
+      | {
+          kind?: unknown
+          status?: unknown
+          availableAmount?: unknown
+          settlementOrganizationId?: unknown
+          customerId?: unknown
+        }
+      | undefined
+  ): boolean {
+    return (
+      row?.kind === 'financial' &&
+      row.status === 'approved' &&
+      typeof row.availableAmount === 'number' &&
+      Number.isFinite(row.availableAmount) &&
+      row.availableAmount !== 0 &&
+      typeof row.settlementOrganizationId === 'string' &&
+      !!row.settlementOrganizationId &&
+      typeof row.customerId === 'string' &&
+      !!row.customerId
+    )
+  }
+  async function openWriteoff(id: string): Promise<void> {
+    if (!id || busy.value || !canOpenWriteoff()) return
+    const scopeCurrent = captureDocumentOperation()
+    const isCurrent = () => scopeCurrent() && props.kind === 'financial' && canOpenWriteoff()
+    if (!isCurrent()) return
     busy.value = true
     try {
       const row = await getDocument(id)
-      voucherResult.value = await arVoucher(row.kind, id, generate)
+      if (!isCurrent()) return
+      if (!canWriteoffDocument(row)) {
+        ElMessage.warning('单据状态或可核销余额已变化，请重新查询后操作')
+        return
+      }
+      await router.push({
+        path: financePaths.receiptWriteoff,
+        query: { organizationId: row.settlementOrganizationId, customerId: row.customerId }
+      })
+    } catch (error) {
+      if (isCurrent()) notifyFriendlyError(error, '核销工作台未打开，请刷新单据后重试')
+    } finally {
+      busy.value = false
+    }
+  }
+  async function voucher(id: string, generate: boolean): Promise<void> {
+    const kind = props.kind
+    const requiredPermission = generate
+      ? permissions.value.VoucherGenerate
+      : permissions.value.VoucherPreview
+    const scopeCurrent = captureDocumentOperation()
+    const isCurrent = () => scopeCurrent() && props.kind === kind && hasAuth(requiredPermission)
+    if (!id || busy.value || !isCurrent()) return
+    busy.value = true
+    try {
+      const row = await getDocument(id)
+      if (!isCurrent()) {
+        if (scopeCurrent()) ElMessage.warning('操作范围或权限已变化，请重新选择单据')
+        return
+      }
+      if (
+        row.status !== 'approved' ||
+        (row.kind !== kind && !(kind === 'estimate' && row.kind === 'reversal'))
+      ) {
+        ElMessage.warning('单据状态已变化，请重新查询后重试')
+        return
+      }
+      const result = await arVoucher(row.kind, id, generate)
+      if (!isCurrent()) return
+      voucherResult.value = result
       if (generate) {
-        ElMessage.success(voucherResult.value.message)
-        await tableRef.value?.refreshData()
+        ElMessage.success(result.message)
+        try {
+          await tableRef.value?.refreshData()
+        } catch (error) {
+          if (isCurrent()) notifyFriendlyError(error, '凭证已生成，但列表未刷新，请重新查询')
+        }
       } else await voucherDialog.value?.handleOpen()
     } catch (error) {
-      notifyFriendlyError(error, '凭证操作未完成，请重试')
+      if (isCurrent()) notifyFriendlyError(error, '凭证操作未完成，请重试')
     } finally {
       busy.value = false
     }

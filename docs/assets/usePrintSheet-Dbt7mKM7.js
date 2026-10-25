@@ -1,1 +1,0 @@
-import{Gr as e,Va as t,ca as n}from"./sys-DaNMvRNq.js";function r(r,i){let a=0,o=!1,s=()=>{a+=1,document.body.classList.remove(r),o&&(o=!1,i())};return e(window,`afterprint`,()=>{o&&s()}),t(s),{print:async()=>{let e=++a;if(o=!0,document.body.classList.add(r),await n(),e===a)try{window.print()}catch(e){throw s(),e}}}}export{r as t};

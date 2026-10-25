@@ -1,1 +1,0 @@
-import{Qi as e,Ui as t,_a as n}from"./sys-DaNMvRNq.js";import{t as r}from"./ar-secondary-workspace-niugtjhe.js";var i=e({name:`FinanceRevenueCost`,__name:`index`,setup(e){return(e,i)=>(n(),t(r,{kind:`revenue`}))}});export{i as default};

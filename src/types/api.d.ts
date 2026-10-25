@@ -1459,6 +1459,11 @@ declare global {
         | 'loading'
         | 'waiting'
         | 'driver_expense'
+        | 'driver_payroll'
+        | 'vehicle_insurance'
+        | 'vehicle_depreciation'
+        | 'vehicle_maintenance'
+        | 'traffic_fine'
         | 'cargo_damage'
         | 'other'
         | 'in_transit_energy'
@@ -1540,6 +1545,9 @@ declare global {
 
       interface WaybillCostRecord {
         id?: string
+        maintenanceRecordId?: string | null
+        sourceType?: string | null
+        sourceId?: string | null
         tenantId?: string
         costNo?: string
         waybillId: string
@@ -3069,6 +3077,7 @@ declare global {
         categoryId: string
         assetNo: string
         assetName: string
+        vehicleId?: string | null
         status: FixedAssetStatus
         acquisitionDate: string
         readyForUseDate: string
@@ -3122,6 +3131,7 @@ declare global {
         categoryId: string
         assetNo: string
         assetName: string
+        vehicleId?: string | null
         acquisitionDate: string
         readyForUseDate: string
         depreciationStartDate: string

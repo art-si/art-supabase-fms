@@ -52,7 +52,7 @@
 </template>
 <script setup lang="tsx">
   import { createArDeleteMetadata } from './ar-delete-metadata'
-  import { getRevenueCostDisplayState } from './receivable-model'
+  import { getRevenueCostDisplayState, canCreateReceiptRefund } from './receivable-model'
   import { useRouteDocumentDrawer } from '@/hooks/core/useRouteDocumentDrawer'
   import ArPrintSheet, { type ArPrintRecord } from './ar-print-sheet.vue'
   import FinanceVoucherPreview from '@/components/business/finance-voucher-preview/index.vue'
@@ -79,6 +79,9 @@
   } from '@/api/receivables'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import { useAuth } from '@/hooks/core/useAuth'
+  import { cancelSupplierReceipt } from '@/api/receivables'
+  import { useRouteOperationGuard } from '@/hooks/core/useRouteTableContext'
+  import { useTenantOperationGuard } from '@/hooks/core/useTenantOperationGuard'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { useArtFeedback, notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { formatSensitiveCurrencyValue as money } from '@/utils/ui/format'
@@ -129,12 +132,15 @@
   const route = useRoute()
   const router = useRouter()
   const { hasAuth } = useAuth()
-  const { confirmAction, confirmDelete } = useArtFeedback()
+  const captureRouteOperation = useRouteOperationGuard()
+  const captureRefundOperation = useTenantOperationGuard('FinanceReceiptRefund:Add')
+  const { confirmAction, confirmDelete, promptReason } = useArtFeedback()
   const printSheet = ref<InstanceType<typeof ArPrintSheet>>()
   const tableRef = ref<InstanceType<typeof ArtTableQuery>>()
   const settlementDrawer = ref<InstanceType<typeof ArSettlementDrawer>>()
   const deleteGuard = ref<InstanceType<typeof MasterDataDeleteGuard>>()
   const picker = ref<ArtDataSelectExpose>()
+  let revenueCreateContext: { isCurrent: () => boolean } | undefined
   const detailDialog = ref<ArtDialogExpose>()
   const detail = ref<RevenueCostDocument>()
   const voucherDialog = ref<InstanceType<typeof FinanceVoucherPreview>>()
@@ -177,6 +183,7 @@
     }
   }
   const permissions = computed(() => catalog[props.kind])
+  const captureActionOperation = useTenantOperationGuard(permissions.value.View)
   const title = computed(
     () => ({ receipt: '收款单', refund: '收款退款单', revenue: '收入成本确认' })[props.kind]
   )
@@ -185,7 +192,10 @@
       ({
         receipt: '草稿保存锁定应收额度，确认收款登记资金并生成核销记录，独立收款可后续匹配。',
         refund: '按已确认收款控制可退余额，退款与付款申请各自审批，确认付款后登记反向资金流水。',
-        revenue: '从已审核暂估下推，独立审核收入和库存/运输实际成本；缺少成本时不能审核。'
+        revenue:
+          hasAuth('FinanceRevenueCost:Add') && !canCreateRevenue()
+            ? '新增需具备暂估应收查看及下推权限，请联系管理员授权；缺少成本时不能审核。'
+            : '从已审核暂估下推，独立审核收入和库存/运输实际成本；缺少成本时不能审核。'
       })[props.kind]
   )
   const statusOptions = useDictionaryOptions('arDocumentStatus')
@@ -223,7 +233,14 @@
       }
     }
     const result = await fetchArWorkspace(props.kind, q)
-    return { ...result, data: result.data.map((row) => ({ ...row, receipt: row })) }
+    return {
+      ...result,
+      data: result.data.map((row) => ({
+        ...row,
+        customerName: row.partyName || row.supplierName || row.customerName,
+        receipt: row
+      }))
+    }
   }
   async function getRows(ids: string[]): Promise<ListRow[]> {
     const result = await fetchRows({ ids, size: 500 })
@@ -235,10 +252,11 @@
     {
       type: 'add',
       permission: permissions.value.Add,
+      disabled: props.kind === 'revenue' && (busy.value || !canCreateRevenue()),
       onClick: async () => {
         if (props.kind === 'receipt') await settlementDrawer.value?.openReceipt()
         else if (props.kind === 'refund') await settlementDrawer.value?.openRefund()
-        else picker.value?.open()
+        else openRevenueSource()
       }
     },
     ...(props.kind === 'receipt'
@@ -319,11 +337,11 @@
             label: '收款退款',
             permission: 'FinanceReceiptRefund:Add',
             selectionRequired: true,
-            disabled: (ctx: ArtTableQueryHeaderActionContext) => ctx.selectedRows.length !== 1,
-            onClick: async (ctx: ArtTableQueryHeaderActionContext) => {
-              const row = (await getRows(selectedIds(ctx)))[0]
-              if (row?.receipt) await settlementDrawer.value?.openRefund(row.receipt)
-            }
+            disabled: (ctx: ArtTableQueryHeaderActionContext) =>
+              busy.value ||
+              ctx.selectedRows.length !== 1 ||
+              !canCreateReceiptRefund(ctx.selectedRows[0]),
+            onClick: (ctx: ArtTableQueryHeaderActionContext) => openReceiptRefund(selectedIds(ctx))
           }
         ]
       : []),
@@ -334,9 +352,41 @@
             label: '生成付款申请',
             permission: 'FinanceReceiptRefund:PaymentRequest',
             selectionRequired: true,
-            disabled: (ctx: ArtTableQueryHeaderActionContext) => ctx.selectedRows.length !== 1,
+            disabled: (ctx: ArtTableQueryHeaderActionContext) =>
+              busy.value ||
+              ctx.selectedRows.length !== 1 ||
+              ctx.selectedRows[0]?.status !== 'approved',
             onClick: (ctx: ArtTableQueryHeaderActionContext) => request(selectedIds(ctx))
           }
+        ]
+      : []),
+    ...(props.kind === 'receipt'
+      ? [
+          {
+            key: 'supplier-cancel',
+            label: '取消收款',
+            permission: 'FinanceReceipt:Cancel',
+            selectionRequired: true,
+            hidden: (ctx: ArtTableQueryHeaderActionContext) =>
+              ctx.selectedRows.length !== 1 || !ctx.selectedRows[0].supplierId,
+            disabled: (ctx: ArtTableQueryHeaderActionContext) =>
+              busy.value || ctx.selectedRows[0]?.status !== 'confirmed',
+            onClick: (ctx: ArtTableQueryHeaderActionContext) => cancelReceipt(selectedIds(ctx)[0])
+          },
+          ...[false, true].map((generate) => ({
+            key: generate ? 'supplier-voucher-generate' : 'supplier-voucher-preview',
+            label: generate ? '生成凭证' : '预览凭证',
+            permission: generate
+              ? 'FinanceReceipt:VoucherGenerate'
+              : 'FinanceReceipt:VoucherPreview',
+            selectionRequired: true,
+            hidden: (ctx: ArtTableQueryHeaderActionContext) =>
+              ctx.selectedRows.length !== 1 || !ctx.selectedRows[0].supplierId,
+            disabled: (ctx: ArtTableQueryHeaderActionContext) =>
+              busy.value || ctx.selectedRows[0]?.status !== 'confirmed',
+            onClick: (ctx: ArtTableQueryHeaderActionContext) =>
+              voucher(selectedIds(ctx)[0], generate)
+          }))
         ]
       : []),
     ...(props.kind === 'revenue'
@@ -346,7 +396,10 @@
             label: '预览凭证',
             permission: 'FinanceRevenueCost:VoucherPreview',
             selectionRequired: true,
-            disabled: (ctx: ArtTableQueryHeaderActionContext) => ctx.selectedRows.length !== 1,
+            disabled: (ctx: ArtTableQueryHeaderActionContext) =>
+              busy.value ||
+              ctx.selectedRows.length !== 1 ||
+              ctx.selectedRows[0]?.status !== 'approved',
             onClick: (ctx: ArtTableQueryHeaderActionContext) => voucher(selectedIds(ctx)[0], false)
           },
           {
@@ -354,7 +407,10 @@
             label: '生成凭证',
             permission: 'FinanceRevenueCost:VoucherGenerate',
             selectionRequired: true,
-            disabled: (ctx: ArtTableQueryHeaderActionContext) => ctx.selectedRows.length !== 1,
+            disabled: (ctx: ArtTableQueryHeaderActionContext) =>
+              busy.value ||
+              ctx.selectedRows.length !== 1 ||
+              ctx.selectedRows[0]?.status !== 'approved',
             onClick: (ctx: ArtTableQueryHeaderActionContext) => voucher(selectedIds(ctx)[0], true)
           }
         ]
@@ -368,49 +424,102 @@
     },
     { type: 'export', permission: permissions.value.Export, exportFilename: title.value }
   ])
-  async function run(action: () => Promise<void>): Promise<void> {
+  async function run(
+    action: () => Promise<void>,
+    isCurrent: () => boolean = () => true
+  ): Promise<void> {
     if (busy.value) return
     busy.value = true
     try {
       await action()
     } catch (error) {
-      notifyFriendlyError(error, '操作未完成，请核对状态和关联记录后重试')
+      if (isCurrent()) notifyFriendlyError(error, '操作未完成，请核对状态和关联记录后重试')
     } finally {
       try {
-        await tableRef.value?.refreshData()
+        if (isCurrent()) await tableRef.value?.refreshData()
       } catch (error) {
-        notifyFriendlyError(error, '单据已处理，但列表未刷新，请重新查询')
+        if (isCurrent()) notifyFriendlyError(error, '单据已处理，但列表未刷新，请重新查询')
       }
       busy.value = false
     }
   }
   async function act(ids: string[], action: string): Promise<void> {
-    if (busy.value || !ids.length) return
-    if (action === 'confirm' || action === 'pay') {
-      try {
+    const requiredPermission =
+      action === 'submit'
+        ? permissions.value.Submit
+        : action === 'approve'
+          ? permissions.value.Approve
+          : permissions.value.Final
+    if (busy.value || !ids.length || !hasAuth(requiredPermission)) return
+    const currentScope = captureActionOperation()
+    const isCurrent = () => currentScope() && hasAuth(requiredPermission)
+    const kind = props.kind
+    let attempted = false
+    busy.value = true
+    try {
+      if (action === 'confirm' || action === 'pay') {
         await confirmAction(
           `即将${action === 'pay' ? '确认付款' : '确认收款'}，共 ${ids.length} 张单据，并登记实际资金流水。`,
           '确认资金发生'
         )
-      } catch {
+      }
+      if (!isCurrent()) {
+        ElMessage.warning('操作范围或权限已变化，请重新查询后操作')
         return
       }
+      for (const id of ids) {
+        if (!isCurrent()) return
+        attempted = true
+        await actArDocument(kind, id, action)
+      }
+      if (isCurrent()) ElMessage.success('操作已完成')
+    } catch (error) {
+      if (error !== 'cancel' && error !== 'close' && isCurrent())
+        notifyFriendlyError(error, '操作未完成，请核对状态和关联记录后重试')
+    } finally {
+      try {
+        if (attempted && isCurrent()) await tableRef.value?.refreshData()
+      } catch (error) {
+        if (isCurrent()) notifyFriendlyError(error, '单据已处理，但列表未刷新，请重新查询')
+      }
+      busy.value = false
     }
-    await run(async () => {
-      for (const id of ids) await actArDocument(props.kind, id, action)
-      ElMessage.success('操作已完成')
-    })
   }
   async function request(ids: string[]): Promise<void> {
-    if (ids.length !== 1) return
+    if (busy.value || ids.length !== 1 || !hasAuth('FinanceReceiptRefund:PaymentRequest')) return
+    const isCurrentRoute = captureRouteOperation()
     await run(async () => {
       const id = await createArRefundPaymentRequest(ids[0])
+      ElMessage.success('付款申请已生成')
+      if (!isCurrentRoute()) return
       await router.push({ path: financePaths.receivablePaymentRequest, query: { recordId: id } })
     })
   }
+  async function openReceiptRefund(ids: string[]): Promise<void> {
+    if (busy.value || ids.length !== 1 || !hasAuth('FinanceReceiptRefund:Add')) return
+    const isCurrent = captureRefundOperation()
+    busy.value = true
+    try {
+      const row = (await getRows(ids))[0]
+      if (!isCurrent()) return
+      if (!row?.receipt || !canCreateReceiptRefund(row.receipt)) {
+        ElMessage.warning('收款状态或可退余额已变化，请重新查询后操作')
+        return
+      }
+      await settlementDrawer.value?.openRefund(row.receipt)
+    } catch (cause) {
+      if (isCurrent()) notifyFriendlyError(cause, '原收款单未加载，请重新查询后重试')
+    } finally {
+      busy.value = false
+    }
+  }
   async function remove(ids: string[]): Promise<void> {
     if (busy.value || !ids.length) return
+    const currentScope = captureActionOperation()
+    const isCurrent = () => currentScope() && hasAuth(permissions.value.Delete)
+    if (!isCurrent()) return
     const rows = await getRows(ids)
+    if (!isCurrent()) return
     if (rows.length !== ids.length) throw new Error('所选单据已变化，请重新查询后再删除')
     const options = {
       resourceLabel: title.value,
@@ -419,28 +528,53 @@
       dependencyMeta: createArDeleteMetadata(props.kind, hasAuth)
     }
     if (!deleteGuard.value || (await deleteGuard.value.inspect(options))) return
+    if (!isCurrent()) return
     try {
       await confirmDelete(`确认删除 ${rows.length} 张草稿？`)
     } catch {
+      return
+    }
+    if (!isCurrent()) {
+      ElMessage.warning('操作范围或权限已变化，请重新查询后再删除')
       return
     }
     await run(async () => {
       try {
         await deleteArRecords(props.kind, ids)
       } catch (error) {
+        if (!isCurrent()) return
         if (await deleteGuard.value?.inspect(options)) return
+        if (!isCurrent()) return
         throw error
       }
+      if (!isCurrent()) return
       ElMessage.success('草稿已删除')
-    })
+    }, isCurrent)
   }
   const pickerColumns: DataSelectColumn<ArOption>[] = [
     { prop: 'code', label: '来源单号', minWidth: 200 },
     { prop: 'name', label: '名称', minWidth: 200 }
   ]
+  function canCreateRevenue(): boolean {
+    return (
+      hasAuth('FinanceRevenueCost:Add') &&
+      hasAuth('FinanceEstimatedReceivable:View') &&
+      hasAuth('FinanceEstimatedReceivable:Push')
+    )
+  }
+  function openRevenueSource(): void {
+    if (busy.value || props.kind !== 'revenue' || !canCreateRevenue()) return
+    const scopeCurrent = captureActionOperation()
+    if (!scopeCurrent()) return
+    revenueCreateContext = {
+      isCurrent: () => scopeCurrent() && props.kind === 'revenue' && canCreateRevenue()
+    }
+    void picker.value?.open()
+  }
   async function pickerOptions(params: DataSelectFetchParams): Promise<ArOption[]> {
     if (props.kind === 'receipt')
       return fetchArOptions('cash', useTenantScopeStore().effectiveTenantId, params.keyword)
+    if (!revenueCreateContext?.isCurrent()) return []
     const result = await fetchArWorkspace('estimate', {
       status: 'approved',
       documentKind: 'estimate',
@@ -459,11 +593,19 @@
     const row = rows[0]
     if (!row) return
     if (props.kind === 'receipt') await settlementDrawer.value?.openReceipt(undefined, row)
-    else
+    else {
+      const context = revenueCreateContext
+      revenueCreateContext = undefined
+      if (!context?.isCurrent()) {
+        ElMessage.warning('操作范围或权限已变化，请重新选择暂估应收')
+        return
+      }
       await run(async () => {
+        if (!context.isCurrent()) return
         await pushArRevenueCost(row.id)
-        ElMessage.success('收入成本确认单已就绪')
-      })
+        if (context.isCurrent()) ElMessage.success('收入成本确认单已就绪')
+      }, context.isCurrent)
+    }
   }
   async function view(row: ListRow): Promise<void> {
     if (row.receipt)
@@ -514,10 +656,48 @@
     }
   ]
   async function voucher(id: string, generate: boolean): Promise<void> {
+    const permission =
+      props.kind === 'receipt'
+        ? generate
+          ? 'FinanceReceipt:VoucherGenerate'
+          : 'FinanceReceipt:VoucherPreview'
+        : generate
+          ? 'FinanceRevenueCost:VoucherGenerate'
+          : 'FinanceRevenueCost:VoucherPreview'
+    if (!id || !hasAuth(permission)) return
+    const isCurrentRoute = captureRouteOperation()
     await run(async () => {
-      voucherResult.value = await arVoucher('revenue', id, generate)
-      if (generate) ElMessage.success(voucherResult.value.message)
-      else await voucherDialog.value?.handleOpen()
+      const result = await arVoucher(props.kind, id, generate)
+      if (generate) ElMessage.success(result.message)
+      if (!isCurrentRoute()) return
+      voucherResult.value = result
+      if (!generate) await voucherDialog.value?.handleOpen()
+    })
+  }
+  const cancellationReasons = new Map<string, string>()
+  async function cancelReceipt(id: string): Promise<void> {
+    if (!id || !hasAuth('FinanceReceipt:Cancel')) return
+    const isCurrentRoute = captureRouteOperation()
+    await run(async () => {
+      let reason: string
+      try {
+        reason = await promptReason(
+          '取消后将冲回本次实际到账；请填写原因。',
+          '取消供应商退款收款',
+          { initialValue: cancellationReasons.get(id) ?? '' }
+        )
+      } catch {
+        return
+      }
+      if (!isCurrentRoute()) return
+      cancellationReasons.set(id, reason)
+      const row = (await getRows([id]))[0]
+      if (!isCurrentRoute()) return
+      if (!row?.receipt?.supplierId || row.status !== 'confirmed')
+        throw new Error('收款状态已变化，请刷新后重新操作')
+      await cancelSupplierReceipt(id, reason)
+      cancellationReasons.delete(id)
+      ElMessage.success('供应商退款收款已取消')
     })
   }
   const columnsFactory = (): ColumnOption<ListRow>[] => [
@@ -644,6 +824,8 @@
   useRouteDocumentDrawer({
     routeName: String(route.name || ''),
     queryKey: 'recordId',
+    // ArtDialog closes when fullPath changes; keep this detail's deep link while open.
+    clearQueryOnOpen: props.kind !== 'revenue',
     canOpen: () => hasAuth(permissions.value.View),
     fetchDocument: async (id) => {
       const row = (await getRows([id]))[0]

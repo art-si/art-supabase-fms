@@ -16,15 +16,18 @@
         }"
         ref="tableRef"
         v-model="search"
-        :api-fn="fetchArReport"
+        :api-fn="loadReport"
         :search-items="searchItems"
         :columns-factory="columns"
-        :columns-context-key="search.mode"
+        :columns-context-key="appliedQuery?.mode"
         :header-actions="[
           {
             type: 'export',
             permission: 'FinanceReceivableReport:Export',
-            exportFilename: '应收汇总与账龄'
+            exportFilename: '应收汇总与账龄',
+            disabled: !appliedQuery,
+            exportMaxRows: 10000,
+            exportApi: exportReport
           }
         ]"
         header-actions-placement="workspace"
@@ -34,12 +37,15 @@
   </ArtPermissionGuard>
 </template>
 <script setup lang="ts">
-  import { ref, reactive, computed } from 'vue'
+  import { ref, reactive, computed, watch } from 'vue'
   import dayjs from 'dayjs'
   import { fetchArOrganizationTree } from '@/api/receivables'
   import { fetchArReport, fetchArOptions, type ArReportRow } from '@/api/receivables'
   import { formatSensitiveCurrencyValue as money } from '@/utils/ui/format'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
+  import { useRouteOperationGuard } from '@/hooks/core/useRouteTableContext'
+  import { useTenantScopeStore } from '@/store/modules/tenant-scope'
+  import { useAuth } from '@/hooks/core/useAuth'
   import ArtTableQuery from '@/components/core/tables/art-table-query/index.vue'
   import BusinessWorkspaceHeader from '@/components/business/business-workspace-header/index.vue'
   import BusinessTableWorkspaceActions from '@/components/business/business-table-workspace-actions/index.vue'
@@ -47,6 +53,41 @@
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   defineOptions({ name: 'FinanceReceivableReport' })
   const tableRef = ref<InstanceType<typeof ArtTableQuery>>()
+  type ReportQuery = Parameters<typeof fetchArReport>[0]
+  const appliedQuery = ref<ReportQuery>()
+  const captureRoute = useRouteOperationGuard()
+  const tenantScope = useTenantScopeStore()
+  const { hasAuth } = useAuth()
+  let queryVersion = 0
+  watch(
+    () => tenantScope.effectiveTenantId,
+    () => {
+      queryVersion++
+      appliedQuery.value = undefined
+    },
+    { flush: 'sync' }
+  )
+  async function loadReport(query: ReportQuery) {
+    const version = ++queryVersion
+    const isCurrentRoute = captureRoute()
+    const params = { ...search, ...query }
+    const result = await fetchArReport(params)
+    if (version === queryVersion && isCurrentRoute()) appliedQuery.value = params
+    return result
+  }
+  async function exportReport() {
+    if (!hasAuth('FinanceReceivableReport:Export') || !hasAuth('FinanceReceivableReport:View'))
+      throw new Error('当前账号无权导出应收报表')
+    if (!appliedQuery.value) throw new Error('请先查询报表后再导出')
+    const version = queryVersion
+    const isCurrentRoute = captureRoute()
+    const result = await fetchArReport({ ...appliedQuery.value, current: 1, size: 10000 })
+    if (version !== queryVersion || !isCurrentRoute())
+      throw new Error('查询范围已变化，请重新查询后导出')
+    if (result.total > 10000) throw new Error('导出记录超过一万条，请缩小筛选范围后重试')
+    if (result.data.length !== result.total) throw new Error('报表数据不完整，请重新查询后导出')
+    return result
+  }
   const search = reactive({
     mode: 'detail',
     asOfDate: dayjs().format('YYYY-MM-DD'),
@@ -105,7 +146,7 @@
     { prop: 'customerName', label: '往来单位', minWidth: 200 },
     { prop: 'kind', label: '单据类别', width: 130, dict: { code: 'arDocumentKind' } },
     { prop: 'currencyCode', label: '币种', width: 90 },
-    ...(search.mode === 'detail'
+    ...((appliedQuery.value?.mode ?? 'detail') === 'detail'
       ? [
           { prop: 'documentNo', label: '单据编号', minWidth: 210 },
           { prop: 'organizationName', label: '结算组织', minWidth: 160 },
@@ -117,7 +158,7 @@
       : []),
     amountColumn('occurrenceAmount', '发生额(原币)'),
     amountColumn('balanceAmount', '余额(原币)'),
-    ...(search.mode === 'summary'
+    ...(appliedQuery.value?.mode === 'summary'
       ? [
           amountColumn('age0To30', '0—30天'),
           amountColumn('age31To60', '31—60天'),
