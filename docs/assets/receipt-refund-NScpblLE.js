@@ -1,0 +1,1 @@
+import{Hi as e,Zi as t,ga as n}from"./sys-BNyturx_.js";import{t as r}from"./ar-secondary-workspace-Nr0kNuhx.js";var i=t({name:`FinanceReceiptRefund`,__name:`index`,setup(t){return(t,i)=>(n(),e(r,{kind:`refund`}))}});export{i as default};

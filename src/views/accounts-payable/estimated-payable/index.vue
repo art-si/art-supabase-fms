@@ -12,7 +12,10 @@
       Push: 'FinanceEstimatedPayable:Push',
       Voucher: 'FinanceEstimatedPayable:Voucher',
       Print: 'FinanceEstimatedPayable:Print',
-      Export: 'FinanceEstimatedPayable:Export'
+      Export: 'FinanceEstimatedPayable:Export',
+      Accrual: 'FinanceEstimatedPayable:Accrual',
+      AccrualDelete: 'FinanceEstimatedPayable:AccrualDelete',
+      AccrualExecute: 'FinanceEstimatedPayable:AccrualExecute'
     }"
   />
 </template>
