@@ -1,1 +1,0 @@
-import{Bi as e,on as t,r as n}from"./sys-D7Naqku3.js";import{t as r}from"./tenant-scope-DP8CYUvq.js";function i(){let{isAllTenants:i,effectiveTenantId:a}=t(r()),o=n();return{effectiveTenantId:e(()=>a.value??null),defaultWriteTenantId:e(()=>a.value??o.getUserInfo.tenantId??null),shouldExposeTenantField:e(()=>i.value),isTenantScopeItem:e=>e.key===`tenantId`}}export{i as t};

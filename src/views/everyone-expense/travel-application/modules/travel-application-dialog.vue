@@ -1,11 +1,12 @@
 <template>
-  <ArtDialog ref="dialogRef" size="xl">
+  <ArtDialog ref="dialogRef" size="xl" :show-footer="!readOnly">
     <div class="flex min-w-0 flex-col gap-5">
       <ArtForm
         ref="formRef"
         v-model="model"
         :items="items"
         :rules="rules"
+        :disabled="readOnly"
         :span="12"
         :gutter="20"
         label-position="top"
@@ -18,6 +19,7 @@
             v-model:selected-data="selectedApplicant"
             :tenant-id="model.tenantId"
             :api-fn="fetchTravelApplicantSelector"
+            :disabled="readOnly"
             placeholder="选择申请人"
             @update:model-value="setApplicant"
           />
@@ -45,7 +47,13 @@
         :min-height="200"
       >
         <template #actions>
-          <ElButton type="primary" plain :disabled="!model.applicantEmployeeId" @click="addLine">
+          <ElButton
+            v-if="!readOnly"
+            type="primary"
+            plain
+            :disabled="!model.applicantEmployeeId"
+            @click="addLine"
+          >
             <ArtSvgIcon icon="ri:add-line" aria-hidden="true" />
             添加行程
           </ElButton>
@@ -70,7 +78,7 @@
             <p class="mt-2 text-xs text-[var(--art-gray-700)]"
               >{{ line.startDate }} 至 {{ line.endDate }}</p
             >
-            <div class="mt-3 flex justify-end">
+            <div v-if="!readOnly" class="mt-3 flex justify-end">
               <BusinessTableRowActions>
                 <ArtButtonTable
                   type="edit"
@@ -98,6 +106,7 @@
         <ArtSectionTitle>附件</ArtSectionTitle>
         <ArtUploadFile
           v-model="model.attachmentUrls"
+          :disabled="readOnly"
           multiple
           :limit="8"
           :resource-tenant-id="model.tenantId"
@@ -160,6 +169,7 @@
   interface OpenData {
     row?: TravelApplication
     copy?: boolean
+    readonly?: boolean
   }
   type EditableLine = TravelItineraryInput & { id?: string }
   interface ItineraryDialogExpose {
@@ -205,6 +215,7 @@
     attachmentUrls: []
   })
   const model = ref<TravelApplicationInput>(initial())
+  const readOnly = ref(false)
   const { selectPrimaryAssignment } = usePrimaryAssignment(model)
   const totalAmount = computed(() =>
     lines.value.reduce((sum, line) => sum + Number(line.requestedAmount), 0)
@@ -285,6 +296,7 @@
     void selectPrimaryAssignment()
   }
   function addLine(): void {
+    if (readOnly.value) return
     editingLineIndex.value = null
     void itineraryDialogRef.value?.handleOpen({
       tenantId: model.value.tenantId,
@@ -293,6 +305,7 @@
     })
   }
   function editLine(index: number): void {
+    if (readOnly.value) return
     editingLineIndex.value = index
     void itineraryDialogRef.value?.handleOpen({
       line: lines.value[index],
@@ -302,6 +315,7 @@
     })
   }
   function saveLine(line: TravelItineraryInput): void {
+    if (readOnly.value) return
     if (editingLineIndex.value === null) lines.value.push(line)
     else
       lines.value.splice(editingLineIndex.value, 1, {
@@ -311,6 +325,7 @@
     editingLineIndex.value = null
   }
   async function removeLine(index: number): Promise<void> {
+    if (readOnly.value) return
     const line = lines.value[index]
     if (!line) return
     if (!line.id) {
@@ -334,9 +349,11 @@
   async function handleOpen(data: OpenData = {}): Promise<void> {
     const scopeCurrent = captureOperation()
     const version = session.invalidate()
-    const permissions = data.copy
-      ? ['FinanceTravelApplication:Add', 'FinanceTravelApplication:Copy']
-      : [data.row ? 'FinanceTravelApplication:Edit' : 'FinanceTravelApplication:Add']
+    const permissions = data.readonly
+      ? ['FinanceTravelApplication:View']
+      : data.copy
+        ? ['FinanceTravelApplication:Add', 'FinanceTravelApplication:Copy']
+        : [data.row ? 'FinanceTravelApplication:Edit' : 'FinanceTravelApplication:Add']
     const contextCurrent = () =>
       scopeCurrent() &&
       session.version.value === version &&
@@ -346,6 +363,10 @@
     try {
       const detail = data.row ? (await fetchTravelApplicationDetail(data.row.id)).data : null
       if (!contextCurrent()) return
+      if (data.row && !detail) throw new Error('出差申请已变化，请刷新后重试')
+      if (detail && !data.copy && !data.readonly && !['draft', 'rejected'].includes(detail.status))
+        throw new Error('当前出差申请状态不可编辑，请刷新后查看')
+      readOnly.value = Boolean(data.readonly)
       model.value = detail
         ? {
             id: data.copy ? undefined : detail.id,
@@ -407,15 +428,16 @@
       organizations.value = organizationsResult.data ?? []
       await dialogRef.value?.handleOpen(data, {
         title: detail
-          ? `${data.copy ? '复制' : '编辑'}出差申请 · ${detail.applicationNo}`
+          ? `${data.readonly ? '查看' : data.copy ? '复制' : '编辑'}出差申请 · ${detail.applicationNo}`
           : '新增出差申请',
-        subtitle: '本阶段保存草稿及行程；审批和差旅报销将在后续流程中接入。',
+        subtitle: '登记出差行程与预算，提交审批后锁定内容；通过后可关联差旅报销。',
         confirmText: '保存草稿',
         onOpen: () => formRef.value?.clearValidate(),
         onClose: () => {
           session.invalidate()
         },
         onConfirm: async () => {
+          if (readOnly.value) return false
           if (!isCurrent()) {
             ElMessage.warning('操作范围或权限已变化，请重新打开出差申请')
             return false

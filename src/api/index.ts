@@ -296,6 +296,7 @@ export {
   fetchTravelApplicationDetail,
   saveTravelApplicationDraft,
   deleteTravelApplications,
+  prepareTravelApplicationReimbursement,
   fetchExpenseProjectOptions,
   fetchTravelAssignmentOptions,
   type TravelApplication,

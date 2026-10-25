@@ -237,6 +237,20 @@ export async function deleteTravelApplications(ids: string[]) {
   )
 }
 
+export async function prepareTravelApplicationReimbursement(applicationId: string) {
+  return responseHandle<TravelApplication>(
+    () =>
+      supabase.rpc('prepare_fms_travel_application_reimbursement_secure', {
+        p_application_id: applicationId
+      }),
+    {
+      breakReturn: true,
+      showErrorMessage: false,
+      errorMessage: '出差报销来源加载失败，请核对审批状态和权限后重试'
+    }
+  )
+}
+
 export async function fetchExpenseProjectOptions(tenantId: string) {
   return await responseHandle<TravelProjectOption[]>(
     () => supabase.rpc('fms_list_expense_project_options_secure', { p_tenant_id: tenantId }),

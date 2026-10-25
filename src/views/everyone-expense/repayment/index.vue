@@ -87,6 +87,7 @@
     fetchTravelRepaymentDetail,
     submitTravelRepayment,
     deleteTravelRepayments,
+    prepareTravelLoanPush,
     type TravelRepayment,
     type TravelRepaymentLine,
     type TravelRepaymentSearch
@@ -94,7 +95,7 @@
   import RepaymentDialog from './modules/repayment-dialog.vue'
   import RepaymentCollectionDialog from './modules/repayment-collection-dialog.vue'
   import RepaymentPrintSheet from './modules/repayment-print-sheet.vue'
-  import { useLoanPushRoute } from '../shared/use-loan-push-route'
+  import { useExpensePushRoute } from '../shared/use-expense-push-route'
 
   defineOptions({ name: 'FinanceRepayment' })
   interface DialogExpose {
@@ -110,8 +111,14 @@
   type RepaymentSearch = TravelRepaymentSearch & { displayMode: 'document' | 'line' }
   const tableRef = ref<ArtTableQueryExpose>()
   const dialogRef = ref<DialogExpose>()
-  useLoanPushRoute('repayment', async (sourceLoan, isCurrent) => {
-    await dialogRef.value?.handleOpen({ sourceLoan, isCurrent })
+  useExpensePushRoute({
+    queryKey: 'fromLoan',
+    target: 'FinanceRepayment',
+    prepare: (id) => prepareTravelLoanPush(id, 'repayment'),
+    openDraft: async (sourceLoan, isCurrent) => {
+      await dialogRef.value?.handleOpen({ sourceLoan, isCurrent })
+    },
+    errorMessage: '借款下推失败，请核对可用余额和目标单据权限'
   })
   const collectionDialogRef = ref<InstanceType<typeof RepaymentCollectionDialog>>()
   const printRef = ref<InstanceType<typeof RepaymentPrintSheet>>()

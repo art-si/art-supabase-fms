@@ -6,7 +6,7 @@
         density="compact"
         eyebrow="TRAVEL APPLICATIONS"
         title="出差申请单"
-        description="记录申请人与行程预算。当前支持草稿录入、查询和编辑；审批与差旅报销将在后续接入。"
+        description="登记出差行程与预算，跟进审批状态，通过后关联差旅报销。"
         icon="ri:flight-takeoff-line"
       >
         <template #actions><BusinessTableWorkspaceActions :table="tableRef" /></template>
@@ -49,7 +49,7 @@
 
 <script setup lang="tsx">
   import { orderBy, uniqBy } from 'lodash-es'
-  import { useRoute } from 'vue-router'
+  import { useRoute, useRouter } from 'vue-router'
   import { storeToRefs } from 'pinia'
   import type { ColumnOption } from '@/types'
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
@@ -66,7 +66,8 @@
   import { useRecordDeleteGuard } from '@/hooks/core/useRecordDeleteGuard'
   import { useAuth } from '@/hooks/core/useAuth'
   import { useTenantOperationGuard } from '@/hooks/core/useTenantOperationGuard'
-  import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
+  import { notifyFriendlyError, useArtFeedback } from '@/hooks/core/useArtFeedback'
+  import { startWorkflow } from '@/api/workflow'
   import {
     canDeleteExpenseDocument,
     resolveExpenseDeleteResources
@@ -93,7 +94,11 @@
 
   defineOptions({ name: 'FinanceTravelApplication' })
   interface DialogExpose {
-    handleOpen: (data?: { row?: TravelApplication; copy?: boolean }) => Promise<void>
+    handleOpen: (data?: {
+      row?: TravelApplication
+      copy?: boolean
+      readonly?: boolean
+    }) => Promise<void>
   }
   type TableRecord = TravelApplication | TravelLineRecord
   type TravelSearch = TravelApplicationSearch & { displayMode: 'document' | 'line' }
@@ -102,9 +107,13 @@
   const printRef = ref<InstanceType<typeof TravelApplicationPrintSheet>>()
   const printing = ref(false)
   const route = useRoute()
+  const router = useRouter()
+  const { confirmAction } = useArtFeedback()
+  const submittingId = ref<string | null>(null)
   const { hasAuth } = useAuth()
   const capturePrintOperation = useTenantOperationGuard('FinanceTravelApplication:Print')
   const captureViewOperation = useTenantOperationGuard('FinanceTravelApplication:View')
+  const captureSubmitOperation = useTenantOperationGuard('FinanceTravelApplication:Submit')
   const { deleteGuardRef, deleteRecord, deleteRecords, deleteBusy } = useRecordDeleteGuard(
     'fms_travel_application',
     '出差申请单'
@@ -301,7 +310,7 @@
         {
           prop: 'operation',
           label: '操作',
-          width: 160,
+          width: 230,
           fixed: 'right',
           formatter: (row) => applicationActions(applicationOf(row))
         }
@@ -394,7 +403,7 @@
       {
         prop: 'operation',
         label: '操作',
-        width: 160,
+        width: 230,
         fixed: 'right',
         formatter: (row) => applicationActions(applicationOf(row))
       }
@@ -407,9 +416,14 @@
     return (
       <BusinessTableRowActions>
         <ArtButtonTable
+          type="view"
+          permission="FinanceTravelApplication:View"
+          onClick={() => dialogRef.value?.handleOpen({ row, readonly: true })}
+        />
+        <ArtButtonTable
           type="edit"
           permission="FinanceTravelApplication:Edit"
-          disabled={row.status !== 'draft'}
+          disabled={!['draft', 'rejected'].includes(row.status)}
           onClick={() => dialogRef.value?.handleOpen({ row })}
         />
         <ArtButtonTable
@@ -427,8 +441,63 @@
             onClick={() => void deleteOne(row)}
           />
         ) : null}
+        {['draft', 'rejected'].includes(row.status) ? (
+          <ArtButtonTable
+            icon="ri:send-plane-line"
+            label="提交审批"
+            permission="FinanceTravelApplication:Submit"
+            disabled={Boolean(submittingId.value)}
+            onClick={() => void submitApplication(row)}
+          />
+        ) : null}
+        {['approved', 'paid', 'closed'].includes(row.status) ? (
+          <ArtButtonTable
+            icon="ri:refund-2-line"
+            label="下推差旅报销"
+            permission="FinanceTravelApplication:PushReimbursement"
+            disabled={
+              !hasAuth('FinanceExpenseReimbursement:Add') ||
+              !hasAuth('FinanceExpenseReimbursement:View')
+            }
+            onClick={() =>
+              void router.push({
+                name: 'FinanceExpenseReimbursement',
+                query: { fromApplication: row.id }
+              })
+            }
+          />
+        ) : null}
       </BusinessTableRowActions>
     )
+  }
+  async function submitApplication(row: TravelApplication): Promise<void> {
+    if (submittingId.value || !hasAuth('FinanceTravelApplication:Submit')) return
+    const isCurrent = captureSubmitOperation()
+    submittingId.value = row.id
+    try {
+      await confirmAction(
+        `提交出差申请“${row.applicationNo}”后，申请人与行程预算将锁定。`,
+        '提交出差审批',
+        {
+          confirmButtonText: '提交审批'
+        }
+      )
+      if (!isCurrent()) {
+        ElMessage.warning('操作范围或权限已变化，请重新查询后提交')
+        return
+      }
+      await startWorkflow({
+        businessType: 'fms_travel_application',
+        businessId: row.id,
+        businessTitle: `出差申请 ${row.applicationNo}`
+      })
+      if (isCurrent()) await refreshTable()
+    } catch (error) {
+      if (isCurrent() && error !== 'cancel' && error !== 'close')
+        notifyFriendlyError(error, '出差申请提交失败，请核对行程和已启用的审批流程后重试')
+    } finally {
+      submittingId.value = null
+    }
   }
   async function deleteOne(row: TravelApplication): Promise<void> {
     await deleteRecord({

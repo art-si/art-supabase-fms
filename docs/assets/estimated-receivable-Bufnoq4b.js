@@ -1,0 +1,1 @@
+import{Hi as e,Zi as t,ga as n}from"./sys-B6Alg-L2.js";import{t as r}from"./receivable-workspace-DxD2KNCC.js";var i=t({name:`FinanceEstimatedReceivable`,__name:`index`,setup(t){return(t,i)=>(n(),e(r,{kind:`estimate`}))}});export{i as default};

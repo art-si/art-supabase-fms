@@ -66,6 +66,8 @@
   import { financePaths, getExpenseReimbursementDetailPath } from '@/router/business-paths'
   import {
     deleteTravelReimbursements,
+    prepareTravelLoanPush,
+    prepareTravelApplicationReimbursement,
     fetchExpenseReimbursementDetail,
     fetchReimbursementWorkspaceList,
     fetchReimbursementWorkspaceLines,
@@ -77,7 +79,7 @@
   import TravelReimbursementPaymentDialog from './modules/travel-reimbursement-payment-dialog.vue'
   import ReimbursementPrintSheet from './modules/reimbursement-print-sheet.vue'
   import ExpenseDelegationDialog from './modules/expense-delegation-dialog.vue'
-  import { useLoanPushRoute } from '../shared/use-loan-push-route'
+  import { useExpensePushRoute } from '../shared/use-expense-push-route'
   import {
     canDeleteExpenseDocument,
     resolveExpenseDeleteResources
@@ -94,6 +96,7 @@
       row?: Reimbursement
       copy?: boolean
       sourceLoan?: import('@fms/api').TravelLoan
+      sourceApplication?: import('@fms/api').TravelApplication
       isCurrent?: () => boolean
     }) => Promise<void>
   }
@@ -105,8 +108,23 @@
   const tableRef = ref<ArtTableQueryExpose>()
   const delegationDialog = ref<InstanceType<typeof ExpenseDelegationDialog>>()
   const dialogRef = ref<DialogExpose>()
-  useLoanPushRoute('reimbursement', async (sourceLoan, isCurrent) => {
-    await dialogRef.value?.handleOpen({ sourceLoan, isCurrent })
+  useExpensePushRoute({
+    queryKey: 'fromLoan',
+    target: 'FinanceExpenseReimbursement',
+    prepare: (id) => prepareTravelLoanPush(id, 'reimbursement'),
+    openDraft: async (sourceLoan, isCurrent) => {
+      await dialogRef.value?.handleOpen({ sourceLoan, isCurrent })
+    },
+    errorMessage: '借款下推失败，请核对可用余额和目标单据权限'
+  })
+  useExpensePushRoute({
+    queryKey: 'fromApplication',
+    target: 'FinanceExpenseReimbursement',
+    prepare: prepareTravelApplicationReimbursement,
+    openDraft: async (sourceApplication, isCurrent) => {
+      await dialogRef.value?.handleOpen({ sourceApplication, isCurrent })
+    },
+    errorMessage: '出差报销来源加载失败，请核对审批状态和目标单据权限'
   })
   const paymentDialogRef = ref<InstanceType<typeof TravelReimbursementPaymentDialog>>()
   const visibleLines = ref<ReimbursementWorkspaceLine[]>([])

@@ -18,6 +18,7 @@
             v-model:selected-data="selectedApplicant"
             :tenant-id="model.tenantId"
             :api-fn="fetchReimbursementApplicantSelector"
+            :disabled="Boolean(model.travelApplicationId)"
             placeholder="选择报销人"
             @update:model-value="setApplicant"
           />
@@ -190,6 +191,7 @@
     type TravelReimbursementPayeeInput,
     type TravelLoanPayeeInput,
     type TravelLoan,
+    type TravelApplication,
     type ReimbursementLoanOption
   } from '@fms/api'
   import ReimbursementLineDialog from './reimbursement-line-dialog.vue'
@@ -201,6 +203,7 @@
     row?: Api.Fms.ExpenseReimbursementRecord
     copy?: boolean
     sourceLoan?: TravelLoan
+    sourceApplication?: TravelApplication
     isCurrent?: () => boolean
   }
   interface LineDialogExpose {
@@ -706,6 +709,11 @@
     const permissions = data.copy
       ? ['FinanceExpenseReimbursement:Add', 'FinanceExpenseReimbursement:Copy']
       : [data.row ? 'FinanceExpenseReimbursement:Edit' : 'FinanceExpenseReimbursement:Add']
+    if (data.sourceApplication)
+      permissions.push(
+        'FinanceTravelApplication:View',
+        'FinanceTravelApplication:PushReimbursement'
+      )
     const contextCurrent = () =>
       scopeCurrent() &&
       session.version.value === version &&
@@ -778,6 +786,32 @@
         amount: Number(payee.amount),
         remark: payee.remark ?? null
       }))
+      if (data.sourceApplication) {
+        const source = data.sourceApplication
+        if (!['approved', 'paid', 'closed'].includes(source.status))
+          throw new Error('出差申请尚未审批通过，请返回原单核对')
+        model.value = {
+          ...initial(),
+          tenantId: source.tenantId,
+          applicantEmployeeId: source.applicantEmployeeId,
+          assignmentId: source.assignmentId,
+          expenseDepartmentId: source.expenseDepartmentId,
+          travelApplicationId: source.id,
+          reason: source.reason,
+          multipleReimbursees: source.multipleTravelers
+        }
+        lines.value = (source.itineraries ?? []).map((line) => ({
+          expenseItemId: line.expenseItemId,
+          projectId: line.projectId,
+          occurredOn: line.endDate,
+          grossAmount: line.requestedAmount,
+          taxRate: 0,
+          taxAmount: 0,
+          invoiceNo: null,
+          reimburseeEmployeeId: source.multipleTravelers ? null : source.applicantEmployeeId,
+          remark: `${line.departurePlace} → ${line.destinationPlace}`
+        }))
+      }
       if (data.sourceLoan) {
         const source = data.sourceLoan
         model.value = {
@@ -871,9 +905,11 @@
             ? `编辑费用报销 · ${detail.reimbursementNo}`
             : data.copy
               ? '复制费用报销单'
-              : data.sourceLoan
-                ? `借款下推报销 · ${data.sourceLoan.loanNo}`
-                : '新增费用报销单',
+              : data.sourceApplication
+                ? `出差申请下推报销 · ${data.sourceApplication.applicationNo}`
+                : data.sourceLoan
+                  ? `借款下推报销 · ${data.sourceLoan.loanNo}`
+                  : '新增费用报销单',
         subtitle: data.sourceLoan
           ? '请按实际发生费用调整明细、金额及发票；借款抵扣后的差额再登记收款。'
           : '保存草稿后可提交审批；关联借款时，财务仅支付抵扣后的现金差额。',
