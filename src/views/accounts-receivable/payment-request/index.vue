@@ -18,7 +18,8 @@
           emptyDescription: '可从已审核退款或未占用的贷方应收余额生成申请。'
         }"
         ref="table"
-        v-model="search"
+        :model-value="search"
+        @update:model-value="replaceReactiveModel(search, $event)"
         :api-fn="rows"
         :search-items="searchItems"
         :columns-factory="columns"
@@ -54,6 +55,7 @@
   </ArtPermissionGuard>
 </template>
 <script setup lang="tsx">
+  import { replaceReactiveModel } from '@/utils/form/model'
   import { createArDeleteMetadata } from '../modules/ar-delete-metadata'
   import { useRouteDocumentDrawer } from '@/hooks/core/useRouteDocumentDrawer'
   import { ref, reactive, computed } from 'vue'

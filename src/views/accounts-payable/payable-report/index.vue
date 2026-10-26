@@ -11,7 +11,8 @@
       </BusinessWorkspaceHeader>
       <ArtTableQuery
         ref="tableRef"
-        v-model="search"
+        :model-value="search"
+        @update:model-value="replaceReactiveModel(search, $event)"
         :api-fn="loadReport"
         :search-items="searchItems"
         :columns-factory="columns"
@@ -59,6 +60,7 @@
   import { useRouteOperationGuard } from '@/hooks/core/useRouteTableContext'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import { printHtmlDocument } from '@/utils/file/print-document'
+  import { replaceReactiveModel } from '@/utils/form/model'
   import { formatSensitiveCurrencyValue as money } from '@/utils/ui/format'
   import ArtTableQuery from '@/components/core/tables/art-table-query/index.vue'
   import BusinessWorkspaceHeader from '@/components/business/business-workspace-header/index.vue'

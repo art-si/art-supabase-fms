@@ -197,13 +197,13 @@
         ]
       : [])
   ])
-  async function handleOpen(row: Statement) {
-    openDetail(row.id)
+  async function handleOpen(row: Statement, preloaded = false) {
+    openDetail(row.id, preloaded ? row : undefined)
     await drawerRef.value?.handleOpen(row, {
       title: '承运商对账详情',
       subtitle: row.statementNo,
       size: 'xl',
-      onOpen: () => loadDetail(row.id),
+      onOpen: preloaded ? undefined : () => loadDetail(row.id),
       drawerProps: { appendToBody: true, resizable: true, closeOnClickModal: true }
     })
   }

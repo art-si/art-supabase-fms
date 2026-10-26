@@ -18,114 +18,120 @@
       <template #empty-action>
         <ElButton type="primary" plain @click="retryLoad">重新加载</ElButton>
       </template>
-      <div v-if="detail" class="voucher-detail">
-        <section class="voucher-detail__hero art-card-xs">
-          <span class="voucher-detail__hero-icon" aria-hidden="true">
-            <ArtSvgIcon icon="ri:file-list-3-line" />
-          </span>
-          <div class="voucher-detail__hero-copy">
-            <div class="voucher-detail__title-row">
-              <h2>{{ detail.voucherNo }}</h2>
-              <ElTag :type="statusType(detail.status)" effect="light">
-                {{ statusLabel(detail.status) }}
-              </ElTag>
-            </div>
-            <p>{{ detail.accountSet?.accountSetName }}</p>
-            <span>{{ displaySummary }}</span>
-          </div>
-        </section>
-
-        <ArtSectionCard title="凭证信息" preserve-content-structure>
-          <ArtDescriptions
-            :data="detail"
-            :items="descriptionItems"
-            :columns="2"
-            label-width="104px"
-          />
-        </ArtSectionCard>
-
-        <ArtSectionCard
-          class="voucher-detail__section"
-          title="会计分录"
-          :empty="!detail.lines?.length"
-          empty-title="暂无会计分录"
-          empty-description="补充分录后可核对借贷金额。"
-          :empty-visual-size="64"
-          :min-height="148"
-          preserve-content-structure
-        >
-          <ArtTable
-            :border="false"
-            :data="detail.lines ?? []"
-            :columns="lineColumns"
-            :pagination="false"
-            table-layout="fixed"
-            empty-text="暂无会计分录"
-          />
-          <div v-if="canViewAmounts" class="voucher-detail__totals">
-            <strong>借方合计 {{ formatSensitiveNumber(detail.totalDebit) }}</strong>
-            <strong>贷方合计 {{ formatSensitiveNumber(detail.totalCredit) }}</strong>
-          </div>
-        </ArtSectionCard>
-
-        <ArtSectionCard
-          v-if="canViewAttachments"
-          class="voucher-detail__section"
-          title="原始凭证附件"
-          :empty="!detail.attachments?.length"
-          :empty-title="
-            getFieldAccess(detail.fieldAccess, 'voucherAttachments') === 'masked'
-              ? '附件内容已脱敏'
-              : '暂无原始凭证附件'
-          "
-          :empty-description="
-            getFieldAccess(detail.fieldAccess, 'voucherAttachments') === 'masked'
-              ? '当前权限无法查看原始凭证附件。'
-              : '上传回单、发票或合同后，可在此下载核对。'
-          "
-          :empty-visual-size="64"
-          :min-height="148"
-          preserve-content-structure
-        >
-          <div class="voucher-detail__attachments">
-            <ElButton
-              v-for="attachment in detail.attachments"
-              :key="attachment.url"
-              plain
-              @click="downloadAttachment(attachment)"
-            >
-              <ArtSvgIcon icon="ri:attachment-2" />{{ attachment.name }}
-            </ElButton>
-          </div>
-        </ArtSectionCard>
-
-        <ArtSectionCard
-          v-if="canViewAuditTrail"
-          class="voucher-detail__section"
-          title="操作流水"
-          :empty="!detail.actions?.length"
-          empty-title="暂无操作流水"
-          empty-description="提交、审核和过账后，处理记录会显示在这里。"
-          :empty-visual-size="64"
-          :min-height="148"
-          preserve-content-structure
-        >
-          <ElTimeline class="voucher-detail__timeline">
-            <ElTimelineItem
-              v-for="item in detail.actions"
-              :key="item.id"
-              :timestamp="formatTime(item.actionTime)"
-              placement="top"
-            >
-              <div class="voucher-detail__timeline-card">
-                <strong>{{ actionLabel(item.action) }}</strong>
-                <span>{{ item.actor }}</span>
-                <p v-if="item.reason">{{ item.reason }}</p>
+      <VoucherRelatedLayout
+        v-if="detail"
+        :source="detail"
+        :before-navigate="() => drawerRef?.handleClose()"
+      >
+        <div class="voucher-detail">
+          <section class="voucher-detail__hero art-card-xs">
+            <span class="voucher-detail__hero-icon" aria-hidden="true">
+              <ArtSvgIcon icon="ri:file-list-3-line" />
+            </span>
+            <div class="voucher-detail__hero-copy">
+              <div class="voucher-detail__title-row">
+                <h2>{{ detail.voucherNo }}</h2>
+                <ElTag :type="statusType(detail.status)" effect="light">
+                  {{ statusLabel(detail.status) }}
+                </ElTag>
               </div>
-            </ElTimelineItem>
-          </ElTimeline>
-        </ArtSectionCard>
-      </div>
+              <p>{{ detail.accountSet?.accountSetName }}</p>
+              <span>{{ displaySummary }}</span>
+            </div>
+          </section>
+
+          <ArtSectionCard title="凭证信息" preserve-content-structure>
+            <ArtDescriptions
+              :data="detail"
+              :items="descriptionItems"
+              :columns="2"
+              label-width="104px"
+            />
+          </ArtSectionCard>
+
+          <ArtSectionCard
+            class="voucher-detail__section"
+            title="会计分录"
+            :empty="!detail.lines?.length"
+            empty-title="暂无会计分录"
+            empty-description="补充分录后可核对借贷金额。"
+            :empty-visual-size="64"
+            :min-height="148"
+            preserve-content-structure
+          >
+            <ArtTable
+              :border="false"
+              :data="detail.lines ?? []"
+              :columns="lineColumns"
+              :pagination="false"
+              table-layout="fixed"
+              empty-text="暂无会计分录"
+            />
+            <div v-if="canViewAmounts" class="voucher-detail__totals">
+              <strong>借方合计 {{ formatSensitiveNumber(detail.totalDebit) }}</strong>
+              <strong>贷方合计 {{ formatSensitiveNumber(detail.totalCredit) }}</strong>
+            </div>
+          </ArtSectionCard>
+
+          <ArtSectionCard
+            v-if="canViewAttachments"
+            class="voucher-detail__section"
+            title="原始凭证附件"
+            :empty="!detail.attachments?.length"
+            :empty-title="
+              getFieldAccess(detail.fieldAccess, 'voucherAttachments') === 'masked'
+                ? '附件内容已脱敏'
+                : '暂无原始凭证附件'
+            "
+            :empty-description="
+              getFieldAccess(detail.fieldAccess, 'voucherAttachments') === 'masked'
+                ? '当前权限无法查看原始凭证附件。'
+                : '上传回单、发票或合同后，可在此下载核对。'
+            "
+            :empty-visual-size="64"
+            :min-height="148"
+            preserve-content-structure
+          >
+            <div class="voucher-detail__attachments">
+              <ElButton
+                v-for="attachment in detail.attachments"
+                :key="attachment.url"
+                plain
+                @click="downloadAttachment(attachment)"
+              >
+                <ArtSvgIcon icon="ri:attachment-2" />{{ attachment.name }}
+              </ElButton>
+            </div>
+          </ArtSectionCard>
+
+          <ArtSectionCard
+            v-if="canViewAuditTrail"
+            class="voucher-detail__section"
+            title="操作流水"
+            :empty="!detail.actions?.length"
+            empty-title="暂无操作流水"
+            empty-description="提交、审核和过账后，处理记录会显示在这里。"
+            :empty-visual-size="64"
+            :min-height="148"
+            preserve-content-structure
+          >
+            <ElTimeline class="voucher-detail__timeline">
+              <ElTimelineItem
+                v-for="item in detail.actions"
+                :key="item.id"
+                :timestamp="formatTime(item.actionTime)"
+                placement="top"
+              >
+                <div class="voucher-detail__timeline-card">
+                  <strong>{{ actionLabel(item.action) }}</strong>
+                  <span>{{ item.actor }}</span>
+                  <p v-if="item.reason">{{ item.reason }}</p>
+                </div>
+              </ElTimelineItem>
+            </ElTimeline>
+          </ArtSectionCard>
+        </div>
+      </VoucherRelatedLayout>
     </ArtAsyncState>
   </ArtDrawer>
 </template>
@@ -149,6 +155,7 @@
   import { canViewField, formatSensitiveNumber, getFieldAccess } from '@/utils/field-permission'
   import { useUserStore } from '@/store/modules/user'
   import { formatVoucherSummary, voucherSourceLabel } from '../../../modules/voucher-summary'
+  import VoucherRelatedLayout from './voucher-related-layout.vue'
 
   defineOptions({ name: 'FinanceVoucherDetailDrawer' })
 
@@ -350,7 +357,7 @@
     openDetail(typeof row === 'string' ? row : row.id)
     await drawerRef.value?.handleOpen(initialRow, {
       title: '会计凭证详情',
-      size: 'xl',
+      size: 'min(var(--art-dialog-width-xl), 96vw)',
       onOpen: () => loadDetail(activeId.value),
       drawerProps: { appendToBody: true, resizable: true, closeOnClickModal: true }
     })

@@ -11,7 +11,8 @@
       </BusinessWorkspaceHeader>
       <ArtTableQuery
         ref="tableRef"
-        v-model="search"
+        :model-value="search"
+        @update:model-value="replaceReactiveModel(search, $event)"
         :api-fn="fetchRows"
         :columns-factory="columnsFactory"
         :search-items="searchItems"
@@ -51,6 +52,7 @@
   </ArtPermissionGuard>
 </template>
 <script setup lang="tsx">
+  import { replaceReactiveModel } from '@/utils/form/model'
   import { createArDeleteMetadata } from './ar-delete-metadata'
   import { getRevenueCostDisplayState, canCreateReceiptRefund } from './receivable-model'
   import { useRouteDocumentDrawer } from '@/hooks/core/useRouteDocumentDrawer'
@@ -237,7 +239,7 @@
       ...result,
       data: result.data.map((row) => ({
         ...row,
-        customerName: row.partyName || row.supplierName || row.customerName,
+        customerName: row.partyName || row.supplierName || row.customerName || undefined,
         receipt: row
       }))
     }

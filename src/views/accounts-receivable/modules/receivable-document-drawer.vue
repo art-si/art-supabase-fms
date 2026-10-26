@@ -21,6 +21,22 @@
           :span="6"
         />
         <ArtDescriptions v-else :data="document" :items="detailItems" :columns="4" />
+        <ArtDescriptions
+          v-if="!editable && bookSnapshot?.configured === true && bookSnapshot.accountSetId"
+          class="mt-4"
+          :data="bookSnapshot"
+          :items="bookSnapshotItems"
+          :columns="3"
+        />
+        <ElAlert
+          v-else-if="
+            !editable && document.status === 'approved' && bookSnapshot?.configured === false
+          "
+          class="mt-4"
+          type="warning"
+          :closable="false"
+          :title="bookSnapshot.message || '原账套尚未核实，请先核对历史记账依据。'"
+        />
         <ArtSectionCard
           title="应收明细"
           description="数量型按商品数量计价；金额型用于运输与服务。税率须明确选择。"
@@ -317,6 +333,41 @@
     { key: 'status', label: '单据状态', field: 'status', dictCode: 'arDocumentStatus' },
     { key: 'accountingDate', label: '记账日期', field: 'accountingDate' },
     { key: 'sourceNo', label: '来源单据', field: 'sourceNo' }
+  ]
+  const bookSnapshot = computed<ReceivableDocument['bookContext']>(
+    () =>
+      document.value?.bookContext ??
+      (document.value?.bookSnapshotVersion === 1
+        ? {
+            configured: true,
+            accountSetId: document.value.accountSetId,
+            accountSetName: document.value.accountSetName,
+            baseCurrencyCode: document.value.baseCurrencyCode,
+            exchangeRate: document.value.exchangeRate
+          }
+        : undefined)
+  )
+  const bookSnapshotItems: ArtDescriptionItem<NonNullable<ReceivableDocument['bookContext']>>[] = [
+    {
+      key: 'accountSetName',
+      label: '核算账套',
+      value: (record: NonNullable<ReceivableDocument['bookContext']>) =>
+        record.accountSetName || '原账套已确认'
+    },
+    { key: 'baseCurrencyCode', label: '本位币', field: 'baseCurrencyCode' },
+    {
+      key: 'exchangeRate',
+      label: '原记账汇率',
+      field: 'exchangeRate',
+      formatter: (value) =>
+        typeof document.value?.totalAmount === 'number' &&
+        Number.isFinite(document.value.totalAmount) &&
+        typeof value === 'number' &&
+        Number.isFinite(value) &&
+        value > 0
+          ? formatNumberValue(value, 'zh-CN', { maximumFractionDigits: 12 })
+          : '—'
+    }
   ]
   const detailItems: ArtDescriptionItem<ReceivableDocument>[] = [
     { key: 'kind', label: '单据类别', field: 'kind', dictCode: 'arDocumentKind' },

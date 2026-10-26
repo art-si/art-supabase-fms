@@ -3,6 +3,7 @@ import { normalizeNullableText } from '@/utils/form/normalize'
 import { useSupabase } from '@/hooks/core/useSupabase'
 import type { ApiFeedbackOptions } from '@/types/api/request'
 import { actWorkflowByBusiness, startWorkflow } from '@/api/workflow'
+import { createTenantScopeReadGuard } from '@/utils/tenant-scope-context'
 
 type Statement = Api.Fms.CarrierStatementRecord
 type SearchParams = Api.Fms.CarrierStatementSearchParams
@@ -94,10 +95,13 @@ export async function fetchCarrierStatementEligibleCosts(params: EligibleSearchP
 }
 
 export async function fetchCarrierStatementDetail(id: string) {
-  return await responseHandle<Statement | null>(
+  const assertScope = createTenantScopeReadGuard()
+  const result = await responseHandle<Statement | null>(
     () => supabase.rpc('tms_get_carrier_statement_secure', { p_id: id }),
     { showErrorMessage: false }
   )
+  assertScope()
+  return result
 }
 
 export async function createCarrierStatement(params: CreatePayload) {

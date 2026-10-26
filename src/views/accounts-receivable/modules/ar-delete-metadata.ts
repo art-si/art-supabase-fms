@@ -34,6 +34,21 @@ export function createArDeleteMetadata(
       path: financePaths.receivablePaymentRequest,
       permission: 'FinanceReceivablePaymentRequest:View',
       label: '付款申请'
+    },
+    payable_application: {
+      path: financePaths.payableApplication,
+      permission: 'FinancePayableApplication:View',
+      label: '销售退款付款申请'
+    },
+    payable_payment: {
+      path: financePaths.payablePayment,
+      permission: 'FinancePayablePayment:View',
+      label: '销售退款付款'
+    },
+    payable_refund: {
+      path: financePaths.payableRefund,
+      permission: 'FinancePayableRefund:View',
+      label: '付款退款'
     }
   }
   const metadata: Record<string, MasterDataDeleteDependencyMeta> = {}

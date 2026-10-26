@@ -15,7 +15,8 @@
           emptyDescription: '请核对截止日期与筛选条件，并确认来源应收已审核。'
         }"
         ref="tableRef"
-        v-model="search"
+        :model-value="search"
+        @update:model-value="replaceReactiveModel(search, $event)"
         :api-fn="loadReport"
         :search-items="searchItems"
         :columns-factory="columns"
@@ -37,6 +38,7 @@
   </ArtPermissionGuard>
 </template>
 <script setup lang="ts">
+  import { replaceReactiveModel } from '@/utils/form/model'
   import { ref, reactive, computed, watch } from 'vue'
   import dayjs from 'dayjs'
   import { fetchArOrganizationTree } from '@/api/receivables'

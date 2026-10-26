@@ -24,6 +24,19 @@
       </template>
     </BusinessWorkspaceHeader>
 
+    <ElAlert
+      v-if="linkedDocumentError"
+      class="mb-4!"
+      type="error"
+      title="关联承运商对账单暂未打开"
+      :closable="false"
+      show-icon
+    >
+      <span>请核对来源查看权限与租户范围，原链接已保留。</span>
+      <ElButton type="primary" link @click="retryLinkedDocument"
+        ><ArtSvgIcon icon="ri:refresh-line" />重新打开对账单</ElButton
+      >
+    </ElAlert>
     <ArtTableQuery
       ref="tableQueryRef"
       :model-value="searchQuery"
@@ -33,6 +46,7 @@
       :columns-factory="columnsFactory"
       :header-actions="headerActions"
       header-actions-placement="workspace"
+      refresh-feedback="icon"
       :search-bar-props="{ span: 6, labelWidth: 86, isExpand: true, showExpand: false }"
       :table-props="{
         rowKey: 'id',
@@ -66,6 +80,7 @@
     exportCarrierStatementList,
     fetchCarrierOptions,
     fetchCarrierStatementList,
+    fetchCarrierStatementDetail,
     updateCarrierStatementStatus
   } from '@fms/api'
   import { useUserStore } from '@/store/modules/user'
@@ -77,6 +92,7 @@
   } from '@/utils/field-permission'
   import { notifyFriendlyError, useArtFeedback } from '@/hooks/core/useArtFeedback'
   import { useAuth } from '@/hooks/core/useAuth'
+  import { useRouteDocumentDrawer } from '@/hooks/core/useRouteDocumentDrawer'
   import CarrierStatementDialog from './modules/carrier-statement-dialog.vue'
   import CarrierStatementDetailDrawer from './modules/carrier-statement-detail-drawer.vue'
   import BusinessWorkspaceHeader, {
@@ -104,7 +120,22 @@
   const deleteContext = useMasterDataDeleteProcessingContext()
   const tableQueryRef = ref<ArtTableQueryExpose>()
   const dialogRef = ref<{ handleOpen: () => Promise<void> }>()
-  const drawerRef = ref<{ handleOpen: (row: Statement) => Promise<void> }>()
+  const drawerRef = ref<{ handleOpen: (row: Statement, preloaded?: boolean) => Promise<void> }>()
+  const { error: linkedDocumentError, retry: retryLinkedDocument } = useRouteDocumentDrawer({
+    routeName: 'FinanceCarrierSettlement',
+    queryKey: 'recordId',
+    canOpen: () => hasAuth('FinanceCarrierSettlement:View'),
+    fetchDocument: async (id) => {
+      const result = await fetchCarrierStatementDetail(id)
+      if (result.error) throw result.error
+      if (!result.data || result.data.id !== id) throw new Error('对账单不存在或暂无查看权限')
+      return result.data
+    },
+    openDocument: async (record) => {
+      if (!drawerRef.value) throw new Error('对账详情尚未就绪，请重试')
+      await drawerRef.value.handleOpen(record, true)
+    }
+  })
   const { deleteGuardRef, deleteRecord } = useRecordDeleteGuard(
     'tms_carrier_statement',
     '承运商对账单'

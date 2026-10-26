@@ -381,7 +381,7 @@
           message: ({ rowIndex }) => `第 ${rowIndex + 1} 条分录原币金额必须大于 0`
         }
       ],
-      minWidth: 210,
+      minWidth: 234,
       formatter: (row) => {
         const subject = subjectFor(row)
         if (!subject?.allowForeignCurrency) return '—'
@@ -391,7 +391,7 @@
             : '—'
         }
         return (
-          <div class="grid grid-cols-[72px_minmax(100px,1fr)] gap-1.5">
+          <div class="grid grid-cols-[96px_minmax(100px,1fr)] gap-1.5">
             <ElSelect
               v-model={row.currencyId}
               aria-label={`第 ${row.lineNo} 条分录币种`}

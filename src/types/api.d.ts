@@ -493,6 +493,7 @@ declare global {
         sourceType: VoucherSourceType
         sourceId?: string | null
         sourceNo?: string | null
+        sourceEventCode?: string | null
         summary: string
         attachments: VoucherAttachment[]
         totalDebit: number
@@ -536,7 +537,11 @@ declare global {
         creditAmount?: Api.Fms.SensitiveNumber
       }
 
-      type SecureVoucherRecord = Omit<VoucherRecord, 'totalDebit' | 'totalCredit' | 'lines'> & {
+      type SecureVoucherRecord = Omit<
+        VoucherRecord,
+        'tenantId' | 'totalDebit' | 'totalCredit' | 'lines'
+      > & {
+        tenantId?: string
         totalDebit?: Api.Fms.SensitiveNumber
         totalCredit?: Api.Fms.SensitiveNumber
         lines?: SecureVoucherLineRecord[]
@@ -648,6 +653,22 @@ declare global {
         | 'gross_amount'
         | 'net_amount'
         | 'tax_amount'
+        | 'revenue_amount'
+        | 'cost_amount'
+        | 'cost_difference'
+        | 'exchange_gain_loss'
+        | 'receivable_amount'
+        | 'unallocated_amount'
+        | 'paid_amount'
+        | 'payable_amount'
+        | 'discount_amount'
+        | 'fee_amount'
+        | 'payable_base_amount'
+        | 'credit_base_amount'
+        | 'receipt_base_amount'
+        | 'receipt_amount'
+        | 'refund_amount'
+        | 'received_amount'
         | 'original_value'
         | 'accumulated_depreciation'
         | 'impairment_amount'

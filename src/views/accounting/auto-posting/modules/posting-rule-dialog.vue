@@ -226,6 +226,21 @@
       'estimated_payable:approved': ['supplier_id', 'organization_id', 'project_id'],
       'financial_payable:approved': ['supplier_id', 'organization_id', 'project_id'],
       'system:ap_payment_confirmed': ['supplier_id', 'organization_id', 'project_id'],
+      'system:ap_virtual_payment_confirmed': [
+        'supplier_id',
+        'carrier_id',
+        'organization_id',
+        'project_id'
+      ],
+      'system:ap_supplier_refund_received': ['supplier_id', 'organization_id', 'project_id'],
+      'system:ap_payable_refund_writeoff_approved': [
+        'supplier_id',
+        'counterparty_supplier_id',
+        'organization_id',
+        'counterparty_organization_id',
+        'project_id',
+        'receipt_project_id'
+      ],
       'system:ap_payment_refund_received': [
         'supplier_id',
         'carrier_id',
@@ -235,6 +250,8 @@
       'system:ap_writeoff_approved': [
         'supplier_id',
         'counterparty_supplier_id',
+        'carrier_id',
+        'counterparty_carrier_id',
         'organization_id',
         'counterparty_organization_id'
       ],

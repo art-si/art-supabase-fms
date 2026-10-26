@@ -11,7 +11,8 @@
       </BusinessWorkspaceHeader>
       <ArtTableQuery
         ref="tableRef"
-        v-model="search"
+        :model-value="search"
+        @update:model-value="replaceReactiveModel(search, $event)"
         :api-fn="fetchRows"
         :search-items="searchItems"
         :columns-factory="columnsFactory"
@@ -93,6 +94,12 @@
         :columns="sourceColumns"
         row-key="id"
         label-key="name"
+        :dialog-width="sourceKind === 'tms_source' ? 1440 : 'xl'"
+        :search-placeholder="
+          sourceKind === 'tms_source'
+            ? '搜索运单号、车牌号、司机、站点或往来方'
+            : '搜索来源单号或客户'
+        "
         :title="sourceKind === 'wms_source' ? '选择已审核销售出库' : '选择已签收运单'"
         @confirm="(_key, rows) => importSource(rows)"
       />
@@ -101,6 +108,7 @@
   </ArtPermissionGuard>
 </template>
 <script setup lang="tsx">
+  import { replaceReactiveModel } from '@/utils/form/model'
   import { createArDeleteMetadata } from './ar-delete-metadata'
   import { useRouteDocumentDrawer } from '@/hooks/core/useRouteDocumentDrawer'
   import { useRouteOperationGuard } from '@/hooks/core/useRouteTableContext'
@@ -113,6 +121,7 @@
   import { ElMessage, ElButton } from 'element-plus'
   import { uniq, groupBy } from 'lodash-es'
   import { fetchArOrganizationTree } from '@/api/receivables'
+  import { pushPayableSettlement } from '@/api/payable-settlement'
   import {
     fetchArWorkspace,
     fetchArOptions,
@@ -497,21 +506,57 @@
     },
     { type: 'export', permission: permissions.value.Export, exportFilename: title.value }
   ])
+  const useUnifiedRefundApplication = computed(
+    () => hasAuth('FinancePayableApplication:Add') && hasAuth('FinancePayableApplication:View')
+  )
   const pushItems = computed<ButtonMoreItem[]>(() =>
     props.kind === 'estimate'
       ? [
-          { key: 'financial', label: '财务应收', auth: 'FinanceEstimatedReceivable:Push' },
-          { key: 'revenue', label: '收入成本确认', auth: 'FinanceRevenueCost:Add' }
+          {
+            key: 'financial',
+            label: '财务应收',
+            icon: 'ri:file-list-3-line',
+            auth: 'FinanceEstimatedReceivable:Push'
+          },
+          {
+            key: 'revenue',
+            label: '收入成本确认',
+            icon: 'ri:pie-chart-line',
+            auth: 'FinanceRevenueCost:Add'
+          }
         ]
       : [
-          { key: 'receipt', label: '收款', auth: 'FinanceReceipt:Add' },
-          { key: 'special', label: '专用发票', auth: 'FinanceFinancialReceivable:Push' },
-          { key: 'ordinary', label: '普通发票', auth: 'FinanceFinancialReceivable:Push' },
-          { key: 'refund', label: '收款退款', auth: 'FinanceReceiptRefund:Add' },
+          {
+            key: 'receipt',
+            label: '收款',
+            icon: 'ri:money-cny-circle-line',
+            auth: 'FinanceReceipt:Add'
+          },
+          {
+            key: 'special',
+            label: '专用发票',
+            icon: 'ri:file-shield-2-line',
+            auth: 'FinanceFinancialReceivable:Push'
+          },
+          {
+            key: 'ordinary',
+            label: '普通发票',
+            icon: 'ri:file-text-line',
+            auth: 'FinanceFinancialReceivable:Push'
+          },
+          {
+            key: 'refund',
+            label: '收款退款',
+            icon: 'ri:refund-line',
+            auth: 'FinanceReceiptRefund:Add'
+          },
           {
             key: 'request',
-            label: '付款申请（贷方余额）',
-            auth: 'FinanceReceivablePaymentRequest:Add'
+            label: useUnifiedRefundApplication.value ? '销售退款申请' : '付款申请（贷方余额）',
+            icon: 'ri:refund-2-line',
+            auth: useUnifiedRefundApplication.value
+              ? 'FinancePayableApplication:Add'
+              : 'FinanceReceivablePaymentRequest:Add'
           }
         ]
   )
@@ -582,8 +627,21 @@
       } else if (action === 'receipt')
         await settlementDrawer.value?.openReceipt(await getDocument(id))
       else if (action === 'refund') await settlementDrawer.value?.openRefundForFinancial(id)
-      else if (action === 'request') await creditPaymentDialog.value?.open(await getDocument(id))
-      else if (action === 'ordinary' || action === 'special') {
+      else if (action === 'request') {
+        const row = await getDocument(id)
+        if (useUnifiedRefundApplication.value) {
+          if (!row.isCredit || row.status !== 'approved') {
+            ElMessage.warning('仅已审核红字财务应收可发起销售退款申请')
+            return
+          }
+          const created = await pushPayableSettlement(id, 'application', 'receivable')
+          ElMessage.success(`销售退款申请已生成：${created.documentNo}`)
+          await router.push({
+            path: financePaths.payableApplication,
+            query: { recordId: created.id }
+          })
+        } else await creditPaymentDialog.value?.open(row)
+      } else if (action === 'ordinary' || action === 'special') {
         await pushArInvoice(id, action)
         ElMessage.success('发票草稿已生成，请到发票管理提交审核')
         await tableRef.value?.refreshData()
@@ -686,10 +744,25 @@
       busy.value = false
     }
   }
-  const sourceColumns: DataSelectColumn<ArOption>[] = [
-    { prop: 'code', label: '来源单号', minWidth: 200 },
-    { prop: 'description', label: '客户', minWidth: 200 }
-  ]
+  const sourceColumns = computed<DataSelectColumn<ArOption>[]>(() =>
+    sourceKind.value === 'wms_source'
+      ? [
+          { prop: 'code', label: '来源单号', minWidth: 200 },
+          { prop: 'description', label: '客户', minWidth: 200 }
+        ]
+      : [
+          { prop: 'code', label: '来源单号（运单号）', minWidth: 180 },
+          { prop: 'plateNo', label: '车牌号', minWidth: 130 },
+          { prop: 'driverName', label: '司机', minWidth: 120 },
+          { prop: 'shippingContactName', label: '发货人', minWidth: 120 },
+          { prop: 'shippingAddress', label: '发货地址', minWidth: 220 },
+          { prop: 'originStation', label: '发站', minWidth: 130 },
+          { prop: 'destinationStation', label: '到货站', minWidth: 130 },
+          { prop: 'transferStation', label: '中转站', minWidth: 130 },
+          { prop: 'shippingCustomerName', label: '发货方', minWidth: 180 },
+          { prop: 'receivingCustomerName', label: '收货方', minWidth: 180 }
+        ]
+  )
   async function sourceOptions(params: DataSelectFetchParams) {
     return fetchArOptions(sourceKind.value, useTenantScopeStore().effectiveTenantId, params.keyword)
   }

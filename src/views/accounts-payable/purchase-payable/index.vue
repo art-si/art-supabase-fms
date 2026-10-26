@@ -13,7 +13,8 @@
       Voucher: 'FinancePurchasePayable:Voucher',
       Print: 'FinancePurchasePayable:Print',
       Export: 'FinancePurchasePayable:Export',
-      Freeze: 'FinancePurchasePayable:Freeze'
+      Freeze: 'FinancePurchasePayable:Freeze',
+      CostMatch: 'FinancePurchasePayable:CostMatch'
     }"
   />
 </template>

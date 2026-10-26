@@ -10,21 +10,20 @@ export function buildPayrollItems(rows: readonly PayrollItemRow[]): {
   items: Record<string, number>
   total: number
 } {
-  const entries: [string, number][] = []
+  const items = new Map<string, number>()
   let total = new Decimal(0)
   for (const row of rows) {
     const name = normalizeNonNullableText(row.name)
     if (!name) throw new Error('请填写薪酬项目名称')
-    if (entries.some(([key]) => key === name))
-      throw new Error(`薪酬项目“${name}”重复，请合并后保存`)
+    if (items.has(name)) throw new Error(`薪酬项目“${name}”重复，请合并后保存`)
     if (row.amount == null || !Number.isFinite(row.amount) || row.amount < 0) {
       throw new Error(`请填写“${name}”的有效非负金额`)
     }
     const amount = new Decimal(row.amount).toDecimalPlaces(2)
-    entries.push([name, amount.toNumber()])
+    items.set(name, amount.toNumber())
     total = total.plus(amount)
   }
-  return { items: Object.fromEntries(entries), total: total.toNumber() }
+  return { items: Object.fromEntries(items), total: total.toNumber() }
 }
 
 /** Preserve source names; an old total-only line remains explicitly unclassified. */

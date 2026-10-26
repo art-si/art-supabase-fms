@@ -1,91 +1,94 @@
 <template>
   <ArtDialog ref="dialogRef" size="xl">
-    <div class="voucher-dialog">
-      <ElAlert
-        v-if="partialSaveError"
-        class="mb-4"
-        type="warning"
-        :closable="false"
-        show-icon
-        :title="partialSaveError"
-      />
-      <ArtForm
-        ref="formRef"
-        root-class="art-form--mobile-stack"
-        v-model="form.data"
-        :items="form.items"
-        :rules="form.rules"
-        :span="8"
-        :gutter="18"
-        label-width="92px"
-        :show-reset="false"
-        :show-submit="false"
-        :disabled="!canEditVoucher"
-        scroll-to-error
-      />
-
-      <VoucherEntryLines
-        ref="lineEditorRef"
-        v-model="form.data.lines"
-        :subjects="context.subjects"
-        :currencies="context.currencies"
-        :auxiliary-items="context.auxiliaryItems"
-        :readonly="!amountEditable || templateLoading"
-      />
-
-      <CashFlowAllocationPanel
-        ref="cashFlowPanelRef"
-        v-model="cashFlowDrafts"
-        :lines="form.data.lines"
-        :subjects="context.subjects"
-        :statement-items="context.cashFlowItems"
-        :readonly="!amountEditable"
-      />
-
-      <ArtSectionCard
-        v-if="canViewAttachments"
-        class="voucher-dialog__attachments"
-        :empty="!form.data.attachments.length"
-        empty-title="暂无原始凭证附件"
-        empty-description="上传回单、发票或合同，保留记账依据。"
-        :empty-visual-size="64"
-        :min-height="148"
-        preserve-content-structure
-      >
-        <template #header
-          ><div class="voucher-dialog__section-header">
-            <div>
-              <ArtSectionTitle :show-line="false">原始凭证附件</ArtSectionTitle>
-              <p>支持上传回单、发票、合同或其他记账依据，附件与凭证一并留存。</p>
-            </div>
-            <ArtUploadFile
-              v-if="canEditAttachments"
-              :resource-tenant-id="context.accountSet.tenantId"
-              :disabled="!context.accountSet.tenantId"
-              title="上传附件"
-              :show-file-list="false"
-              :show-tip="false"
-              inline
-              @resource-change="handleAttachmentUpload"
-            /> </div
-        ></template>
-        <ArtTable
-          :border="false"
-          :data="form.data.attachments"
-          :columns="attachmentColumns"
-          :pagination="false"
-          :show-table-header="false"
-          empty-height="120px"
-          empty-text="暂无附件"
+    <VoucherRelatedLayout :source="relatedSource" :before-navigate="() => dialogRef?.handleClose()">
+      <div class="voucher-dialog">
+        <ElAlert
+          v-if="partialSaveError"
+          class="mb-4"
+          type="warning"
+          :closable="false"
+          show-icon
+          :title="partialSaveError"
         />
-      </ArtSectionCard>
-    </div>
+        <ArtForm
+          ref="formRef"
+          root-class="art-form--mobile-stack"
+          v-model="form.data"
+          :items="form.items"
+          :rules="form.rules"
+          :span="8"
+          :gutter="18"
+          label-width="92px"
+          :show-reset="false"
+          :show-submit="false"
+          :disabled="!canEditVoucher"
+          scroll-to-error
+        />
+
+        <VoucherEntryLines
+          ref="lineEditorRef"
+          v-model="form.data.lines"
+          :subjects="context.subjects"
+          :currencies="context.currencies"
+          :auxiliary-items="context.auxiliaryItems"
+          :readonly="!amountEditable || templateLoading"
+        />
+
+        <CashFlowAllocationPanel
+          ref="cashFlowPanelRef"
+          v-model="cashFlowDrafts"
+          :lines="form.data.lines"
+          :subjects="context.subjects"
+          :statement-items="context.cashFlowItems"
+          :readonly="!amountEditable"
+        />
+
+        <ArtSectionCard
+          v-if="canViewAttachments"
+          class="voucher-dialog__attachments"
+          :empty="!form.data.attachments.length"
+          empty-title="暂无原始凭证附件"
+          empty-description="上传回单、发票或合同，保留记账依据。"
+          :empty-visual-size="64"
+          :min-height="148"
+          preserve-content-structure
+        >
+          <template #header
+            ><div class="voucher-dialog__section-header">
+              <div>
+                <ArtSectionTitle :show-line="false">原始凭证附件</ArtSectionTitle>
+                <p>支持上传回单、发票、合同或其他记账依据，附件与凭证一并留存。</p>
+              </div>
+              <ArtUploadFile
+                v-if="canEditAttachments"
+                :resource-tenant-id="context.accountSet.tenantId"
+                :disabled="!context.accountSet.tenantId"
+                title="上传附件"
+                :show-file-list="false"
+                :show-tip="false"
+                inline
+                @resource-change="handleAttachmentUpload"
+              /> </div
+          ></template>
+          <ArtTable
+            :border="false"
+            :data="form.data.attachments"
+            :columns="attachmentColumns"
+            :pagination="false"
+            :show-table-header="false"
+            empty-height="120px"
+            empty-text="暂无附件"
+          />
+        </ArtSectionCard>
+      </div>
+    </VoucherRelatedLayout>
 
     <template #footer="{ loading, api }">
       <div class="voucher-dialog__footer">
         <ElButton :disabled="loading" @click="api.handleClose()">取消</ElButton>
         <ElButton
           v-if="hasAuth(form.data.id ? 'FinanceVoucherCenter:Edit' : 'FinanceVoucherCenter:Add')"
+          :type="hasAuth('FinanceVoucherCenter:Submit') ? undefined : 'primary'"
           :loading="loading && submitMode === 'save'"
           :disabled="templateLoading"
           @click="handleFooterConfirm(api, 'save')"
@@ -148,6 +151,9 @@
   } from '@/utils/field-permission'
   import VoucherEntryLines from '@fms/views/modules/voucher-entry-lines.vue'
   import CashFlowAllocationPanel from './cash-flow-allocation-panel.vue'
+  import VoucherRelatedLayout from './voucher-related-layout.vue'
+  import type { VoucherReferenceSource } from '@/utils/finance/voucher-reference'
+  import { createTenantScopeReadGuard } from '@/utils/tenant-scope-context'
   import { useUserStore } from '@/store/modules/user'
   import { useAuth } from '@/hooks/core/useAuth'
 
@@ -203,6 +209,7 @@
     voucherAttachments: 'edit',
     auditTrail: 'edit'
   })
+  const relatedSource = shallowRef<VoucherReferenceSource>()
   const canEditVoucher = computed(() =>
     hasAuth(form.data.id ? 'FinanceVoucherCenter:Edit' : 'FinanceVoucherCenter:Add')
   )
@@ -326,11 +333,7 @@
         type: 'input',
         props: {
           maxlength: 80,
-          clearable: true,
-          disabled:
-            !canEditVoucher.value ||
-            getFieldAccess(fieldAccess.value, 'sourceReferences') !== 'edit' ||
-            form.data.sourceType === 'manual'
+          disabled: true
         }
       }
     ]),
@@ -409,6 +412,7 @@
     }
     if (templateLoading.value) return false
     partialSaveError.value = ''
+    relatedSource.value = undefined
     try {
       if (!(await validateArtFormForSubmit(formRef.value))) return false
     } catch (error) {
@@ -592,6 +596,7 @@
       ElMessage.warning('当前账号无权新增或编辑凭证')
       return
     }
+    const assertScope = createTenantScopeReadGuard()
     ++templateRequestId
     templateLoading.value = false
     Object.assign(context, dialogContext)
@@ -604,6 +609,8 @@
       auditTrail: 'edit'
     }
     Object.assign(form.data, createInitialForm(), { accountSetId: context.accountSet.value })
+    if (!row?.id)
+      relatedSource.value = { sourceType: 'manual', fieldAccess: { sourceReferences: 'edit' } }
     const prepare = async (): Promise<boolean> => {
       await Promise.all([
         userStore.ensureDictLoaded('fmsVoucherSourceType'),
@@ -625,6 +632,7 @@
           fetchCashFlowAllocations(row.id)
         ])
         if (!data) return false
+        relatedSource.value = data
         fieldAccess.value = data.fieldAccess ?? {}
         if (!isReadableFieldAccess(getFieldAccess(fieldAccess.value, 'voucherAmounts'))) {
           ElMessage.warning('当前字段权限不足，无法编辑凭证分录')
@@ -676,6 +684,7 @@
             await api.handleClose()
             return
           }
+          assertScope()
           formRef.value?.clearValidate()
           lineEditorRef.value?.clearValidate()
         } catch (error) {
