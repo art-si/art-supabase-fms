@@ -361,9 +361,18 @@
           {
             key: 'paymentChannel',
             label: '支付渠道',
-            field: 'paymentChannel' as const,
-            dictCode: 'tmsCashPaymentMethod'
+            field: 'paymentChannel' as const
           },
+          ...(detail.data?.paymentChannel === '油卡'
+            ? [
+                {
+                  key: 'fuelCardNo',
+                  label: '关联油卡号',
+                  field: 'fuelCardNo' as const,
+                  copyable: true
+                }
+              ]
+            : []),
           {
             key: 'invoiceNo',
             label: '票据号码',

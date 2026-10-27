@@ -378,7 +378,7 @@
       height: 26px;
       color: var(--el-color-primary);
       background: var(--el-color-primary-light-9);
-      border-radius: 8px;
+      border-radius: var(--art-surface-radius);
     }
   }
 

@@ -1,5 +1,8 @@
 <template>
   <ArtDialog ref="dialogRef" size="lg" @close="() => void invalidateSession()">
+    <ElAlert v-if="saveError" type="error" :closable="false" show-icon class="mb-4">
+      <template #title>{{ saveError }}</template>
+    </ElAlert>
     <ElAlert v-if="ocrLoadError" type="error" :closable="false" show-icon>
       <template #title>{{ ocrLoadError }}</template>
       <ElButton link type="primary" @click="() => loadOcrResult()">重新加载</ElButton>
@@ -15,6 +18,7 @@
     />
 
     <ArtForm
+      :key="attachmentTenantId || 'unbound'"
       ref="formRef"
       v-model="form.data"
       :items="form.items"
@@ -128,13 +132,15 @@
     editWaybillCost,
     fetchExpenseItemTree,
     fetchFinanceWaybillOptions,
+    fetchWaybillFuelCardOptions,
+    fetchWaybillCostLegOptions,
     fetchWaybillExpenseOcrEnabled,
     reviewWaybillExpenseOcrArtifact
   } from '@fms/api'
+  import type { WaybillFuelCardOption } from '@fms/api'
   import { buildSupabasePageRange } from '@/utils/supabase/pagination'
   import { canEditField, canViewField } from '@/utils/field-permission'
   import { useDocumentNumberRule } from '@/hooks/core/useDocumentNumberRule'
-  import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import { useAuth } from '@/hooks/core/useAuth'
   import TreeUtils from '@/utils/tree'
   import ExpenseOcrPanel from './expense-ocr-panel.vue'
@@ -191,7 +197,11 @@
   const addressPickerRef = ref<ArtAddressPickerExpose>()
   const ocrPanelRef = ref<{ reset: () => void }>()
   const selection = reactive<{ waybills: SelectorWaybill[] }>({ waybills: [] })
-  const state = reactive({ autoLocateArmed: false, ocrEnabled: true })
+  const fuelCardOptions = ref<WaybillFuelCardOption[]>([])
+  const fuelCardLoadError = ref('')
+  const fuelCardLoading = ref(false)
+  const state = reactive({ autoLocateArmed: false, ocrEnabled: true, hydrating: false })
+  const saveError = ref('')
   const {
     version: formSession,
     invalidate,
@@ -205,11 +215,6 @@
     return formSession.value
   }
   onBeforeUnmount(invalidateSession)
-  const expenseNumber = useDocumentNumberRule('tms.waybill_cost')
-  const tenantScopeStore = useTenantScopeStore()
-  const attachmentTenantId = computed(
-    () => form.data.tenantId || tenantScopeStore.effectiveTenantId || ''
-  )
   const NEW_RECORD_FIELD_ACCESS: Api.Fms.WaybillCostFieldAccessMap = {
     costAmounts: 'edit',
     paymentDetails: 'edit',
@@ -220,8 +225,10 @@
 
   const createInitialForm = (): ExpenseForm => ({
     id: undefined,
+    tenantId: '',
     costNo: '',
     waybillId: '',
+    legId: null,
     maintenanceRecordId: null,
     sourceType: null,
     sourceId: null,
@@ -234,6 +241,8 @@
     providerName: '',
     payeeName: '',
     paymentChannel: '',
+    fuelCardId: null,
+    fuelCardNo: null,
     invoiceNo: '',
     meterNo: '',
     expenseLocation: '',
@@ -258,6 +267,11 @@
   })
 
   const formData = reactive<ExpenseForm>(createInitialForm())
+  const expenseNumber = useDocumentNumberRule(
+    'tms.waybill_cost',
+    () => formData.tenantId || undefined
+  )
+  const attachmentTenantId = computed(() => formData.tenantId || '')
   const activeFieldAccess = computed(() => formData.fieldAccess ?? NEW_RECORD_FIELD_ACCESS)
   const canViewCostAmounts = computed(() => canViewField(activeFieldAccess.value, 'costAmounts'))
   const canEditCostAmounts = computed(() => canEditField(activeFieldAccess.value, 'costAmounts'))
@@ -267,6 +281,17 @@
   const canEditPaymentDetails = computed(() =>
     canEditField(activeFieldAccess.value, 'paymentDetails')
   )
+  const paymentChannelOptions = computed(() => {
+    const options = ['现金', '油卡', '微信', '支付宝', '银行转账', '其他'].map((value) => ({
+      label: value,
+      value
+    }))
+    const existing = formData.paymentChannel?.trim()
+    if (existing && !options.some((option) => option.value === existing)) {
+      options.unshift({ label: existing, value: existing })
+    }
+    return options
+  })
   const canViewExpenseLocation = computed(() =>
     canViewField(activeFieldAccess.value, 'expenseLocation')
   )
@@ -307,6 +332,15 @@
         }
       ],
       occurredOn: [{ required: true, message: '请选择费用发生日期', trigger: 'change' }],
+      fuelCardId: [
+        {
+          validator: (_rule, value, callback) =>
+            formData.paymentChannel === '油卡' && !value
+              ? callback(new Error('请选择当前车辆的油卡'))
+              : callback(),
+          trigger: 'change'
+        }
+      ],
       expenseLocation: [
         {
           validator: (_rule, value, callback) => {
@@ -335,6 +369,20 @@
       },
       { label: '运单/车牌', key: 'waybillId', type: 'input' },
       {
+        label: '费用归属',
+        key: 'legId',
+        type: 'select',
+        span: 24,
+        api: fetchWaybillCostLegOptions,
+        params: { waybillId: formData.waybillId },
+        shouldFetch: (params) => Boolean(params?.waybillId),
+        resultField: 'data',
+        labelField: 'name',
+        valueField: 'id',
+        props: { placeholder: '默认归集主单 / 共用费用', clearable: true },
+        description: '返程专属费用选返程货单；共用路桥费留在主单，按返程分摊比例计算一次。'
+      },
+      {
         label: '维修来源',
         key: 'maintenanceRecordId',
         type: 'input',
@@ -348,7 +396,9 @@
         key: 'expenseItemId',
         type: 'treeSelect',
         span: 24,
-        api: fetchSelectableExpenseItems,
+        api: () => fetchSelectableExpenseItems(formData.tenantId || ''),
+        params: { tenantId: formData.tenantId },
+        shouldFetch: (params) => Boolean(params?.tenantId),
         resultField: 'data',
         labelField: 'itemName',
         valueField: 'id',
@@ -440,13 +490,40 @@
       {
         label: '支付渠道',
         key: 'paymentChannel',
-        type: 'input',
+        type: 'select',
         hidden: !canViewPaymentDetails.value,
         props: {
-          maxlength: 80,
-          placeholder: '现金、微信、油卡等',
+          options: paymentChannelOptions.value,
+          placeholder: '请选择支付渠道',
+          clearable: true,
           disabled: !canEditPaymentDetails.value
         }
+      },
+      {
+        label: '关联油卡',
+        key: 'fuelCardId',
+        type: 'select',
+        hidden: !canViewPaymentDetails.value || formData.paymentChannel !== '油卡',
+        props: {
+          options: fuelCardOptions.value.map((card) => ({ label: card.cardNo, value: card.id })),
+          placeholder: fuelCardLoading.value ? '正在加载当前车辆油卡' : '请选择当前车辆油卡',
+          disabled: !canEditPaymentDetails.value || fuelCardLoading.value,
+          clearable: fuelCardOptions.value.length > 1
+        },
+        description:
+          fuelCardLoadError.value ||
+          (fuelCardOptions.value.length === 0
+            ? '当前车辆没有可用油卡，请先维护油卡档案。'
+            : fuelCardOptions.value.length === 1
+              ? '已按运单车牌自动关联唯一可用油卡。'
+              : '同车有多张油卡，请确认本次消费使用的卡。')
+      },
+      {
+        label: '油卡号',
+        key: 'fuelCardNo',
+        type: 'input',
+        hidden: !canViewPaymentDetails.value || formData.paymentChannel !== '油卡',
+        props: { readonly: true, placeholder: '选择油卡后自动带出' }
       },
       {
         label: '票据号码',
@@ -499,11 +576,96 @@
     Object.assign(form.data, { maintenanceRecordId: source.id, amount: source.amount })
   }
   watch(
-    () => form.data.waybillId,
-    () => {
-      if (!form.data.id) form.data.maintenanceRecordId = null
+    [
+      () => form.data.waybillId,
+      () => selectedWaybill.value?.id,
+      () => selectedWaybill.value?.tenantId
+    ],
+    ([waybillId], [previousWaybillId]) => {
+      if (state.hydrating) return
+      const selectedTenantId =
+        selectedWaybill.value?.id === waybillId ? selectedWaybill.value.tenantId || '' : ''
+      if (waybillId === previousWaybillId && selectedTenantId === form.data.tenantId) return
+      Object.assign(form.data, {
+        tenantId: selectedTenantId,
+        legId: null,
+        expenseItemId: '',
+        fuelCardId: null,
+        fuelCardNo: null,
+        maintenanceRecordId: null,
+        attachments: [],
+        latestOcrRunId: null,
+        ocrArtifactId: null,
+        ocrStatus: 'not_started',
+        ...(!form.data.id ? { costNo: '' } : {})
+      })
+      saveError.value = ''
+      ocrPanelRef.value?.reset()
+      void loadFuelCards(waybillId, selectedTenantId)
     }
   )
+  watch(
+    () => form.data.paymentChannel,
+    (channel) => {
+      if (state.hydrating) return
+      if (channel !== '油卡') {
+        form.data.fuelCardId = null
+        form.data.fuelCardNo = null
+      } else if (!form.data.fuelCardId && fuelCardOptions.value.length === 1) {
+        form.data.fuelCardId = fuelCardOptions.value[0].id
+      }
+    }
+  )
+  watch(
+    () => form.data.fuelCardId,
+    (id) => {
+      if (state.hydrating) return
+      form.data.fuelCardNo = fuelCardOptions.value.find((card) => card.id === id)?.cardNo || null
+    }
+  )
+
+  async function loadFuelCards(waybillId: string, tenantId: string): Promise<void> {
+    fuelCardOptions.value = []
+    fuelCardLoadError.value = ''
+    if (!waybillId || !tenantId) return
+    const session = formSession.value
+    const ensureScope = createTenantScopeReadGuard()
+    fuelCardLoading.value = true
+    try {
+      const result = await fetchWaybillFuelCardOptions(waybillId)
+      if (!isCurrent(session) || form.data.waybillId !== waybillId) return
+      ensureScope()
+      if (result.error) throw result.error
+      fuelCardOptions.value = result.data || []
+      if (
+        form.data.id &&
+        form.data.fuelCardId &&
+        form.data.fuelCardNo &&
+        !fuelCardOptions.value.some((card) => card.id === form.data.fuelCardId)
+      ) {
+        fuelCardOptions.value.push({
+          id: form.data.fuelCardId,
+          cardNo: `${form.data.fuelCardNo}（原关联卡）`,
+          plateNo: ''
+        })
+      }
+      if (
+        form.data.paymentChannel === '油卡' &&
+        !form.data.fuelCardId &&
+        fuelCardOptions.value.length === 1
+      ) {
+        form.data.fuelCardId = fuelCardOptions.value[0].id
+      }
+    } catch (error) {
+      if (isCurrent(session))
+        fuelCardLoadError.value = getFriendlySupabaseErrorMessage(
+          error,
+          '油卡加载失败，请重试或更换支付渠道'
+        )
+    } finally {
+      if (isCurrent(session)) fuelCardLoading.value = false
+    }
+  }
   const expenseLocationModel = computed({
     get: () => form.data.expenseLocation || '',
     set: (value: string) => {
@@ -534,8 +696,9 @@
     { prop: 'route', label: '运输路线', minWidth: 220 }
   ]
 
-  async function fetchSelectableExpenseItems() {
-    const result = await fetchExpenseItemTree()
+  async function fetchSelectableExpenseItems(tenantId: string) {
+    if (!tenantId) return { data: [], error: null }
+    const result = await fetchExpenseItemTree({ tenantId })
     const enabledItems = expenseOptionTreeUtils.removeNodesByCondition(
       result.data,
       (item) => !item.isEnabled
@@ -563,7 +726,7 @@
   }
 
   function toSelectorWaybill(item: Waybill): SelectorWaybill {
-    const plateNo = item.order?.dispatchPlateNo || ''
+    const plateNo = item.order?.dispatchPlateNo || item.plateNo || ''
     const driverName = item.driver?.driverName || item.order?.dispatchDriverName || ''
     const route = [item.originCity, item.destinationCity].filter(Boolean).join(' → ')
     return {
@@ -577,13 +740,15 @@
   }
 
   function toEditSelectedWaybill(expense: Expense): SelectorWaybill {
-    if (expense.waybill) return toSelectorWaybill(expense.waybill)
+    if (expense.waybill)
+      return { ...toSelectorWaybill(expense.waybill), tenantId: expense.tenantId }
 
     const plateNo = expense.plateNoSnapshot || ''
     const driverName = expense.driverNameSnapshot || ''
     const route = expense.routeSnapshot || ''
     return {
       id: expense.waybillId,
+      tenantId: expense.tenantId,
       waybillNo: expense.waybillNoSnapshot || '关联运单',
       status: '',
       orderNo: expense.orderNoSnapshot || '',
@@ -680,6 +845,12 @@
     const session = formSession.value
     const ensureScope = createTenantScopeReadGuard()
     if (!canSave()) return false
+    saveError.value = ''
+    if (!form.data.tenantId || selectedWaybill.value?.tenantId !== form.data.tenantId) {
+      saveError.value = '请重新选择关联运单，确认费用所属租户后再保存。'
+      ElMessage.warning(saveError.value)
+      return false
+    }
     if (ocrLoadError.value) return false
     try {
       if (!(await validateArtFormForSubmit(formRef.value))) return false
@@ -718,9 +889,17 @@
       const response = payload.id
         ? await editWaybillCost(payload, { showMessage: false, showErrorMessage: false })
         : await addWaybillCost(payload, { showMessage: false, showErrorMessage: false })
+      if (response.error || !response.data)
+        throw response.error ?? new Error('费用保存后未返回单据，请刷新列表核对')
       entityId = payload.id || response.data?.id
     } catch (error) {
-      if (isCurrent(session)) notifyFriendlyError(error, '运单费用保存失败，请检查内容后重试')
+      if (isCurrent(session)) {
+        saveError.value = getFriendlySupabaseErrorMessage(
+          error,
+          '运单费用保存失败，请重新选择当前运单的费用项目后重试'
+        )
+        ElMessage.error(saveError.value)
+      }
       return false
     }
     if (artifactId && finalPayload && entityId) {
@@ -764,11 +943,17 @@
 
   async function resetForm(): Promise<number> {
     const session = invalidateSession()
+    state.hydrating = true
+    saveError.value = ''
     state.autoLocateArmed = false
     Object.assign(form.data, createInitialForm())
     selection.waybills = []
+    fuelCardOptions.value = []
+    fuelCardLoadError.value = ''
+    fuelCardLoading.value = false
     ocrPanelRef.value?.reset()
     await nextTick()
+    state.hydrating = false
     if (session === formSession.value) formRef.value?.clearValidate()
     return session
   }
@@ -800,6 +985,7 @@
     ocrLoadError.value = ''
     ocrResultLoader.value = data.loadOcrResult
     if (data.row) {
+      state.hydrating = true
       Object.assign(form.data, createInitialForm(), structuredClone(toRaw(data.row)))
       selection.waybills = [toEditSelectedWaybill(data.row)]
       form.data.expenseRegionPath = String(form.data.expenseRegion || '')
@@ -807,6 +993,8 @@
         .map((item) => item.trim())
         .filter(Boolean)
       form.data.expenseLocation = form.data.expenseLocation || ''
+      await nextTick()
+      state.hydrating = false
     }
     await dialogRef.value?.handleOpen(data, {
       title: data.row
@@ -828,6 +1016,9 @@
           const [, enabled] = await Promise.all([
             expenseNumber.loadRule(),
             fetchWaybillExpenseOcrEnabled(),
+            data.row
+              ? loadFuelCards(form.data.waybillId, form.data.tenantId || '')
+              : Promise.resolve(),
             data.orderId ? prefillByOrderId(data.orderId, session) : Promise.resolve()
           ])
           if (!isCurrent(session)) return

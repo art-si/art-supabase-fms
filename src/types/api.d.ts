@@ -1543,6 +1543,8 @@ declare global {
 
       interface WaybillCostWaybill {
         id: string
+        tenantId?: string | null
+        plateNo?: string | null
         waybillNo: string
         status: string
         orderId?: string | null
@@ -1572,6 +1574,7 @@ declare global {
         tenantId?: string
         costNo?: string
         waybillId: string
+        legId?: string | null
         expenseItemId: string
         costType: WaybillCostType | string
         amount: Api.Fms.SensitiveNumber
@@ -1581,6 +1584,8 @@ declare global {
         providerName?: string | null
         payeeName?: string | null
         paymentChannel?: string | null
+        fuelCardId?: string | null
+        fuelCardNo?: string | null
         invoiceNo?: string | null
         meterNo?: string | null
         expenseLocation?: string | null

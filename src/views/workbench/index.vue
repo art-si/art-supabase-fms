@@ -970,7 +970,7 @@
       min-height: 116px;
       padding: 14px;
       background: var(--art-gray-100);
-      border-radius: calc(var(--el-border-radius-base) + 4px);
+      border-radius: var(--art-surface-radius);
 
       :deep(.el-skeleton__circle) {
         flex: 0 0 auto;
@@ -995,7 +995,7 @@
       padding: 14px;
       background: color-mix(in srgb, var(--progress-color) 5%, var(--default-box-color));
       border: 1px solid var(--el-border-color-lighter);
-      border-radius: calc(var(--el-border-radius-base) + 4px);
+      border-radius: var(--art-surface-radius);
 
       :deep(.el-progress) {
         flex: 0 0 auto;

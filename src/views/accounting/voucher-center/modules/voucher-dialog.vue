@@ -142,7 +142,7 @@
     transitionVoucher
   } from '@fms/api'
   import { attachmentTableLink } from '@/components/core/media/art-file-viewer/table-link'
-  import { getFileExtension } from '@/utils/file'
+  import { getFileExtension, removeAttachmentRow } from '@/utils/file'
   import {
     isReadableFieldAccess,
     canEditField,
@@ -573,7 +573,7 @@
       ElMessage.warning('当前权限不足，无法修改凭证附件')
       return
     }
-    form.data.attachments = form.data.attachments.filter((item) => item.url !== row.url)
+    form.data.attachments = removeAttachmentRow(form.data.attachments, row)
   }
 
   function toEditableLine(line: Api.Fms.SecureVoucherLineRecord): Api.Fms.VoucherLineRecord {

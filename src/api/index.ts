@@ -196,6 +196,8 @@ export {
   fetchExpenseReimbursementDetail,
   fetchExpenseReimbursementList,
   fetchFinanceWaybillOptions,
+  fetchWaybillCostLegOptions,
+  fetchWaybillFuelCardOptions,
   fetchFinanceWorkbench,
   fetchWaybillCostDetail,
   fetchWaybillCostList,
@@ -209,6 +211,8 @@ export {
   submitWaybillCost,
   voidWaybillCost
 } from '@fms/api/modules/transport/transport-finance'
+
+export type { WaybillFuelCardOption } from '@fms/api/modules/transport/transport-finance'
 
 export {
   analyzeInvoiceAttachmentByAi,

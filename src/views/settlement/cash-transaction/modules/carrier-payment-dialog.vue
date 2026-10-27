@@ -117,6 +117,7 @@
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { normalizeNullableNumber, normalizeNullableText } from '@/utils/form/normalize'
   import dayjs from 'dayjs'
+  import { round } from 'lodash-es'
   import { ElInputNumber, ElMessage, type FormRules } from 'element-plus'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import ArtDescriptions from '@/components/core/base/art-descriptions/index.vue'
@@ -238,7 +239,8 @@
     round(
       dialog.mode === 'allocate'
         ? (normalizeNullableNumber(dialog.transaction?.allocatableAmount) ?? 0)
-        : Number(form.amount || 0)
+        : Number(form.amount || 0),
+      2
     )
   )
   const selectedStatements = computed(() => selection.statements as Statement[])
@@ -250,15 +252,15 @@
   )
   const allocationSummary = computed(() => {
     const allocated = round(
-      allocationRows.value.reduce((sum, row) => sum + Number(row.allocationAmount || 0), 0)
+      allocationRows.value.reduce((sum, row) => sum + Number(row.allocationAmount || 0), 0),
+      2
     )
-    return { allocated, limit: limit.value, remaining: round(limit.value - allocated) }
+    return { allocated, limit: limit.value, remaining: round(limit.value - allocated, 2) }
   })
   const summaryText = computed(
     () =>
       `可核销 ${formatSensitiveNumberWithAffix(allocationSummary.value.limit, { prefix: '¥' })}，本次核销 ${formatSensitiveNumberWithAffix(allocationSummary.value.allocated, { prefix: '¥' })}，剩余 ${formatSensitiveNumberWithAffix(allocationSummary.value.remaining, { prefix: '¥' })}`
   )
-  const round = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100
 
   const carrierColumns: DataSelectColumn[] = [
     { prop: 'carrierCode', label: '承运商编码', width: 150 },
@@ -327,7 +329,7 @@
           controlsPosition="right"
           class="w-full!"
           onChange={() => {
-            selection.amounts[r.id] = round(Number(selection.amounts[r.id] ?? 0))
+            selection.amounts[r.id] = round(Number(selection.amounts[r.id] ?? 0), 2)
           }}
         />
       )
@@ -505,9 +507,9 @@
     const selected: DataSelectRecord[] = []
     for (const match of matches) {
       if (remaining <= 0 || match.counterpartyId !== carrierId || match.score < 60) continue
-      const allocation = round(Math.min(remaining, Number(match.outstandingAmount || 0)))
+      const allocation = round(Math.min(remaining, Number(match.outstandingAmount || 0)), 2)
       if (allocation <= 0) continue
-      remaining = round(remaining - allocation)
+      remaining = round(remaining - allocation, 2)
       selection.amounts[match.statementId] = allocation
       selected.push({
         id: match.statementId,
@@ -540,14 +542,14 @@
   function autoAllocate() {
     let remaining = limit.value
     selectedStatements.value.forEach((s) => {
-      const amount = round(Math.min(remaining, Number(s.outstandingAmount)))
+      const amount = round(Math.min(remaining, Number(s.outstandingAmount)), 2)
       selection.amounts[s.id] = Math.max(amount, 0)
-      remaining = round(remaining - amount)
+      remaining = round(remaining - amount, 2)
     })
   }
   function allocations() {
     return allocationRows.value
-      .map((r) => ({ statementId: r.id, amount: round(Number(selection.amounts[r.id] ?? 0)) }))
+      .map((r) => ({ statementId: r.id, amount: round(Number(selection.amounts[r.id] ?? 0), 2) }))
       .filter((x) => x.amount > 0)
   }
   async function handleSubmit(): Promise<boolean> {

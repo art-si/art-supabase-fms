@@ -769,10 +769,6 @@
     { deep: true }
   )
 
-  function roundMoney(value: number): number {
-    return roundInvoiceMoney(value)
-  }
-
   function validateInvoiceNo(
     _rule: unknown,
     value: unknown,
@@ -836,14 +832,14 @@
   }
 
   function recalculateTax(): void {
-    form.data.taxAmount = roundMoney(
+    form.data.taxAmount = roundInvoiceMoney(
       Number(form.data.amountExcludingTax || 0) * (Number(form.data.taxRate || 0) / 100)
     )
     recalculateTotal()
   }
 
   function recalculateTotal(): void {
-    form.data.totalAmount = roundMoney(
+    form.data.totalAmount = roundInvoiceMoney(
       Number(form.data.amountExcludingTax || 0) + Number(form.data.taxAmount || 0)
     )
   }
@@ -856,7 +852,7 @@
 
   function getAvailableAmount(row: Record<string, unknown>): number {
     const statementId = String(row.statementId)
-    return roundMoney(
+    return roundInvoiceMoney(
       Number(row.uninvoicedAmount ?? 0) + Number(selection.originalLinkAmounts[statementId] ?? 0)
     )
   }
@@ -906,7 +902,7 @@
       data: (data ?? []).map((item) => ({
         ...item,
         periodLabel: `${item.periodStart} 至 ${item.periodEnd}`,
-        availableAmount: roundMoney(
+        availableAmount: roundInvoiceMoney(
           item.uninvoicedAmount + Number(selection.originalLinkAmounts[item.statementId] ?? 0)
         )
       })),
@@ -1459,7 +1455,7 @@
       color: var(--el-text-color-secondary);
       background: var(--el-fill-color-lighter);
       border: 1px solid var(--el-border-color-lighter);
-      border-radius: 8px;
+      border-radius: var(--art-surface-radius);
     }
 
     @media (width <= 768px) {

@@ -3,8 +3,16 @@ import test from 'node:test'
 import {
   buildInvoicePayload,
   createInitialInvoiceForm,
-  normalizeInvoiceNo
+  normalizeInvoiceNo,
+  roundInvoiceMoney
 } from '../../src/views/settlement/invoice-management/modules/invoice-dialog-model'
+
+test('invoice calculation keeps zero, positive half-cent and a fully allocated tail stable', () => {
+  assert.equal(roundInvoiceMoney(0), 0)
+  assert.equal(roundInvoiceMoney(0.03 * 1.5), 0.05)
+  const allocated = roundInvoiceMoney(0.1) + roundInvoiceMoney(0.2)
+  assert.equal(roundInvoiceMoney(0.3 - allocated), 0)
+})
 
 test('invoice number normalization removes whitespace and uppercases text', () => {
   assert.equal(normalizeInvoiceNo(' ab 12 3456 '), 'AB123456')

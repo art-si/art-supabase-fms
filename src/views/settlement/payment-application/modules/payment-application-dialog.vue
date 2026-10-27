@@ -126,6 +126,7 @@
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { normalizeNullableNumber, normalizeNullableText } from '@/utils/form/normalize'
   import dayjs from 'dayjs'
+  import { round } from 'lodash-es'
   import type { ComputedRef } from 'vue'
   import { useMediaQuery } from '@vueuse/core'
   import { ElInputNumber, ElMessage, type FormRules } from 'element-plus'
@@ -347,13 +348,16 @@
     }))
   )
   const allocationSummary = computed(() => {
-    const allocated = round(
-      allocationRows.value.reduce((sum, row) => sum + Number(row.allocationAmount || 0), 0)
+    const allocatedAmount = allocationRows.value.reduce(
+      (sum, row) => sum + Number(row.allocationAmount || 0),
+      0
     )
+    const allocated = round(Number(allocatedAmount || 0), 2)
+    const remainingAmount = (normalizeNullableNumber(form.data.amount) ?? 0) - allocated
     return {
       allocated,
-      limit: round(normalizeNullableNumber(form.data.amount) ?? 0),
-      remaining: round((normalizeNullableNumber(form.data.amount) ?? 0) - allocated)
+      limit: round(normalizeNullableNumber(form.data.amount) ?? 0, 2),
+      remaining: round(Number(remainingAmount || 0), 2)
     }
   })
   const summaryText = computed(() => {
@@ -430,15 +434,13 @@
             class="w-full!"
             disabled={!canEditApplicationField('applicationAmounts')}
             onChange={() => {
-              selection.amounts[row.id] = round(Number(selection.amounts[row.id] ?? 0))
+              selection.amounts[row.id] = round(Number(selection.amounts[row.id] || 0), 2)
             }}
           />
         )
     }
   ]
 
-  const round = (value: number): number =>
-    Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100
   const money = (value?: Api.Fms.SensitiveNumber): string => {
     return formatSensitiveNumberWithAffix(value, { prefix: '¥' })
   }
@@ -489,13 +491,14 @@
 
   function autoAllocate(): void {
     if (!canEditApplicationField('applicationAmounts')) return
-    let remaining = round(normalizeNullableNumber(form.data.amount) ?? 0)
+    let remaining = round(normalizeNullableNumber(form.data.amount) ?? 0, 2)
     selectedStatements.value.forEach((statement) => {
       const amount = round(
-        Math.min(remaining, normalizeNullableNumber(statement.outstandingAmount) ?? 0)
+        Math.min(remaining, normalizeNullableNumber(statement.outstandingAmount) ?? 0),
+        2
       )
       selection.amounts[statement.id] = Math.max(amount, 0)
-      remaining = round(remaining - amount)
+      remaining = round(remaining - amount, 2)
     })
   }
 
@@ -504,7 +507,7 @@
     return allocationRows.value
       .map((row) => ({
         statementId: row.id,
-        amount: round(Number(selection.amounts[row.id] ?? 0))
+        amount: round(Number(selection.amounts[row.id] || 0), 2)
       }))
       .filter((item) => item.amount > 0)
   }
@@ -589,7 +592,8 @@
       statementAmount: item.statementAmountSnapshot,
       settledAmount: round(
         (normalizeNullableNumber(item.statementAmountSnapshot) ?? 0) -
-          (normalizeNullableNumber(item.outstandingAmountSnapshot) ?? 0)
+          (normalizeNullableNumber(item.outstandingAmountSnapshot) ?? 0),
+        2
       ),
       outstandingAmount: item.outstandingAmountSnapshot,
       statementOutstandingAmount: item.outstandingAmountSnapshot,

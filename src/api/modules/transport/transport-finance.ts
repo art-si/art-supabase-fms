@@ -65,6 +65,7 @@ const toCostListRpcParams = (
 const createCostWritePayload = (params: WaybillCost) => ({
   costNo: params.costNo?.trim() || '',
   waybillId: params.waybillId,
+  legId: params.legId || null,
   maintenanceRecordId: params.maintenanceRecordId ?? null,
   expenseItemId: params.expenseItemId,
   amount: Number(params.amount),
@@ -76,6 +77,7 @@ const createCostWritePayload = (params: WaybillCost) => ({
   providerName: normalizeNullableText(params.providerName),
   payeeName: params.payeeName || null,
   paymentChannel: normalizeNullableText(params.paymentChannel),
+  fuelCardId: params.fuelCardId || null,
   invoiceNo: normalizeNullableText(params.invoiceNo),
   meterNo: normalizeNullableText(params.meterNo),
   expenseLocation: normalizeNullableText(params.expenseLocation),
@@ -132,9 +134,15 @@ export async function fetchExpenseItemTree(
 ) {
   const { disableGroups, ...filters } = params
   const result = await fetchAllRangePages((range) => fetchExpenseItemList({ ...filters, ...range }))
+  const scopedRecords = (result.data ?? []).filter(
+    (item) =>
+      !filters.tenantId ||
+      item.tenantId === filters.tenantId ||
+      item.tenant?.id === filters.tenantId
+  )
   const records = disableGroups
-    ? (result.data ?? []).map((item) => ({ ...item, disabled: !item.isSelectable }))
-    : (result.data ?? [])
+    ? scopedRecords.map((item) => ({ ...item, disabled: !item.isSelectable }))
+    : scopedRecords
   return {
     ...result,
     data: expenseItemTreeUtils.listToTree(records, (a, b) => {
@@ -251,6 +259,30 @@ export async function fetchFinanceWaybillOptions(
     total: result.data?.total ?? 0,
     error: result.error
   }
+}
+
+export async function fetchWaybillCostLegOptions(params: { waybillId?: string } = {}) {
+  if (!params.waybillId) return { data: [], error: null }
+  return await responseHandle<{ id: string; name: string; description: string }[]>(
+    () =>
+      supabase.rpc('tms_list_waybill_cost_leg_options_secure', {
+        p_waybill_id: params.waybillId
+      }),
+    { showErrorMessage: true }
+  )
+}
+
+export interface WaybillFuelCardOption {
+  id: string
+  cardNo: string
+  plateNo: string
+}
+
+export async function fetchWaybillFuelCardOptions(waybillId: string) {
+  return await responseHandle<WaybillFuelCardOption[]>(
+    () => supabase.rpc('tms_list_waybill_fuel_card_options_secure', { p_waybill_id: waybillId }),
+    { breakReturn: true, showErrorMessage: false, errorMessage: '运单油卡加载失败，请重试' }
+  )
 }
 
 export async function addWaybillCost(params: WaybillCost, options: FinanceRequestFeedback = {}) {
