@@ -118,7 +118,6 @@
     'fms_travel_application',
     '出差申请单'
   )
-  const visibleLines = ref<TravelLineRecord[]>([])
   const lineProperties = new Set([
     'lineNo',
     'departurePlace',
@@ -129,7 +128,6 @@
     'project',
     'requestedAmount'
   ])
-  let latestRequest = 0
   const { effectiveTenantId, isAllTenants } = storeToRefs(useTenantScopeStore())
   const statusOptions = useDictionaryOptions('fmsExpenseDocumentStatus')
   const displayModeOptions = useDictionaryOptions('commonDocumentDisplayMode')
@@ -205,7 +203,6 @@
   ])
 
   async function fetchTableData(params: TravelSearch & { current: number; size: number }) {
-    const request = ++latestRequest
     const range = buildSupabasePageRange(params)
     const { displayMode, ...filters } = params
     const query = { ...filters, ...range, tenantId: effectiveTenantId.value }
@@ -220,11 +217,9 @@
         ],
         ['desc', 'asc', 'asc']
       )
-      if (request === latestRequest) visibleLines.value = rows
       return { ...result, data: rows, total: result.total ?? 0 }
     }
     const result = await fetchTravelApplicationList(query)
-    if (request === latestRequest) visibleLines.value = []
     return { ...result, total: result.total ?? 0 }
   }
   function mergeDocumentCells({
@@ -236,11 +231,11 @@
   }) {
     return search.value.displayMode === 'line'
       ? documentGroupSpan(
-          visibleLines.value,
+          (tableRef.value?.dataState.rows.value as TableRecord[] | undefined) ?? [],
           rowIndex,
           column.property,
           lineProperties,
-          (row) => row.application.id
+          (row) => applicationOf(row).id ?? ''
         )
       : ([1, 1] as [number, number])
   }

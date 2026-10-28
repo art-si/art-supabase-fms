@@ -219,6 +219,7 @@
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { formatSensitiveCurrencyValue } from '@/utils/ui/format'
+  import { getAttachmentNameFromUrl } from '@/utils/file/attachment'
 
   import { normalizeNullableNumber, normalizeNullableText } from '@/utils/form/normalize'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
@@ -706,7 +707,7 @@
     set: (urls) => {
       form.data.attachments = urls.map((url) => ({
         url,
-        name: decodeURIComponent(url.split('/').pop() || '发票附件'),
+        name: getAttachmentNameFromUrl(url, '发票附件'),
         category: 'invoice_image'
       }))
     }

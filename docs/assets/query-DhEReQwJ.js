@@ -1,0 +1,1 @@
+function e(e){return e?`${e}T00:00:00`:null}function t(e){return e?`${e}T23:59:59.999`:null}var n=(e,t)=>t?.signal?e.abortSignal(t.signal):e,r=(n,r,i,a={})=>{let[o,s]=i??[],c=n;return o&&(c=c.gte(r,a.startOfDay?e(o):o)),s&&(c=c.lte(r,a.endOfDay?t(s):s)),c};export{e as i,n,t as r,r as t};

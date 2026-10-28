@@ -1,1 +1,0 @@
-import{$i as e,Wi as t,va as n}from"./sys-DXvdlv8C.js";import{t as r}from"./ar-secondary-workspace-BsEuVpGN.js";var i=e({name:`FinanceRevenueCost`,__name:`index`,setup(e){return(e,i)=>(n(),t(r,{kind:`revenue`}))}});export{i as default};

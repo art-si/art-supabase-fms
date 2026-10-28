@@ -11,7 +11,7 @@
         { label: '期间强管控', type: 'success' },
         { label: '全链路审计', type: 'info' }
       ]"
-      :metrics="overview.metrics"
+      :metrics="overviewMetrics"
       @metric-click="handleMetricClick"
     >
       <template #actions>
@@ -19,7 +19,15 @@
       </template>
     </BusinessWorkspaceHeader>
 
+    <ElAlert v-if="overview.error" type="warning" :closable="false" show-icon>
+      账套概览加载失败，当前指标暂不可用。
+      <ElButton link type="primary" :loading="overview.loading" @click="loadOverview">
+        重新加载概览
+      </ElButton>
+    </ElAlert>
+
     <ArtTableQuery
+      :key="effectiveTenantId || 'all-tenants'"
       ref="tableRef"
       v-model="table.search"
       :search-items="searchItems"
@@ -54,7 +62,7 @@
 <script setup lang="tsx">
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import FinanceAccountingWorkspaceShell from '@fms/views/modules/finance-accounting-workspace-shell/index.vue'
-  import { ElTag } from 'element-plus'
+  import { ElAlert, ElButton, ElTag } from 'element-plus'
   import { storeToRefs } from 'pinia'
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type {
@@ -82,13 +90,13 @@
   } from '@/utils/field-permission'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
   import { useUserStore } from '@/store/modules/user'
+  import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import {
     fetchAccountSetList,
     fetchAccountSetOverview,
     initializeAccountingDefaults,
     setAccountSetStatus
   } from '@fms/api'
-  import { fetchEnabledTenantList } from '@/api/system-manage'
   import AccountSetDialog from './modules/account-set-dialog.vue'
   import AccountingPeriodDrawer from './modules/accounting-period-drawer.vue'
 
@@ -110,17 +118,18 @@
 
   interface TableGroup {
     search: SearchParams
-    tenantOptions: Array<{ label: string; value: string }>
   }
 
   interface OverviewGroup {
     loading: boolean
-    metrics: BusinessWorkspaceMetric[]
+    error: boolean
+    data?: Api.Fms.AccountSetOverview
   }
 
   const { confirmAction, promptReason } = useArtFeedback()
   const userStore = useUserStore()
   const { isPlatformSuper } = storeToRefs(userStore)
+  const { effectiveTenantId } = storeToRefs(useTenantScopeStore())
   const dialogRef = ref<AccountSetDialogExpose>()
   const periodDrawerRef = ref<PeriodDrawerExpose>()
   const tableRef = ref<ArtTableQueryExpose>()
@@ -132,27 +141,63 @@
   const canViewListField = (field: Api.Fms.AccountSetFieldKey): boolean =>
     canViewField(effectiveFieldAccess.value, field)
   const table = reactive<TableGroup>({
-    search: { keyword: '', tenantId: undefined, status: undefined },
-    tenantOptions: []
+    search: { keyword: '', status: undefined }
   })
-  const overview = reactive<OverviewGroup>({ loading: true, metrics: [] })
+  const overview = reactive<OverviewGroup>({ loading: true, error: false })
+  let listRequestId = 0
+  let overviewRequestId = 0
+  const overviewMetrics = computed<BusinessWorkspaceMetric[]>(() => {
+    const values = overview.data
+    const selectedStatus = table.search.status
+    return [
+      {
+        key: 'all',
+        label: '全部账套',
+        value: values?.totalCount ?? '--',
+        description: '当前可见核算主体',
+        icon: 'ri:book-2-line',
+        tone: 'primary',
+        interactive: Boolean(values),
+        selected: !selectedStatus,
+        loading: overview.loading
+      },
+      {
+        key: 'active',
+        label: '启用账套',
+        value: values?.activeCount ?? '--',
+        description: '允许进入日常核算',
+        icon: 'ri:checkbox-circle-line',
+        tone: 'success',
+        interactive: Boolean(values),
+        selected: selectedStatus === 'active',
+        loading: overview.loading
+      },
+      {
+        key: 'draft',
+        label: '待配置',
+        value: values?.draftCount ?? '--',
+        description: '需要完成核算初始化',
+        icon: 'ri:draft-line',
+        tone: 'warning',
+        interactive: Boolean(values),
+        selected: selectedStatus === 'draft',
+        loading: overview.loading
+      },
+      {
+        key: 'suspended',
+        label: '已停用',
+        value: values?.suspendedCount ?? '--',
+        description: '保留数据但暂停使用',
+        icon: 'ri:pause-circle-line',
+        tone: 'danger',
+        interactive: Boolean(values),
+        selected: selectedStatus === 'suspended',
+        loading: overview.loading
+      }
+    ]
+  })
 
   const searchItems = computed<SearchFormItem[]>(() => [
-    ...(isPlatformSuper.value
-      ? [
-          {
-            label: '所属租户',
-            key: 'tenantId',
-            type: 'select' as const,
-            props: {
-              clearable: true,
-              filterable: true,
-              options: table.tenantOptions,
-              placeholder: '全部租户'
-            }
-          }
-        ]
-      : []),
     {
       label: '账套状态',
       key: 'status',
@@ -378,67 +423,49 @@
   }
 
   async function fetchTableData(params: TableParams) {
+    const requestId = ++listRequestId
+    const tenantId = effectiveTenantId.value || undefined
+    const isCurrent = () =>
+      requestId === listRequestId && tenantId === (effectiveTenantId.value || undefined)
     const { from, to } = buildSupabasePageRange({ current: params.current, size: params.size })
-    const result = await fetchAccountSetList({ ...params, from, to })
-    listFieldAccess.value = result.fieldAccess
-    currentRows.value = result.data ?? []
-    return result
+    try {
+      const result = await fetchAccountSetList(
+        { ...params, tenantId, from, to },
+        { showErrorMessage: false }
+      )
+      if (!isCurrent()) return { ...result, data: [], total: 0, fieldAccess: {} }
+      if (result.error) throw result.error
+      listFieldAccess.value = result.fieldAccess
+      currentRows.value = result.data ?? []
+      return result
+    } catch (error) {
+      if (!isCurrent()) return { data: [], total: 0, fieldAccess: {} }
+      listFieldAccess.value = {}
+      currentRows.value = []
+      throw error
+    }
   }
 
   async function loadOverview(): Promise<void> {
+    const requestId = ++overviewRequestId
+    const tenantId = effectiveTenantId.value || undefined
+    const isCurrent = () =>
+      requestId === overviewRequestId && tenantId === (effectiveTenantId.value || undefined)
+    overview.data = undefined
+    overview.error = false
     overview.loading = true
     try {
-      const { data } = await fetchAccountSetOverview(table.search.tenantId)
-      const values = data ?? { totalCount: 0, activeCount: 0, draftCount: 0, suspendedCount: 0 }
-      const selectedStatus = table.search.status
-      overview.metrics = [
-        {
-          key: 'all',
-          label: '全部账套',
-          value: values.totalCount,
-          description: '当前可见核算主体',
-          icon: 'ri:book-2-line',
-          tone: 'primary',
-          interactive: true,
-          selected: !selectedStatus,
-          loading: false
-        },
-        {
-          key: 'active',
-          label: '启用账套',
-          value: values.activeCount,
-          description: '允许进入日常核算',
-          icon: 'ri:checkbox-circle-line',
-          tone: 'success',
-          interactive: true,
-          selected: selectedStatus === 'active',
-          loading: false
-        },
-        {
-          key: 'draft',
-          label: '待配置',
-          value: values.draftCount,
-          description: '需要完成核算初始化',
-          icon: 'ri:draft-line',
-          tone: 'warning',
-          interactive: true,
-          selected: selectedStatus === 'draft',
-          loading: false
-        },
-        {
-          key: 'suspended',
-          label: '已停用',
-          value: values.suspendedCount,
-          description: '保留数据但暂停使用',
-          icon: 'ri:pause-circle-line',
-          tone: 'danger',
-          interactive: true,
-          selected: selectedStatus === 'suspended',
-          loading: false
-        }
-      ]
+      const result = await fetchAccountSetOverview(tenantId, { showErrorMessage: false })
+      if (!isCurrent()) return
+      overview.data = result.error ? undefined : (result.data ?? undefined)
+      overview.error = Boolean(result.error || !result.data)
+    } catch {
+      if (isCurrent()) {
+        overview.data = undefined
+        overview.error = true
+      }
     } finally {
-      overview.loading = false
+      if (isCurrent()) overview.loading = false
     }
   }
 
@@ -448,7 +475,6 @@
         ? metric.key
         : undefined
     void tableRef.value?.getData()
-    void loadOverview()
   }
 
   async function handleStatusAction(item: ButtonMoreItem, row: AccountSet): Promise<void> {
@@ -493,22 +519,15 @@
     ])
   }
 
-  async function loadTenantOptions(): Promise<void> {
-    if (!isPlatformSuper.value) return
-    const { data } = await fetchEnabledTenantList()
-    table.tenantOptions = (data ?? [])
-      .filter((tenant): tenant is Api.SystemManage.TenantListItem & { id: string } =>
-        Boolean(tenant.id)
-      )
-      .map((tenant) => ({
-        label: `${tenant.tenantName}（${tenant.tenantCode}）`,
-        value: tenant.id
-      }))
-  }
-
   watch(
-    () => table.search.tenantId,
-    () => void loadOverview()
+    effectiveTenantId,
+    () => {
+      ++listRequestId
+      currentRows.value = []
+      listFieldAccess.value = {}
+      void loadOverview()
+    },
+    { flush: 'sync' }
   )
 
   onMounted(() => {
@@ -517,7 +536,7 @@
       userStore.ensureDictLoaded('fmsAccountingStandard'),
       userStore.ensureDictLoaded('fmsVatTaxpayerType')
     ])
-    void Promise.all([loadTenantOptions(), loadOverview()])
+    void loadOverview()
   })
 </script>
 

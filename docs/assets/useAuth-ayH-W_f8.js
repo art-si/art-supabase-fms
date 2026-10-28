@@ -1,0 +1,1 @@
+import{cn as e,r as t,x as n,z as r}from"./sys-DGZBRwbX.js";var i=()=>{let{isFrontendMode:i}=n(),a=t(),o=r(),{info:s,isPlatformSuper:c}=e(a),{buttonList:l}=e(o),u=()=>s.value.buttons??[],d=()=>Array.isArray(l.value)?l.value:[],f=e=>c.value?!0:i.value?u().includes(e):d().some(t=>t?.name===e);return{hasAuth:f,hasAnyAuth:e=>e.some(f),hasAllAuth:e=>e.every(f)}};export{i as t};

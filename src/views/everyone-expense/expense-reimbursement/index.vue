@@ -127,7 +127,6 @@
     errorMessage: '出差报销来源加载失败，请核对审批状态和目标单据权限'
   })
   const paymentDialogRef = ref<InstanceType<typeof TravelReimbursementPaymentDialog>>()
-  const visibleLines = ref<ReimbursementWorkspaceLine[]>([])
   const lineProperties = new Set([
     'lineNo',
     'expenseItemName',
@@ -141,7 +140,6 @@
     'reimburseeName',
     'waybillNo'
   ])
-  let latestRequest = 0
   const printSheetRef = ref<InstanceType<typeof ReimbursementPrintSheet>>()
   const printing = ref(false)
   const { deleteGuardRef, deleteRecord, deleteRecords, deleteBusy } = useRecordDeleteGuard(
@@ -258,17 +256,14 @@
   ])
 
   async function fetchTableData(params: WorkspaceSearch & { current: number; size: number }) {
-    const request = ++latestRequest
     const range = buildSupabasePageRange(params)
     const { displayMode, ...filters } = params
     const query = { ...filters, ...range }
     if (displayMode === 'line') {
       const result = await fetchReimbursementWorkspaceLines(query)
-      if (request === latestRequest) visibleLines.value = result.data ?? []
       return { ...result, total: result.total ?? 0 }
     }
     const result = await fetchReimbursementWorkspaceList(query)
-    if (request === latestRequest) visibleLines.value = []
     return { ...result, total: result.total ?? 0 }
   }
   function mergeDocumentCells({
@@ -280,11 +275,11 @@
   }) {
     return search.value.displayMode === 'line'
       ? documentGroupSpan(
-          visibleLines.value,
+          (tableRef.value?.dataState.rows.value as TableRecord[] | undefined) ?? [],
           rowIndex,
           column.property,
           lineProperties,
-          (row) => row.reimbursementId
+          (row) => ('reimbursementId' in row ? row.reimbursementId : '')
         )
       : ([1, 1] as [number, number])
   }

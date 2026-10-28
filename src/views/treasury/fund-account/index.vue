@@ -19,6 +19,13 @@
       </template>
     </BusinessWorkspaceHeader>
 
+    <ElAlert v-if="overviewError" type="warning" :closable="false" show-icon>
+      资金账户概览加载失败，当前指标暂不可用。
+      <ElButton link type="primary" :loading="overviewLoading" @click="loadOverview">
+        重新加载概览
+      </ElButton>
+    </ElAlert>
+
     <ArtTableQuery
       ref="tableRef"
       v-model="table.search"
@@ -45,7 +52,7 @@
 
 <script setup lang="tsx">
   import FinanceAccountingWorkspaceShell from '@fms/views/modules/finance-accounting-workspace-shell/index.vue'
-  import { ElTag } from 'element-plus'
+  import { ElAlert, ElButton, ElTag } from 'element-plus'
   import { storeToRefs } from 'pinia'
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type {
@@ -114,8 +121,12 @@
   })
   const accountSetOptions = ref<Api.Fms.AccountSetOption[]>([])
   const overview = ref<Api.Fms.FundAccountOverview>()
+  const overviewLoading = ref(false)
+  const overviewError = ref(false)
   const currentRows = ref<Account[]>([])
   const listFieldAccess = ref<Api.Fms.FundAccountFieldAccessMap>({})
+  let listRequestId = 0
+  let overviewRequestId = 0
   const effectiveFieldAccess = computed(() =>
     mergeFieldAccessMaps(listFieldAccess.value, ...currentRows.value.map((row) => row.fieldAccess))
   )
@@ -195,7 +206,8 @@
       {
         key: 'all',
         label: '资金账户',
-        value: value?.accountCount ?? 0,
+        value: overviewLoading.value || overviewError.value ? '--' : (value?.accountCount ?? 0),
+        loading: overviewLoading.value,
         description: '当前可见账户总数',
         icon: 'ri:bank-card-line',
         tone: 'primary',
@@ -205,7 +217,9 @@
       {
         key: 'active',
         label: '正常账户',
-        value: value?.activeAccountCount ?? 0,
+        value:
+          overviewLoading.value || overviewError.value ? '--' : (value?.activeAccountCount ?? 0),
+        loading: overviewLoading.value,
         description: '可承接日常资金业务',
         icon: 'ri:checkbox-circle-line',
         tone: 'success',
@@ -346,16 +360,51 @@
   }
 
   async function fetchTableData(params: TableParams) {
+    const requestId = ++listRequestId
+    const accountSetId = params.accountSetId || undefined
+    const isCurrent = () =>
+      requestId === listRequestId && accountSetId === (table.search.accountSetId || undefined)
     const { from, to } = buildSupabasePageRange({ current: params.current, size: params.size })
-    const result = await fetchFundAccountList({ ...params, from, to })
-    listFieldAccess.value = result.fieldAccess
-    currentRows.value = result.data ?? []
-    return result
+    try {
+      const result = await fetchFundAccountList(
+        { ...params, from, to },
+        { showErrorMessage: false }
+      )
+      if (!isCurrent()) return { ...result, data: [], total: 0, fieldAccess: {} }
+      if (result.error) throw result.error
+      listFieldAccess.value = result.fieldAccess
+      currentRows.value = result.data ?? []
+      return result
+    } catch (error) {
+      if (isCurrent()) {
+        listFieldAccess.value = {}
+        currentRows.value = []
+      }
+      throw error
+    }
   }
 
   async function loadOverview(): Promise<void> {
-    const { data } = await fetchFundAccountOverview(table.search.accountSetId)
-    overview.value = data ?? undefined
+    const requestId = ++overviewRequestId
+    const accountSetId = table.search.accountSetId || undefined
+    const isCurrent = () =>
+      requestId === overviewRequestId && accountSetId === (table.search.accountSetId || undefined)
+    overview.value = undefined
+    overviewError.value = false
+    overviewLoading.value = true
+    try {
+      const result = await fetchFundAccountOverview(accountSetId, { showErrorMessage: false })
+      if (!isCurrent()) return
+      overview.value = result.error ? undefined : (result.data ?? undefined)
+      overviewError.value = Boolean(result.error)
+    } catch {
+      if (isCurrent()) {
+        overview.value = undefined
+        overviewError.value = true
+      }
+    } finally {
+      if (isCurrent()) overviewLoading.value = false
+    }
   }
 
   function handleMetricClick(metric: BusinessWorkspaceMetric): void {
@@ -386,7 +435,14 @@
 
   watch(
     () => table.search.accountSetId,
-    () => void loadOverview()
+    () => {
+      ++listRequestId
+      currentRows.value = []
+      listFieldAccess.value = {}
+      void tableRef.value?.getData()
+      void loadOverview()
+    },
+    { flush: 'sync' }
   )
 
   onMounted(async () => {

@@ -135,9 +135,7 @@
   )
   const { confirmAction } = useArtFeedback()
   const submittingId = ref<string | null>(null)
-  const visibleLines = ref<TravelLoanItemRecord[]>([])
   const lineProperties = new Set(['lineNo', 'expenseItem', 'projectId', 'purpose', 'amount'])
-  let latestRequest = 0
   const { effectiveTenantId, isAllTenants } = storeToRefs(useTenantScopeStore())
   const statusOptions = useDictionaryOptions('fmsExpenseDocumentStatus')
   const displayModeOptions = useDictionaryOptions('commonDocumentDisplayMode')
@@ -224,7 +222,6 @@
     }
   ])
   async function fetchTableData(params: LoanSearch & { current: number; size: number }) {
-    const request = ++latestRequest
     const range = buildSupabasePageRange(params)
     const { displayMode, ...filters } = params
     const query = { ...filters, ...range, tenantId: effectiveTenantId.value }
@@ -235,11 +232,9 @@
         [(row) => row.loan.applicationDate, (row) => row.loan.id, (row) => row.lineNo],
         ['desc', 'asc', 'asc']
       )
-      if (request === latestRequest) visibleLines.value = rows
       return { ...result, data: rows, total: result.total ?? 0 }
     }
     const result = await fetchTravelLoanList(query)
-    if (request === latestRequest) visibleLines.value = []
     return { ...result, total: result.total ?? 0 }
   }
   function mergeDocumentCells({
@@ -251,11 +246,11 @@
   }) {
     return search.value.displayMode === 'line'
       ? documentGroupSpan(
-          visibleLines.value,
+          (tableRef.value?.dataState.rows.value as TableRecord[] | undefined) ?? [],
           rowIndex,
           column.property,
           lineProperties,
-          (row) => row.loan.id
+          (row) => loanOf(row).id ?? ''
         )
       : ([1, 1] as [number, number])
   }

@@ -61,8 +61,8 @@
   import { useRecordDeleteGuard } from '@/hooks/core/useRecordDeleteGuard'
   import type { ColumnOption } from '@/types'
   import { useUserStore } from '@/store/modules/user'
+  import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import { deleteExpenseItem, fetchExpenseItemTree } from '@fms/api'
-  import { fetchTenantList } from '@/api/system-manage'
   import BusinessTableWorkspaceActions from '@/components/business/business-table-workspace-actions/index.vue'
   import BusinessWorkspaceHeader from '@/components/business/business-workspace-header/index.vue'
   import ExpenseItemDialog from './modules/expense-item-dialog.vue'
@@ -77,6 +77,7 @@
   }
 
   const userStore = useUserStore()
+  const tenantScopeStore = useTenantScopeStore()
   const { getDictMap, isPlatformSuper } = storeToRefs(userStore)
   const route = useRoute()
   const tableRef = ref<ArtTableQueryExpose>()
@@ -94,10 +95,8 @@
   )
   const search = ref<SearchParams>({
     keyword: referencedItemCode.value,
-    tenantId: undefined,
     isEnabled: undefined
   })
-  const tenantOptions = ref<Array<{ label: string; value: string }>>([])
   const costTypeFallback: Record<Api.Fms.WaybillCostType, string> = {
     carrier_freight: '承运运费',
     toll: '路桥费',
@@ -135,21 +134,6 @@
   )
 
   const searchItems = computed<SearchFormItem[]>(() => [
-    ...(isPlatformSuper.value
-      ? [
-          {
-            label: '所属租户',
-            key: 'tenantId',
-            type: 'select' as const,
-            props: {
-              clearable: true,
-              filterable: true,
-              options: tenantOptions.value,
-              placeholder: '全部租户'
-            }
-          }
-        ]
-      : []),
     {
       label: '启用状态',
       key: 'isEnabled',
@@ -175,7 +159,14 @@
   ])
 
   const fetchTableData = async (params: SearchParams) => {
-    const result = await fetchExpenseItemTree(params)
+    const result = await fetchExpenseItemTree(
+      {
+        ...params,
+        tenantId: tenantScopeStore.effectiveTenantId ?? undefined
+      },
+      { showErrorMessage: false }
+    )
+    if (result.error) throw result.error
     return { ...result, total: result.data?.length ?? 0 }
   }
 
@@ -320,23 +311,11 @@
     void nextTick(() => tableRef.value?.getData())
   })
 
-  async function loadTenantOptions(): Promise<void> {
-    if (!isPlatformSuper.value) return
-    const { data } = await fetchTenantList({ from: 0, to: 999 })
-    tenantOptions.value = (data ?? [])
-      .filter((tenant) => tenant.id)
-      .map((tenant) => ({
-        label: `${tenant.tenantName}（${tenant.tenantCode}）`,
-        value: String(tenant.id)
-      }))
-  }
-
   onMounted(() => {
     void Promise.allSettled([
       userStore.ensureDictLoaded('tmsWaybillCostType'),
       userStore.ensureDictLoaded('commonBoolean')
     ])
-    void loadTenantOptions()
   })
 </script>
 

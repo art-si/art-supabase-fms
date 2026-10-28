@@ -106,7 +106,10 @@ const createCostWritePayload = (params: WaybillCost) => ({
   ocrStatus: params.ocrStatus ?? 'not_started'
 })
 
-export async function fetchExpenseItemList(params: ExpenseItemSearchParams = {}) {
+export async function fetchExpenseItemList(
+  params: ExpenseItemSearchParams = {},
+  options: FinanceRequestFeedback = {}
+) {
   const { from = 0, to = 999, keyword, tenantId, isEnabled, parentId } = params
   let query = supabase
     .from('tms_expense_item')
@@ -125,15 +128,18 @@ export async function fetchExpenseItemList(params: ExpenseItemSearchParams = {})
   if (parentId === null) query = query.is('parent_id', null)
   else if (parentId) query = query.eq('parent_id', parentId)
   return await responseHandle<ExpenseItem[]>(() => query, {
-    showErrorMessage: true
+    showErrorMessage: options.showErrorMessage ?? true
   })
 }
 
 export async function fetchExpenseItemTree(
-  params: ExpenseItemSearchParams & { disableGroups?: boolean } = {}
+  params: ExpenseItemSearchParams & { disableGroups?: boolean } = {},
+  options: FinanceRequestFeedback = {}
 ) {
   const { disableGroups, ...filters } = params
-  const result = await fetchAllRangePages((range) => fetchExpenseItemList({ ...filters, ...range }))
+  const result = await fetchAllRangePages((range) =>
+    fetchExpenseItemList({ ...filters, ...range }, options)
+  )
   const scopedRecords = (result.data ?? []).filter(
     (item) =>
       !filters.tenantId ||

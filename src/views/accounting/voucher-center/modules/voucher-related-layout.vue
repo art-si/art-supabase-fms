@@ -264,8 +264,7 @@
     }
   }
 
-  :global(.art-dialog.is-focus-mode) .voucher-related-layout__grid,
-  :global(.art-drawer.is-focus-mode) .voucher-related-layout__grid {
+  :is(.art-dialog.is-focus-mode, .art-drawer.is-focus-mode) .voucher-related-layout__grid {
     grid-template-columns: minmax(0, 1fr);
   }
 </style>

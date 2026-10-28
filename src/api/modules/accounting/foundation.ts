@@ -32,7 +32,10 @@ interface AccountSetOptionListPayload {
   total?: number
 }
 
-export async function fetchAccountSetList(params: AccountSetSearchParams = {}) {
+export async function fetchAccountSetList(
+  params: AccountSetSearchParams = {},
+  options?: ApiFeedbackOptions
+) {
   const { from = 0, to = 19, keyword, status, tenantId } = params
   const result = await responseHandle<AccountSetListPayload>(
     () =>
@@ -42,7 +45,7 @@ export async function fetchAccountSetList(params: AccountSetSearchParams = {}) {
         p_status: status || null,
         p_tenant_id: tenantId || null
       }),
-    { showErrorMessage: true }
+    { showErrorMessage: options?.showErrorMessage ?? true }
   )
   return {
     data: result.data?.records ?? [],
@@ -52,13 +55,13 @@ export async function fetchAccountSetList(params: AccountSetSearchParams = {}) {
   }
 }
 
-export async function fetchAccountSetOverview(tenantId?: string) {
+export async function fetchAccountSetOverview(tenantId?: string, options?: ApiFeedbackOptions) {
   return await responseHandle<Api.Fms.AccountSetOverview>(
     () =>
       supabase.rpc('fms_get_account_set_overview_secure', {
         p_tenant_id: tenantId || null
       }),
-    { showErrorMessage: true }
+    { showErrorMessage: options?.showErrorMessage ?? true }
   )
 }
 

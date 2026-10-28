@@ -72,7 +72,10 @@ async function enrichFundAccounts(rows: FundAccount[]): Promise<FundAccount[]> {
   }))
 }
 
-export async function fetchFundAccountList(params: Api.Fms.FundAccountSearchParams = {}) {
+export async function fetchFundAccountList(
+  params: Api.Fms.FundAccountSearchParams = {},
+  options?: ApiFeedbackOptions
+) {
   const { accountSetId, accountType, from = 0, keyword, status, tenantId, to = 19 } = params
   const result = await responseHandle<FundAccountListPayload>(
     () =>
@@ -84,7 +87,7 @@ export async function fetchFundAccountList(params: Api.Fms.FundAccountSearchPara
         p_keyword: normalizeNullableText(keyword),
         p_tenant_id: tenantId || null
       }),
-    { showErrorMessage: true }
+    { showErrorMessage: options?.showErrorMessage ?? true }
   )
   return {
     data: await enrichFundAccounts(result.data?.records ?? []),

@@ -122,7 +122,6 @@
   })
   const collectionDialogRef = ref<InstanceType<typeof RepaymentCollectionDialog>>()
   const printRef = ref<InstanceType<typeof RepaymentPrintSheet>>()
-  const visibleLines = ref<TravelRepaymentLine[]>([])
   const lineProperties = new Set([
     'lineNo',
     'expenseItemName',
@@ -132,7 +131,6 @@
     'baseAmount',
     'lineAmount'
   ])
-  let latestRequest = 0
   const { effectiveTenantId, isAllTenants } = storeToRefs(useTenantScopeStore())
   const { hasAuth } = useAuth()
   const { confirmAction } = useArtFeedback()
@@ -219,7 +217,6 @@
     }
   ])
   async function fetchTableData(params: RepaymentSearch & { current: number; size: number }) {
-    const request = ++latestRequest
     const range = buildSupabasePageRange(params)
     const { displayMode, ...filters } = params
     const query = { ...filters, ...range, tenantId: effectiveTenantId.value }
@@ -230,11 +227,9 @@
         [(row) => row.repayment.repaymentDate, (row) => row.repaymentId, (row) => row.lineNo],
         ['desc', 'asc', 'asc']
       )
-      if (request === latestRequest) visibleLines.value = rows
       return { ...result, data: rows, total: result.total ?? 0 }
     }
     const result = await fetchTravelRepaymentList(query)
-    if (request === latestRequest) visibleLines.value = []
     return { ...result, total: result.total ?? 0 }
   }
   function mergeDocumentCells({
@@ -246,11 +241,11 @@
   }) {
     return search.value.displayMode === 'line'
       ? documentGroupSpan(
-          visibleLines.value,
+          (tableRef.value?.dataState.rows.value as TableRecord[] | undefined) ?? [],
           rowIndex,
           column.property,
           lineProperties,
-          (row) => row.repaymentId
+          (row) => ('repaymentId' in row ? row.repaymentId : '')
         )
       : ([1, 1] as [number, number])
   }
