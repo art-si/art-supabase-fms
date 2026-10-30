@@ -1,7 +1,8 @@
 import { buildSupabaseRpcRange } from '@/utils/supabase'
 import { normalizeNullableText } from '@/utils/form/normalize'
 import { useSupabase } from '@/hooks/core/useSupabase'
-import type { ApiFeedbackOptions } from '@/types/api/request'
+import { withRequestOptions } from '@/api/providers/supabase/query'
+import type { ApiFeedbackOptions, ApiRequestOptions } from '@/types/api/request'
 
 type AccountSet = Api.Fms.AccountSetRecord
 type AccountSetSearchParams = Api.Fms.AccountSetSearchParams
@@ -72,17 +73,23 @@ export async function fetchAccountSetDetail(id: string) {
   )
 }
 
-export async function fetchAccountSetOptions(params: AccountSetSearchParams = {}) {
+export async function fetchAccountSetOptions(
+  params: AccountSetSearchParams = {},
+  options?: ApiRequestOptions & ApiFeedbackOptions
+) {
   const { from = 0, to = 999, status, tenantId } = params
   const result = await responseHandle<AccountSetOptionListPayload>(
     () =>
-      supabase.rpc('fms_list_account_set_options_secure', {
-        ...buildSupabaseRpcRange(from, to),
-        p_status: status || null,
-        p_tenant_id: tenantId || null,
-        p_ids: null
-      }),
-    { showErrorMessage: true }
+      withRequestOptions(
+        supabase.rpc('fms_list_account_set_options_secure', {
+          ...buildSupabaseRpcRange(from, to),
+          p_status: status || null,
+          p_tenant_id: tenantId || null,
+          p_ids: null
+        }),
+        options
+      ),
+    { showErrorMessage: options?.showErrorMessage ?? true }
   )
   return {
     error: result.error,
@@ -96,17 +103,23 @@ export async function fetchAccountSetOptions(params: AccountSetSearchParams = {}
   }
 }
 
-export async function fetchAccountSetIdentities(ids: string[]) {
+export async function fetchAccountSetIdentities(
+  ids: string[],
+  options?: ApiRequestOptions & ApiFeedbackOptions
+) {
   if (!ids.length) return { data: [] as AccountSetIdentity[], total: 0, error: null }
   const result = await responseHandle<AccountSetOptionListPayload>(
     () =>
-      supabase.rpc('fms_list_account_set_options_secure', {
-        ...buildSupabaseRpcRange(0, ids.length - 1),
-        p_status: null,
-        p_tenant_id: null,
-        p_ids: ids
-      }),
-    { showErrorMessage: true }
+      withRequestOptions(
+        supabase.rpc('fms_list_account_set_options_secure', {
+          ...buildSupabaseRpcRange(0, ids.length - 1),
+          p_status: null,
+          p_tenant_id: null,
+          p_ids: ids
+        }),
+        options
+      ),
+    { showErrorMessage: options?.showErrorMessage ?? true }
   )
   return {
     data: result.data?.records ?? [],

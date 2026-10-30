@@ -1293,6 +1293,7 @@ declare global {
         applicantUserId?: string | null
         applicantNameSnapshot: string
         payeeName?: string | null
+        payeeDriverId?: string | null
         payeeBank?: string | null
         payeeAccount?: string | null
         plannedPaymentDate: string
@@ -1382,6 +1383,8 @@ declare global {
       interface CreateExpenseReimbursementPayload {
         reimbursementNo?: string | null
         costIds: string[]
+        payeeSource: 'manual' | 'cost_driver' | 'current_driver'
+        payeeDriverId?: string | null
         payeeName: string
         payeeBank?: string | null
         payeeAccount?: string | null
@@ -1583,6 +1586,10 @@ declare global {
         unitPrice?: Api.Fms.SensitiveNumber
         providerName?: string | null
         payeeName?: string | null
+        payeeType?: 'manual' | 'provider' | 'driver'
+        payeeDriverId?: string | null
+        payeeBank?: string | null
+        payeeAccount?: string | null
         paymentChannel?: string | null
         fuelCardId?: string | null
         fuelCardNo?: string | null

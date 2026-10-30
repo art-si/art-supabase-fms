@@ -1,4 +1,6 @@
 import { useSupabase } from '@/hooks/core/useSupabase'
+import { withRequestOptions } from '@/api/providers/supabase/query'
+import type { ApiRequestOptions } from '@/types/api/request'
 import { buildOrIlikeFilter } from '@/utils/supabase/search'
 import { normalizeNullableText } from '@/utils/form/normalize'
 
@@ -126,7 +128,10 @@ interface TravelAssignmentRow extends TravelAssignmentOption {
 
 const { supabase, keysToSnakeDeep, responseHandle } = useSupabase()
 
-export async function fetchTravelApplicationList(params: TravelApplicationSearch = {}) {
+export async function fetchTravelApplicationList(
+  params: TravelApplicationSearch = {},
+  options?: ApiRequestOptions
+) {
   let query = supabase
     .from('fms_travel_application')
     .select('*', { count: 'exact' })
@@ -145,14 +150,17 @@ export async function fetchTravelApplicationList(params: TravelApplicationSearch
     query = query.or(
       buildOrIlikeFilter(['application_no', 'applicant_name', 'reason'], params.keyword)
     )
-  return await responseHandle<TravelApplication[]>(() => query, {
+  return await responseHandle<TravelApplication[]>(() => withRequestOptions(query, options), {
     breakReturn: true,
     showErrorMessage: false,
     errorMessage: '出差申请加载失败，请检查网络后重试'
   })
 }
 
-export async function fetchTravelItineraryList(params: TravelApplicationSearch = {}) {
+export async function fetchTravelItineraryList(
+  params: TravelApplicationSearch = {},
+  options?: ApiRequestOptions
+) {
   let query = supabase
     .from('fms_travel_itinerary')
     .select(
@@ -175,7 +183,7 @@ export async function fetchTravelItineraryList(params: TravelApplicationSearch =
       buildOrIlikeFilter(['application_no', 'applicant_name', 'reason'], params.keyword),
       { referencedTable: 'application' }
     )
-  return await responseHandle<TravelLineRecord[]>(() => query, {
+  return await responseHandle<TravelLineRecord[]>(() => withRequestOptions(query, options), {
     breakReturn: true,
     showErrorMessage: false,
     errorMessage: '行程明细加载失败，请检查网络后重试'

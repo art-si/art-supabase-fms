@@ -1,4 +1,6 @@
 import { useSupabase } from '@/hooks/core/useSupabase'
+import { withRequestOptions } from '@/api/providers/supabase/query'
+import type { ApiRequestOptions } from '@/types/api/request'
 import { normalizeNullableText } from '@/utils/form/normalize'
 import { buildSupabaseRpcRange } from '@/utils/supabase/pagination'
 import type { LoanPayeeOption } from './travel-loan'
@@ -137,19 +139,25 @@ interface SecureLineListPayload {
 
 const { supabase, keysToSnakeDeep, responseHandle } = useSupabase()
 
-export async function fetchReimbursementWorkspaceList(params: ReimbursementWorkspaceSearch = {}) {
+export async function fetchReimbursementWorkspaceList(
+  params: ReimbursementWorkspaceSearch = {},
+  options?: ApiRequestOptions
+) {
   const result = await responseHandle<SecureListPayload>(
     () =>
-      supabase.rpc('fms_list_expense_reimbursements_secure', {
-        ...buildSupabaseRpcRange(params.from ?? 0, params.to ?? 9),
-        p_keyword: normalizeNullableText(params.keyword),
-        p_status: params.status || null,
-        p_source_type: params.sourceType || null,
-        p_applicant_employee_id: params.applicantEmployeeId || null,
-        p_applicant_name: normalizeNullableText(params.applicantName),
-        p_reimbursement_date_start: params.reimbursementDateRange?.[0] || null,
-        p_reimbursement_date_end: params.reimbursementDateRange?.[1] || null
-      }),
+      withRequestOptions(
+        supabase.rpc('fms_list_expense_reimbursements_secure', {
+          ...buildSupabaseRpcRange(params.from ?? 0, params.to ?? 9),
+          p_keyword: normalizeNullableText(params.keyword),
+          p_status: params.status || null,
+          p_source_type: params.sourceType || null,
+          p_applicant_employee_id: params.applicantEmployeeId || null,
+          p_applicant_name: normalizeNullableText(params.applicantName),
+          p_reimbursement_date_start: params.reimbursementDateRange?.[0] || null,
+          p_reimbursement_date_end: params.reimbursementDateRange?.[1] || null
+        }),
+        options
+      ),
     {
       breakReturn: true,
       showErrorMessage: false,
@@ -164,18 +172,24 @@ export async function fetchReimbursementWorkspaceList(params: ReimbursementWorks
   }
 }
 
-export async function fetchReimbursementWorkspaceLines(params: ReimbursementWorkspaceSearch = {}) {
+export async function fetchReimbursementWorkspaceLines(
+  params: ReimbursementWorkspaceSearch = {},
+  options?: ApiRequestOptions
+) {
   const result = await responseHandle<SecureLineListPayload>(
     () =>
-      supabase.rpc('fms_list_expense_reimbursement_lines_secure', {
-        ...buildSupabaseRpcRange(params.from ?? 0, params.to ?? 9),
-        p_keyword: normalizeNullableText(params.keyword),
-        p_status: params.status || null,
-        p_source_type: params.sourceType || null,
-        p_applicant_name: normalizeNullableText(params.applicantName),
-        p_reimbursement_date_start: params.reimbursementDateRange?.[0] || null,
-        p_reimbursement_date_end: params.reimbursementDateRange?.[1] || null
-      }),
+      withRequestOptions(
+        supabase.rpc('fms_list_expense_reimbursement_lines_secure', {
+          ...buildSupabaseRpcRange(params.from ?? 0, params.to ?? 9),
+          p_keyword: normalizeNullableText(params.keyword),
+          p_status: params.status || null,
+          p_source_type: params.sourceType || null,
+          p_applicant_name: normalizeNullableText(params.applicantName),
+          p_reimbursement_date_start: params.reimbursementDateRange?.[0] || null,
+          p_reimbursement_date_end: params.reimbursementDateRange?.[1] || null
+        }),
+        options
+      ),
     {
       breakReturn: true,
       showErrorMessage: false,

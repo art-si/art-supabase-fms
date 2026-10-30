@@ -25,6 +25,17 @@ type WaybillProfit = Api.Fms.WaybillProfitRecord
 type WaybillProfitSearchParams = Api.Fms.WaybillProfitSearchParams
 type FinanceWorkbenchStats = Api.Fms.FinanceWorkbenchStats
 
+export interface WaybillDriverDefaultAccount {
+  driverId: string
+  driverName: string
+  hasDefaultAccount: boolean
+  invoiceName: string | null
+  taxNo: string | null
+  bankName: string | null
+  bankAccount: string | null
+  bankBranch: string | null
+}
+
 interface SecureListPayload<TRecord, TAccess extends Record<string, string> = never> {
   records: TRecord[]
   total: number
@@ -32,6 +43,21 @@ interface SecureListPayload<TRecord, TAccess extends Record<string, string> = ne
 }
 
 const { supabase, keysToSnakeDeep, responseHandle } = useSupabase()
+
+export async function fetchWaybillDriverDefaultAccount(waybillId: string, costId?: string) {
+  return await responseHandle<WaybillDriverDefaultAccount | null>(
+    () =>
+      supabase.rpc('fms_get_waybill_driver_default_account_secure', {
+        p_waybill_id: waybillId,
+        p_cost_id: costId || null
+      }),
+    {
+      breakReturn: true,
+      showErrorMessage: false,
+      errorMessage: '司机默认收款资料加载失败，请重试'
+    }
+  )
+}
 const expenseItemTreeUtils = new TreeUtils({
   idKey: 'id',
   parentKey: 'parentId',
@@ -76,6 +102,10 @@ const createCostWritePayload = (params: WaybillCost) => ({
     params.unitPrice === null || params.unitPrice === undefined ? null : Number(params.unitPrice),
   providerName: normalizeNullableText(params.providerName),
   payeeName: params.payeeName || null,
+  payeeType: params.payeeType,
+  payeeDriverId: params.payeeDriverId,
+  payeeBank: params.payeeBank,
+  payeeAccount: params.payeeAccount,
   paymentChannel: normalizeNullableText(params.paymentChannel),
   fuelCardId: params.fuelCardId || null,
   invoiceNo: normalizeNullableText(params.invoiceNo),
@@ -405,8 +435,10 @@ export async function createExpenseReimbursement(
 ) {
   return await responseHandle<string>(
     () =>
-      supabase.rpc('create_tms_expense_reimbursement', {
+      supabase.rpc('create_tms_expense_reimbursement_with_driver_secure', {
         p_cost_ids: params.costIds,
+        p_payee_source: params.payeeSource,
+        p_payee_driver_id: params.payeeDriverId || null,
         p_payee_name: params.payeeName,
         p_payee_bank: params.payeeBank || null,
         p_payee_account: params.payeeAccount || null,

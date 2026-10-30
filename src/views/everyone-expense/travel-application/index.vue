@@ -77,6 +77,7 @@
   import ArtEmployeeSelect from '@/components/business/art-employee-select/index.vue'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
+  import type { TableRequestOptions } from '@/hooks/core/useTable'
   import { buildSupabasePageRange } from '@/utils/supabase/pagination'
   import { documentGroupSpan } from '@/utils/business/document-detail-list'
   import { formatCurrencyValue } from '@/utils/ui'
@@ -202,12 +203,15 @@
     }
   ])
 
-  async function fetchTableData(params: TravelSearch & { current: number; size: number }) {
+  async function fetchTableData(
+    params: TravelSearch & { current: number; size: number },
+    options?: TableRequestOptions
+  ) {
     const range = buildSupabasePageRange(params)
     const { displayMode, ...filters } = params
     const query = { ...filters, ...range, tenantId: effectiveTenantId.value }
     if (displayMode === 'line') {
-      const result = await fetchTravelItineraryList(query)
+      const result = await fetchTravelItineraryList(query, options)
       const rows = orderBy(
         result.data ?? [],
         [
@@ -219,7 +223,7 @@
       )
       return { ...result, data: rows, total: result.total ?? 0 }
     }
-    const result = await fetchTravelApplicationList(query)
+    const result = await fetchTravelApplicationList(query, options)
     return { ...result, total: result.total ?? 0 }
   }
   function mergeDocumentCells({

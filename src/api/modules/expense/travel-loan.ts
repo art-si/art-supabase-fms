@@ -1,4 +1,6 @@
 import { useSupabase } from '@/hooks/core/useSupabase'
+import { withRequestOptions } from '@/api/providers/supabase/query'
+import type { ApiRequestOptions } from '@/types/api/request'
 import { buildOrIlikeFilter } from '@/utils/supabase/search'
 import { normalizeNullableText } from '@/utils/form/normalize'
 
@@ -167,7 +169,10 @@ export interface LoanPayeeOption {
 
 const { supabase, keysToSnakeDeep, responseHandle } = useSupabase()
 
-export async function fetchTravelLoanList(params: TravelLoanSearch = {}) {
+export async function fetchTravelLoanList(
+  params: TravelLoanSearch = {},
+  options?: ApiRequestOptions
+) {
   let query = supabase
     .from('fms_travel_loan')
     .select('*', { count: 'exact' })
@@ -184,14 +189,17 @@ export async function fetchTravelLoanList(params: TravelLoanSearch = {}) {
   if (params.status) query = query.eq('status', params.status)
   if (params.keyword?.trim())
     query = query.or(buildOrIlikeFilter(['loan_no', 'applicant_name', 'reason'], params.keyword))
-  return await responseHandle<TravelLoan[]>(() => query, {
+  return await responseHandle<TravelLoan[]>(() => withRequestOptions(query, options), {
     breakReturn: true,
     showErrorMessage: false,
     errorMessage: '借款单加载失败，请检查网络后重试'
   })
 }
 
-export async function fetchTravelLoanItemList(params: TravelLoanSearch = {}) {
+export async function fetchTravelLoanItemList(
+  params: TravelLoanSearch = {},
+  options?: ApiRequestOptions
+) {
   let query = supabase
     .from('fms_travel_loan_item')
     .select('*,loan:fms_travel_loan!inner(*),expenseItem:tms_expense_item(item_name)', {
@@ -212,7 +220,7 @@ export async function fetchTravelLoanItemList(params: TravelLoanSearch = {}) {
     query = query.or(buildOrIlikeFilter(['loan_no', 'applicant_name', 'reason'], params.keyword), {
       referencedTable: 'loan'
     })
-  return await responseHandle<TravelLoanItemRecord[]>(() => query, {
+  return await responseHandle<TravelLoanItemRecord[]>(() => withRequestOptions(query, options), {
     breakReturn: true,
     showErrorMessage: false,
     errorMessage: '借款明细加载失败，请检查网络后重试'

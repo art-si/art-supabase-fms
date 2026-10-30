@@ -89,6 +89,23 @@
     </ArtForm>
 
     <ElAlert
+      v-if="canViewPaymentDetails && form.data.payeeType === 'driver'"
+      class="mt-4"
+      :type="driverAccountError ? 'warning' : 'info'"
+      :closable="false"
+      show-icon
+    >
+      <template #title>
+        {{
+          driverAccountError ||
+          (driverDefaultAccount?.hasDefaultAccount
+            ? `司机档案开票名称：${driverDefaultAccount.invoiceName || '未填写'}；纳税人识别号：${driverDefaultAccount.taxNo || '未填写'}。此处仅供核对收款资料，不作为发票购方或实际开票方。`
+            : '当前显示费用保存时的司机收款资料；更换运单司机不会改写历史收款账户。')
+        }}
+      </template>
+    </ElAlert>
+
+    <ElAlert
       v-if="selectedWaybill"
       class="expense-dialog__waybill-summary"
       type="info"
@@ -101,6 +118,7 @@
 
 <script setup lang="ts">
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
+  import { normalizeNullableText } from '@/utils/form/normalize'
   import { normalizeCoordinatePair } from '@/utils/geo'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { getFriendlySupabaseErrorMessage } from '@/utils/supabase'
@@ -133,11 +151,12 @@
     fetchExpenseItemTree,
     fetchFinanceWaybillOptions,
     fetchWaybillFuelCardOptions,
+    fetchWaybillDriverDefaultAccount,
     fetchWaybillCostLegOptions,
     fetchWaybillExpenseOcrEnabled,
     reviewWaybillExpenseOcrArtifact
   } from '@fms/api'
-  import type { WaybillFuelCardOption } from '@fms/api'
+  import type { WaybillFuelCardOption, WaybillDriverDefaultAccount } from '@fms/api'
   import { buildSupabasePageRange } from '@/utils/supabase/pagination'
   import { canEditField, canViewField } from '@/utils/field-permission'
   import { useDocumentNumberRule } from '@/hooks/core/useDocumentNumberRule'
@@ -200,6 +219,10 @@
   const fuelCardOptions = ref<WaybillFuelCardOption[]>([])
   const fuelCardLoadError = ref('')
   const fuelCardLoading = ref(false)
+  const driverDefaultAccount = ref<WaybillDriverDefaultAccount | null>(null)
+  const driverAccountError = ref('')
+  const driverAccountLoading = ref(false)
+  const manualPayeeSnapshot = ref<{ name: string; bank: string; account: string } | null>(null)
   const state = reactive({ autoLocateArmed: false, ocrEnabled: true, hydrating: false })
   const saveError = ref('')
   const {
@@ -240,6 +263,10 @@
     unitPrice: null,
     providerName: '',
     payeeName: '',
+    payeeType: 'manual',
+    payeeDriverId: null,
+    payeeBank: '',
+    payeeAccount: '',
     paymentChannel: '',
     fuelCardId: null,
     fuelCardNo: null,
@@ -320,6 +347,15 @@
         }
       ],
       waybillId: [{ required: true, message: '请选择关联运单', trigger: 'change' }],
+      payeeDriverId: [
+        {
+          validator: (_rule, value, callback) =>
+            formData.payeeType === 'driver' && !value
+              ? callback(new Error('请选择已分配司机的运单并确认收款司机'))
+              : callback(),
+          trigger: 'change'
+        }
+      ],
       expenseItemId: [{ required: true, message: '请选择费用项目', trigger: 'change' }],
       amount: [
         {
@@ -477,6 +513,21 @@
         }
       },
       {
+        label: '收款对象',
+        key: 'payeeType',
+        type: 'select',
+        hidden: !canViewPaymentDetails.value,
+        props: {
+          options: [
+            { label: '手工指定', value: 'manual' },
+            { label: '服务商', value: 'provider' },
+            { label: '运单司机', value: 'driver', disabled: !selectedWaybill.value?.driverId }
+          ],
+          disabled: !canEditPaymentDetails.value
+        },
+        description: '选择运单司机后，可带入其默认收款账户；历史费用保留保存时的账户。'
+      },
+      {
         label: '收款方',
         key: 'payeeName',
         type: 'input',
@@ -484,6 +535,28 @@
         props: {
           maxlength: 200,
           placeholder: '司机、服务商或实际收款人',
+          disabled: !canEditPaymentDetails.value
+        }
+      },
+      {
+        label: '收款银行',
+        key: 'payeeBank',
+        type: 'input',
+        hidden: !canViewPaymentDetails.value,
+        props: {
+          maxlength: 200,
+          placeholder: '司机默认账户或手工填写',
+          disabled: !canEditPaymentDetails.value
+        }
+      },
+      {
+        label: '收款账号',
+        key: 'payeeAccount',
+        type: 'input',
+        hidden: !canViewPaymentDetails.value,
+        props: {
+          maxlength: 200,
+          placeholder: '请核对实际收款账号',
           disabled: !canEditPaymentDetails.value
         }
       },
@@ -588,6 +661,11 @@
       if (waybillId === previousWaybillId && selectedTenantId === form.data.tenantId) return
       Object.assign(form.data, {
         tenantId: selectedTenantId,
+        payeeName: '',
+        payeeType: 'manual',
+        payeeDriverId: null,
+        payeeBank: '',
+        payeeAccount: '',
         legId: null,
         expenseItemId: '',
         fuelCardId: null,
@@ -600,10 +678,89 @@
         ...(!form.data.id ? { costNo: '' } : {})
       })
       saveError.value = ''
+      driverDefaultAccount.value = null
+      driverAccountError.value = ''
+      driverAccountLoading.value = false
+      manualPayeeSnapshot.value = null
       ocrPanelRef.value?.reset()
       void loadFuelCards(waybillId, selectedTenantId)
     }
   )
+  watch(
+    () => form.data.payeeType,
+    (payeeType, previousType) => {
+      if (state.hydrating || payeeType === previousType) return
+      driverDefaultAccount.value = null
+      driverAccountError.value = ''
+      if (payeeType === 'driver') {
+        manualPayeeSnapshot.value = {
+          name: form.data.payeeName || '',
+          bank: form.data.payeeBank || '',
+          account: form.data.payeeAccount || ''
+        }
+        Object.assign(form.data, {
+          payeeDriverId: null,
+          payeeName: '',
+          payeeBank: '',
+          payeeAccount: ''
+        })
+        void loadDriverDefaultAccount()
+      } else {
+        if (previousType === 'driver' && manualPayeeSnapshot.value) {
+          Object.assign(form.data, {
+            payeeName: manualPayeeSnapshot.value.name,
+            payeeBank: manualPayeeSnapshot.value.bank,
+            payeeAccount: manualPayeeSnapshot.value.account
+          })
+          manualPayeeSnapshot.value = null
+        }
+        form.data.payeeDriverId = null
+      }
+    }
+  )
+
+  async function loadDriverDefaultAccount(): Promise<void> {
+    const waybillId = form.data.waybillId
+    if (!waybillId || !selectedWaybill.value?.driverId) {
+      driverAccountError.value = '请先选择已分配司机的运单。'
+      return
+    }
+    const session = formSession.value
+    const ensureScope = createTenantScopeReadGuard()
+    driverAccountLoading.value = true
+    try {
+      const { data, error } = await fetchWaybillDriverDefaultAccount(waybillId, form.data.id)
+      if (
+        !isCurrent(session) ||
+        form.data.waybillId !== waybillId ||
+        form.data.payeeType !== 'driver'
+      )
+        return
+      ensureScope()
+      if (error) throw error
+      if (!data?.driverId) {
+        driverAccountError.value = '关联运单尚未分配司机，请重新选择运单。'
+        return
+      }
+      driverDefaultAccount.value = data
+      form.data.payeeDriverId = data.driverId
+      form.data.payeeName = data.driverName
+      if (data.hasDefaultAccount) {
+        form.data.payeeBank = data.bankName || ''
+        form.data.payeeAccount = data.bankAccount || ''
+      } else {
+        driverAccountError.value = '该司机未启用默认开票账户，请人工核对收款银行与账号。'
+      }
+    } catch (error) {
+      if (isCurrent(session))
+        driverAccountError.value = getFriendlySupabaseErrorMessage(
+          error,
+          '司机收款资料加载失败，请重试。'
+        )
+    } finally {
+      if (isCurrent(session)) driverAccountLoading.value = false
+    }
+  }
   watch(
     () => form.data.paymentChannel,
     (channel) => {
@@ -626,6 +783,10 @@
 
   async function loadFuelCards(waybillId: string, tenantId: string): Promise<void> {
     fuelCardOptions.value = []
+    driverDefaultAccount.value = null
+    driverAccountError.value = ''
+    driverAccountLoading.value = false
+    manualPayeeSnapshot.value = null
     fuelCardLoadError.value = ''
     if (!waybillId || !tenantId) return
     const session = formSession.value
@@ -832,7 +993,13 @@
   }
 
   function buildExpensePayload(): Expense {
-    return omit(structuredClone(toRaw(form.data)), ['expenseRegionPath', 'locationPicker'])
+    return {
+      ...omit(structuredClone(toRaw(form.data)), ['expenseRegionPath', 'locationPicker']),
+      payeeType: form.data.payeeType || 'manual',
+      payeeDriverId: form.data.payeeType === 'driver' ? form.data.payeeDriverId || null : null,
+      payeeBank: normalizeNullableText(form.data.payeeBank),
+      payeeAccount: normalizeNullableText(form.data.payeeAccount)
+    }
   }
 
   function canSave(): boolean {
@@ -845,6 +1012,14 @@
     const session = formSession.value
     const ensureScope = createTenantScopeReadGuard()
     if (!canSave()) return false
+    if (
+      canEditPaymentDetails.value &&
+      form.data.payeeType === 'driver' &&
+      (driverAccountLoading.value || !form.data.payeeDriverId)
+    ) {
+      ElMessage.warning('请等待司机收款资料加载完成并确认收款司机')
+      return false
+    }
     saveError.value = ''
     if (!form.data.tenantId || selectedWaybill.value?.tenantId !== form.data.tenantId) {
       saveError.value = '请重新选择关联运单，确认费用所属租户后再保存。'

@@ -40,6 +40,15 @@
       title="无法确定费用所属租户，暂不能上传补充附件"
     />
 
+    <ElAlert
+      v-if="form.data.payeeSource !== 'manual'"
+      class="mb-4"
+      :type="driverAccountError ? 'warning' : 'info'"
+      :closable="false"
+      show-icon
+      :title="driverAccountError || driverAccountHint"
+    />
+
     <ArtForm
       ref="formRef"
       v-model="form.data"
@@ -107,7 +116,14 @@
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import ArtTable from '@/components/core/tables/art-table/index.vue'
   import type { ColumnOption } from '@/types'
-  import { createExpenseReimbursement } from '@fms/api'
+  import {
+    createExpenseReimbursement,
+    fetchWaybillDriverDefaultAccount,
+    type WaybillDriverDefaultAccount
+  } from '@fms/api'
+  import { createTenantScopeReadGuard } from '@/utils/tenant-scope-context'
+  import { isReadableFieldAccess } from '@/utils/field-permission'
+  import { getFriendlySupabaseErrorMessage } from '@/utils/supabase'
   import { useUserStore } from '@/store/modules/user'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import { formatWithDayjs } from '@/utils/time'
@@ -124,6 +140,8 @@
 
   interface ReimbursementForm {
     reimbursementNo: string
+    payeeSource: 'manual' | 'cost_driver' | 'current_driver'
+    payeeDriverId: string | null
     payeeName: string
     payeeBank: string
     payeeAccount: string
@@ -152,6 +170,11 @@
   const dialogRef = ref<ArtDialogExpose<{ expenses: Expense[] }>>()
   const formRef = ref<FormExpose>()
   const state = reactive<{ expenses: Expense[] }>({ expenses: [] })
+  const driverDefaultAccount = ref<WaybillDriverDefaultAccount | null>(null)
+  const driverAccountError = ref('')
+  const driverAccountLoading = ref(false)
+  const driverLoadVersion = ref(0)
+  const manualPayeeSnapshot = ref<{ name: string; bank: string; account: string } | null>(null)
   const attachmentTenantId = computed(() => {
     const expenseTenantIds = uniq(state.expenses.map((item) => item.tenantId).filter(Boolean))
     if (expenseTenantIds.length > 1) return ''
@@ -168,6 +191,8 @@
 
   const createInitialForm = (): ReimbursementForm => ({
     reimbursementNo: '',
+    payeeSource: 'manual',
+    payeeDriverId: null,
     payeeName: currentUserName.value,
     payeeBank: '',
     payeeAccount: '',
@@ -206,6 +231,28 @@
         description: reimbursementNumber.description.value
       },
       {
+        label: '收款对象',
+        key: 'payeeSource',
+        type: 'select',
+        span: 24,
+        props: {
+          options: [
+            { label: '手工指定实际收款人', value: 'manual' },
+            {
+              label: '费用保存时的收款司机',
+              value: 'cost_driver',
+              disabled: !historicalDriverPayee.value
+            },
+            {
+              label: '当前运单司机',
+              value: 'current_driver',
+              disabled: !canLoadCurrentDriver.value
+            }
+          ]
+        },
+        description: '司机账户仅在主动选择后带入；报销人、司机和实际收款人可能不同。'
+      },
+      {
         label: '收款人',
         key: 'payeeName',
         type: 'input',
@@ -214,7 +261,7 @@
           clearable: true,
           placeholder: '请选择或填写实际垫付员工、司机或收款人'
         },
-        description: '默认当前登录人，可按实际报销关系修改。'
+        description: '可按实际垫付与报销关系修改，保存前请核对账户。'
       },
       {
         label: '计划付款日',
@@ -261,6 +308,113 @@
   const totalAmount = computed(() =>
     state.expenses.reduce((sum, item) => sum + Number(item.amount || 0), 0)
   )
+  const canReadSelectedPayment = computed(() =>
+    state.expenses.every((item) =>
+      isReadableFieldAccess(item.fieldAccess?.paymentDetails ?? 'hidden')
+    )
+  )
+  const historicalDriverPayee = computed(() => {
+    if (!canReadSelectedPayment.value || !state.expenses.length) return null
+    const ids = uniq(
+      state.expenses.map((item) => (item.payeeType === 'driver' ? item.payeeDriverId : null))
+    )
+    const accountSnapshots = uniq(
+      state.expenses.map((item) =>
+        [item.payeeName || '', item.payeeBank || '', item.payeeAccount || ''].join('|')
+      )
+    )
+    return ids.length === 1 && ids[0] && accountSnapshots.length === 1 ? state.expenses[0] : null
+  })
+  const canLoadCurrentDriver = computed(
+    () => canReadSelectedPayment.value && Boolean(state.expenses[0]?.waybillId)
+  )
+  const driverAccountHint = computed(() => {
+    if (form.data.payeeSource === 'cost_driver')
+      return '已取费用保存时的司机收款快照；运单后来更换司机不会改写该账户。'
+    if (driverDefaultAccount.value?.hasDefaultAccount)
+      return `当前司机档案开票名称：${driverDefaultAccount.value.invoiceName || '未填写'}；纳税人识别号：${driverDefaultAccount.value.taxNo || '未填写'}。仅作收款资料核对，不作为发票购方或实际开票方。`
+    if (driverDefaultAccount.value) return '当前司机未启用默认开票账户，请人工核对收款银行与账号。'
+    return '正在读取当前运单司机的默认收款账户。'
+  })
+
+  watch(
+    () => form.data.payeeSource,
+    (source, previousSource) => {
+      const version = ++driverLoadVersion.value
+      driverDefaultAccount.value = null
+      driverAccountError.value = ''
+      driverAccountLoading.value = false
+      form.data.payeeDriverId = null
+      if (previousSource === 'manual' && source !== 'manual') {
+        manualPayeeSnapshot.value = {
+          name: form.data.payeeName,
+          bank: form.data.payeeBank,
+          account: form.data.payeeAccount
+        }
+      }
+      if (source === 'manual' && manualPayeeSnapshot.value) {
+        Object.assign(form.data, {
+          payeeName: manualPayeeSnapshot.value.name,
+          payeeBank: manualPayeeSnapshot.value.bank,
+          payeeAccount: manualPayeeSnapshot.value.account
+        })
+        manualPayeeSnapshot.value = null
+      }
+      if (source === 'cost_driver') {
+        const saved = historicalDriverPayee.value
+        if (!saved) {
+          driverAccountError.value = '所选费用没有一致的历史司机收款资料，请手工指定收款人。'
+          return
+        }
+        Object.assign(form.data, {
+          payeeDriverId: saved.payeeDriverId || null,
+          payeeName: saved.payeeName || saved.driverNameSnapshot || '',
+          payeeBank: saved.payeeBank || '',
+          payeeAccount: saved.payeeAccount || ''
+        })
+      } else if (source === 'current_driver') {
+        void loadCurrentDriverAccount(version)
+      }
+    }
+  )
+
+  async function loadCurrentDriverAccount(version: number): Promise<void> {
+    const waybillId = state.expenses[0]?.waybillId
+    if (!waybillId || !canLoadCurrentDriver.value) {
+      driverAccountError.value = '当前费用无权读取司机收款资料。'
+      return
+    }
+    const ensureScope = createTenantScopeReadGuard()
+    driverAccountLoading.value = true
+    try {
+      const { data, error } = await fetchWaybillDriverDefaultAccount(
+        waybillId,
+        state.expenses[0]?.id
+      )
+      if (version !== driverLoadVersion.value || form.data.payeeSource !== 'current_driver') return
+      ensureScope()
+      if (error) throw error
+      if (!data?.driverId) {
+        driverAccountError.value = '当前运单尚未分配司机，请手工指定实际收款人。'
+        return
+      }
+      driverDefaultAccount.value = data
+      Object.assign(form.data, {
+        payeeDriverId: data.driverId,
+        payeeName: data.driverName,
+        payeeBank: data.hasDefaultAccount ? data.bankName || '' : '',
+        payeeAccount: data.hasDefaultAccount ? data.bankAccount || '' : ''
+      })
+    } catch (error) {
+      if (version === driverLoadVersion.value)
+        driverAccountError.value = getFriendlySupabaseErrorMessage(
+          error,
+          '司机收款资料加载失败，请重试。'
+        )
+    } finally {
+      if (version === driverLoadVersion.value) driverAccountLoading.value = false
+    }
+  }
   const relatedWaybillLabel = computed(() => {
     const waybillNo = state.expenses.find((item) => item.waybillNoSnapshot)?.waybillNoSnapshot
     return waybillNo ? `关联运单 ${waybillNo}` : '关联同一运单'
@@ -328,6 +482,14 @@
   }
 
   async function handleSubmit(): Promise<boolean> {
+    if (driverAccountLoading.value || driverAccountError.value) {
+      ElMessage.warning(driverAccountError.value || '请等待司机收款资料加载完成')
+      return false
+    }
+    if (form.data.payeeSource !== 'manual' && !form.data.payeeDriverId) {
+      ElMessage.warning('请确认收款司机后再生成报销单')
+      return false
+    }
     try {
       if (!(await validateArtFormForSubmit(formRef.value))) return false
     } catch (error) {
@@ -341,6 +503,8 @@
         payeeName: form.data.payeeName.trim(),
         payeeBank: normalizeNullableText(form.data.payeeBank),
         payeeAccount: normalizeNullableText(form.data.payeeAccount),
+        payeeDriverId: form.data.payeeSource === 'manual' ? null : form.data.payeeDriverId,
+        payeeSource: form.data.payeeSource,
         plannedPaymentDate: form.data.plannedPaymentDate,
         paymentMethod: form.data.paymentMethod,
         basisUrls: [...form.data.basisUrls],
@@ -355,6 +519,11 @@
   }
 
   async function resetForm(): Promise<void> {
+    ++driverLoadVersion.value
+    driverDefaultAccount.value = null
+    driverAccountError.value = ''
+    driverAccountLoading.value = false
+    manualPayeeSnapshot.value = null
     Object.assign(form.data, createInitialForm())
     state.expenses = []
     await nextTick()

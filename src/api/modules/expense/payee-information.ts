@@ -1,4 +1,6 @@
 import { useSupabase } from '@/hooks/core/useSupabase'
+import { withRequestOptions } from '@/api/providers/supabase/query'
+import type { ApiRequestOptions } from '@/types/api/request'
 import { buildOrIlikeFilter } from '@/utils/supabase/search'
 import { normalizeNullableText, normalizeNonNullableText } from '@/utils/form/normalize'
 
@@ -54,7 +56,10 @@ export interface PayeeInformationSearch {
 
 const { supabase, keysToSnakeDeep, responseHandle } = useSupabase()
 
-export async function fetchPayeeInformationList(params: PayeeInformationSearch = {}) {
+export async function fetchPayeeInformationList(
+  params: PayeeInformationSearch = {},
+  options?: ApiRequestOptions
+) {
   let query = supabase
     .from('fms_payee_information')
     .select('*', { count: 'exact' })
@@ -67,7 +72,7 @@ export async function fetchPayeeInformationList(params: PayeeInformationSearch =
     query = query.ilike('payee_employee_no', `%${params.employeeNo.trim()}%`)
   if (params.keyword?.trim())
     query = query.or(buildOrIlikeFilter(['payee_name', 'payee_employee_no'], params.keyword))
-  return await responseHandle<PayeeInformation[]>(() => query, {
+  return await responseHandle<PayeeInformation[]>(() => withRequestOptions(query, options), {
     breakReturn: true,
     showErrorMessage: false,
     errorMessage: '收款信息加载失败，请检查网络后重试'

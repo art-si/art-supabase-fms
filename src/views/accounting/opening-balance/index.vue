@@ -107,7 +107,7 @@
               :loading="workspace.statusChanging"
               @click="confirmOpeningBalance"
             >
-              <template #icon><ArtSvgIcon icon="ri:lock-line" /></template>
+              <ArtSvgIcon icon="ri:lock-line" />
               确认并锁定
             </ElButton>
           </span>
@@ -119,7 +119,7 @@
           :loading="workspace.statusChanging"
           @click="reopenOpeningBalance"
         >
-          <template #icon><ArtSvgIcon icon="ri:lock-unlock-line" /></template>
+          <ArtSvgIcon icon="ri:lock-unlock-line" />
           反确认
         </ElButton>
       </template>

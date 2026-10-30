@@ -198,6 +198,8 @@ export {
   fetchFinanceWaybillOptions,
   fetchWaybillCostLegOptions,
   fetchWaybillFuelCardOptions,
+  fetchWaybillDriverDefaultAccount,
+  type WaybillDriverDefaultAccount,
   fetchFinanceWorkbench,
   fetchWaybillCostDetail,
   fetchWaybillCostList,

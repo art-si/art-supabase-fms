@@ -30,13 +30,51 @@
       </template>
     </BusinessWorkspaceHeader>
 
+    <ElAlert v-if="overviewError" type="warning" :closable="false" show-icon>
+      {{ overviewError }}
+      <ElButton link type="primary" :loading="overviewLoading" @click="loadOverview">
+        重新加载概览
+      </ElButton>
+    </ElAlert>
+    <ElAlert v-if="accountOptionsError" type="warning" :closable="false" show-icon>
+      {{ accountOptionsError }}
+      <ElButton
+        link
+        type="primary"
+        :loading="accountOptionsLoading"
+        @click="loadAccountOptions(table.search.accountSetId, false)"
+      >
+        重新加载账户
+      </ElButton>
+    </ElAlert>
+    <ElAlert v-if="accountSetOptionsError" type="warning" :closable="false" show-icon>
+      {{ accountSetOptionsError }}
+      <ElButton
+        link
+        type="primary"
+        :loading="accountSetOptionsLoading"
+        @click="loadAccountSetOptions"
+      >
+        重新加载账套
+      </ElButton>
+    </ElAlert>
+    <ElAlert v-if="overviewPartial" type="info" :closable="false" show-icon>
+      概览超过 1000 条；分类和金额指标暂不可用，请按账套缩小范围。
+    </ElAlert>
+
     <ArtTableQuery
+      :key="tableContextKey"
       class="fund-transfer-page__table"
       ref="tableRef"
       v-model="table.search"
       :search-items="searchItems"
       :api-fn="fetchTableData"
+      :response-adapter="adaptTableResponse"
+      :on-success="acceptTableResponse"
+      :on-cache-hit="acceptTableResponse"
+      :on-error="clearListAccess"
       :columns-factory="columnsFactory"
+      :columns-context-key="columnsContextKey"
       :header-actions="headerActions"
       header-actions-placement="workspace"
       :search-bar-props="{ span: 6, labelWidth: 86, isExpand: true, showExpand: false }"
@@ -56,7 +94,13 @@
 </template>
 
 <script setup lang="tsx">
+  import { ElAlert, ElButton } from 'element-plus'
+  import { uniq } from 'lodash-es'
   import { normalizeNullableNumber } from '@/utils/form/normalize'
+  import { defaultResponseAdapter } from '@/utils/table/table-utils'
+  import type { TableRequestOptions } from '@/hooks/core/useTable'
+  import { useTenantOperationGuard } from '@/hooks/core/useTenantOperationGuard'
+  import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import FinanceAccountingWorkspaceShell from '@fms/views/modules/finance-accounting-workspace-shell/index.vue'
   import ArtAsyncState from '@/components/core/feedback/art-async-state/index.vue'
   import { useRouteDocumentDrawer } from '@/hooks/core/useRouteDocumentDrawer'
@@ -66,7 +110,8 @@
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type {
     ArtTableQueryExpose,
-    ArtTableQueryHeaderAction
+    ArtTableQueryHeaderAction,
+    ArtTableQueryProps
   } from '@/components/core/tables/art-table-query/index.vue'
   import ArtButtonTable from '@/components/core/forms/art-button-table/index.vue'
   import ArtButtonMore, {
@@ -127,6 +172,16 @@
   const transitionBusy = ref(false)
   const { runWithAccountSet } = useFinanceAccountSetPrerequisite()
   const userStore = useUserStore()
+  const tenantScope = useTenantScopeStore()
+  const route = useRoute()
+  const captureOperation = useTenantOperationGuard()
+  const readScopeKey = computed(
+    () =>
+      `${tenantScope.revision}:${tenantScope.effectiveTenantId ?? 'all'}:${userStore.getUserInfo.userId ?? ''}`
+  )
+  const tableScopeKey = ref(readScopeKey.value)
+  let active = true
+  let needsResume = false
   const transferStatusOptions = useDictionaryOptions('fmsFundTransferStatus')
   const tableRef = ref<ArtTableQueryExpose>()
   const dialogRef = ref<DialogExpose>()
@@ -155,13 +210,50 @@
     }
   })
   const accountSetOptions = ref<Api.Fms.AccountSetOption[]>([])
+  const accountSetOptionsReady = ref(false)
   const accountOptions = ref<Api.Fms.FundAccountOption[]>([])
   const overviewRows = ref<Transfer[]>([])
-  const currentRows = ref<Transfer[]>([])
+  const overviewTotal = ref(0)
+  const overviewFieldAccess = ref<Api.Fms.FundTransferFieldAccessMap>({})
+  const overviewLoading = ref(false)
+  const overviewReady = ref(false)
+  const overviewError = ref('')
+  const accountOptionsLoading = ref(false)
+  const accountOptionsError = ref('')
+  const accountSetOptionsError = ref('')
+  const accountSetOptionsLoading = ref(false)
+  let overviewRequestId = 0
+  let overviewController: AbortController | undefined
+  let accountOptionsRequestId = 0
+  let accountOptionsController: AbortController | undefined
+  let accountSetOptionsRequestId = 0
+  let accountSetOptionsController: AbortController | undefined
+  const currentRows = computed(
+    () => (tableRef.value?.dataState.rows.value ?? []) as readonly Transfer[]
+  )
+  const overviewPartial = computed(
+    () => overviewReady.value && overviewTotal.value > overviewRows.value.length
+  )
   const listFieldAccess = ref<Api.Fms.FundTransferFieldAccessMap>({})
+  const adaptTableResponse = (response: Awaited<ReturnType<typeof fetchFundTransferList>>) => ({
+    ...defaultResponseAdapter<Transfer>(response),
+    fieldAccess: mergeFieldAccessMaps(response.fieldAccess)
+  })
+  const acceptTableResponse: ArtTableQueryProps['onSuccess'] = (_rows, response) => {
+    const access = response.fieldAccess
+    listFieldAccess.value = mergeFieldAccessMaps(
+      access && typeof access === 'object' && !Array.isArray(access)
+        ? (access as Api.Fms.FundTransferFieldAccessMap)
+        : {}
+    )
+  }
+  const clearListAccess = () => {
+    listFieldAccess.value = {}
+  }
   const effectiveFieldAccess = computed(() =>
     mergeFieldAccessMaps(listFieldAccess.value, ...currentRows.value.map((row) => row.fieldAccess))
   )
+  const columnsContextKey = computed(() => JSON.stringify(effectiveFieldAccess.value))
   const canViewListField = (field: Api.Fms.FundTransferFieldKey): boolean =>
     canViewField(effectiveFieldAccess.value, field)
   const canFilterAccount = computed(() =>
@@ -170,6 +262,9 @@
   const table = reactive<{ search: SearchParams }>({
     search: { keyword: '', accountSetId: undefined, status: undefined }
   })
+  const tableContextKey = computed(
+    () => `${tableScopeKey.value}:${table.search.accountSetId ?? ''}`
+  )
 
   const searchItems = computed<SearchFormItem[]>(() => [
     {
@@ -180,8 +275,7 @@
         options: accountSetOptions.value,
         clearable: true,
         filterable: true,
-        placeholder: '全部账套',
-        onChange: (value: string) => void loadAccountOptions(value)
+        placeholder: '全部账套'
       }
     },
     ...(canFilterAccount.value
@@ -239,6 +333,10 @@
       permission: 'FinanceFundTransfer:Add',
       type: 'add',
       label: '新建资金调拨',
+      disabled:
+        !accountSetOptionsReady.value ||
+        accountSetOptionsLoading.value ||
+        !!accountSetOptionsError.value,
       onClick: () =>
         void runWithAccountSet(
           {
@@ -257,15 +355,26 @@
 
   const metrics = computed<BusinessWorkspaceMetric[]>(() => {
     const selected = table.search.status
+    const breakdownReady = overviewReady.value && !overviewPartial.value
     const count = (status: Api.Fms.FundTransferStatus) =>
       overviewRows.value.filter((row) => row.status === status).length
     const completedRows = overviewRows.value.filter((row) => row.status === 'completed')
-    const amountAccess = getFieldAccess(listFieldAccess.value, 'transferAmounts')
+    const currencies = uniq(completedRows.map((row) => row.currencyCode).filter(Boolean))
+    const singleCurrency =
+      completedRows.length > 0 &&
+      currencies.length === 1 &&
+      completedRows.every((row) => Boolean(row.currencyCode))
+    const currencyCode = singleCurrency ? completedRows[0]?.currencyCode : undefined
+    const amountAccess = getFieldAccess(overviewFieldAccess.value, 'transferAmounts')
     const completedAmounts = completedRows.map(
       (row) => normalizeNullableNumber(row.amount) ?? undefined
     )
     const canAggregateAmount =
-      isReadableFieldAccess(amountAccess) &&
+      breakdownReady &&
+      singleCurrency &&
+      completedRows.every((row) =>
+        isReadableFieldAccess(getFieldAccess(row.fieldAccess, 'transferAmounts', amountAccess))
+      ) &&
       completedAmounts.every((value): value is number => value !== undefined)
     const completedAmount = canAggregateAmount
       ? completedAmounts.reduce((sum, value) => sum + value, 0)
@@ -274,7 +383,7 @@
       {
         key: 'all',
         label: '全部调拨',
-        value: overviewRows.value.length,
+        value: overviewReady.value ? overviewTotal.value : '--',
         description: '当前可见调拨单',
         icon: 'ri:swap-2-line',
         tone: 'primary',
@@ -284,7 +393,7 @@
       {
         key: 'pending_review',
         label: '待审批',
-        value: count('pending_review'),
+        value: breakdownReady ? count('pending_review') : '--',
         description: '等待资金审批',
         icon: 'ri:time-line',
         tone: 'warning',
@@ -294,7 +403,7 @@
       {
         key: 'approved',
         label: '待执行',
-        value: count('approved'),
+        value: breakdownReady ? count('approved') : '--',
         description: '已审批未入账',
         icon: 'ri:play-circle-line',
         tone: 'primary',
@@ -304,13 +413,24 @@
       {
         key: 'completed',
         label: canAggregateAmount ? '已完成金额' : '已完成调拨',
-        value:
-          completedAmount === undefined
+        value: !breakdownReady
+          ? '--'
+          : completedAmount === undefined
             ? amountAccess === 'masked'
               ? '***'
               : count('completed')
-            : formatCurrencyValue(completedAmount),
-        description: canAggregateAmount ? `${count('completed')} 笔已入账` : '金额受字段权限控制',
+            : formatCurrencyValue(completedAmount, currencyCode),
+        description: !breakdownReady
+          ? overviewPartial.value
+            ? '超过 1000 条，分类和金额待核对'
+            : '当前范围尚未加载'
+          : canAggregateAmount
+            ? `${count('completed')} 笔已入账`
+            : completedRows.length && !singleCurrency
+              ? currencies.length > 1
+                ? '多币种金额不合计'
+                : '币种缺失，金额不合计'
+              : '金额受字段权限控制',
         icon: 'ri:checkbox-circle-line',
         tone: 'success',
         interactive: true,
@@ -496,32 +616,111 @@
     return []
   }
 
-  async function fetchTableData(params: TableParams) {
+  async function fetchTableData(params: TableParams, options?: TableRequestOptions) {
     const { from, to } = buildSupabasePageRange({ current: params.current, size: params.size })
-    const result = await fetchFundTransferList({ ...params, from, to })
-    listFieldAccess.value = result.fieldAccess
-    currentRows.value = result.data ?? []
-    return result
+    return fetchFundTransferList({ ...params, from, to }, { ...options, showErrorMessage: false })
   }
 
   async function loadOverview(): Promise<void> {
-    const result = await fetchFundTransferList({
-      accountSetId: table.search.accountSetId,
-      from: 0,
-      to: 999
-    })
-    overviewRows.value = result.data ?? []
-    listFieldAccess.value = result.fieldAccess
+    if (!active) return
+    overviewController?.abort()
+    const controller = new AbortController()
+    overviewController = controller
+    const requestId = ++overviewRequestId
+    const accountSetId = table.search.accountSetId
+    const operationCurrent = captureOperation()
+    const isCurrent = () =>
+      requestId === overviewRequestId &&
+      !controller.signal.aborted &&
+      operationCurrent() &&
+      accountSetId === table.search.accountSetId
+    overviewRows.value = []
+    overviewTotal.value = 0
+    overviewFieldAccess.value = {}
+    overviewReady.value = false
+    overviewError.value = ''
+    overviewLoading.value = true
+    try {
+      const result = await fetchFundTransferList(
+        { accountSetId, from: 0, to: 999 },
+        { signal: controller.signal, showErrorMessage: false }
+      )
+      if (!isCurrent()) return
+      if (result.error) throw result.error
+      overviewRows.value = result.data ?? []
+      overviewTotal.value = result.total
+      overviewFieldAccess.value = result.fieldAccess
+      overviewReady.value = true
+    } catch {
+      if (isCurrent()) overviewError.value = '资金调拨概览加载失败，当前指标暂不可用。'
+    } finally {
+      if (requestId === overviewRequestId) overviewLoading.value = false
+    }
   }
 
-  async function loadAccountOptions(accountSetId?: string): Promise<void> {
-    table.search.sourceAccountId = undefined
+  async function loadAccountOptions(accountSetId?: string, clearSelection = true): Promise<void> {
+    if (!active) return
+    accountOptionsController?.abort()
+    const controller = new AbortController()
+    accountOptionsController = controller
+    const requestId = ++accountOptionsRequestId
+    const operationCurrent = captureOperation()
+    const isCurrent = () =>
+      requestId === accountOptionsRequestId &&
+      !controller.signal.aborted &&
+      operationCurrent() &&
+      accountSetId === table.search.accountSetId
+    if (clearSelection) table.search.sourceAccountId = undefined
+    accountOptionsError.value = ''
     if (!accountSetId) {
       accountOptions.value = []
+      accountOptionsLoading.value = false
       return
     }
-    const { data } = await fetchFundAccountOptions({ accountSetId, status: 'active' })
-    accountOptions.value = data ?? []
+    accountOptions.value = []
+    accountOptionsLoading.value = true
+    try {
+      const { data, error } = await fetchFundAccountOptions(
+        { accountSetId, status: 'active' },
+        { signal: controller.signal, showErrorMessage: false }
+      )
+      if (!isCurrent()) return
+      if (error) throw error
+      accountOptions.value = data ?? []
+    } catch {
+      if (isCurrent()) accountOptionsError.value = '调拨账户加载失败，请重试。'
+    } finally {
+      if (requestId === accountOptionsRequestId) accountOptionsLoading.value = false
+    }
+  }
+
+  async function loadAccountSetOptions(): Promise<void> {
+    if (!active) return
+    accountSetOptionsController?.abort()
+    const controller = new AbortController()
+    accountSetOptionsController = controller
+    const requestId = ++accountSetOptionsRequestId
+    const operationCurrent = captureOperation()
+    const isCurrent = () =>
+      requestId === accountSetOptionsRequestId && !controller.signal.aborted && operationCurrent()
+    accountSetOptions.value = []
+    accountSetOptionsReady.value = false
+    accountSetOptionsError.value = ''
+    accountSetOptionsLoading.value = true
+    try {
+      const { data, error } = await fetchAccountSetOptions(
+        { status: 'active', from: 0, to: 999 },
+        { signal: controller.signal, showErrorMessage: false }
+      )
+      if (!isCurrent()) return
+      if (error) throw error
+      accountSetOptions.value = data ?? []
+      accountSetOptionsReady.value = true
+    } catch {
+      if (isCurrent()) accountSetOptionsError.value = '账套选项加载失败，请重试。'
+    } finally {
+      if (requestId === accountSetOptionsRequestId) accountSetOptionsLoading.value = false
+    }
   }
 
   function handleMetricClick(metric: BusinessWorkspaceMetric): void {
@@ -629,9 +828,78 @@
     await refreshAll(type)
   }
 
+  let resettingScope = false
+  const cancelPendingReads = (): void => {
+    overviewRequestId++
+    overviewController?.abort()
+    accountOptionsRequestId++
+    accountOptionsController?.abort()
+    accountSetOptionsRequestId++
+    accountSetOptionsController?.abort()
+  }
+  const clearReadState = (): void => {
+    listFieldAccess.value = {}
+    overviewRows.value = []
+    overviewFieldAccess.value = {}
+    overviewTotal.value = 0
+    overviewReady.value = false
+    overviewLoading.value = false
+    overviewError.value = ''
+    accountOptions.value = []
+    accountOptionsLoading.value = false
+    accountOptionsError.value = ''
+    accountSetOptions.value = []
+    accountSetOptionsReady.value = false
+    accountSetOptionsLoading.value = false
+    accountSetOptionsError.value = ''
+  }
+  const resetScope = (): void => {
+    resettingScope = true
+    table.search = { keyword: '', accountSetId: undefined, status: undefined }
+    resettingScope = false
+    clearReadState()
+  }
+  watch(
+    readScopeKey,
+    () => {
+      tableRef.value?.cancelRequest()
+      cancelPendingReads()
+      if (!active) return
+      resetScope()
+      tableScopeKey.value = readScopeKey.value
+      if (route.name && route.name !== 'FinanceFundTransfer') return
+      void loadAccountSetOptions()
+      void loadOverview()
+    },
+    { flush: 'sync' }
+  )
   watch(
     () => table.search.accountSetId,
-    () => void loadOverview()
+    (accountSetId) => {
+      if (resettingScope) return
+      void loadAccountOptions(accountSetId)
+      void loadOverview()
+    },
+    { flush: 'sync' }
+  )
+  watch(
+    () => [route.path, route.fullPath] as const,
+    ([path], [previousPath]) => {
+      if (!active || path !== previousPath || (route.name && route.name !== 'FinanceFundTransfer'))
+        return
+      void loadOverview()
+      if (accountOptionsLoading.value) void loadAccountOptions(table.search.accountSetId, false)
+      if (accountSetOptionsLoading.value) void loadAccountSetOptions()
+    },
+    { flush: 'post' }
+  )
+  watch(
+    () => route.path,
+    () => {
+      tableRef.value?.cancelRequest()
+      cancelPendingReads()
+    },
+    { flush: 'sync' }
   )
 
   watch(canFilterAccount, (allowed) => {
@@ -639,13 +907,33 @@
   })
 
   onMounted(async () => {
-    const [{ data }] = await Promise.all([
-      fetchAccountSetOptions({ status: 'active', from: 0, to: 999 }),
-      userStore.ensureDictLoaded('fmsFundTransferStatus')
-    ])
-    accountSetOptions.value = data ?? []
-    await loadOverview()
+    const operationCurrent = captureOperation()
+    await userStore.ensureDictLoaded('fmsFundTransferStatus')
+    if (!operationCurrent()) return
+    await Promise.all([loadAccountSetOptions(), loadOverview()])
   })
+  onDeactivated(() => {
+    active = false
+    needsResume = true
+    tableRef.value?.cancelRequest()
+    cancelPendingReads()
+    clearReadState()
+  })
+  onActivated(() => {
+    if (!needsResume) return
+    needsResume = false
+    active = true
+    if (tableScopeKey.value !== readScopeKey.value) {
+      resetScope()
+      tableScopeKey.value = readScopeKey.value
+    } else {
+      void tableRef.value?.refreshUpdate()
+    }
+    void loadAccountSetOptions()
+    void loadOverview()
+    if (table.search.accountSetId) void loadAccountOptions(table.search.accountSetId, false)
+  })
+  onScopeDispose(cancelPendingReads)
 </script>
 
 <style scoped lang="scss">

@@ -60,6 +60,7 @@
   import { useAuth } from '@/hooks/core/useAuth'
   import { useTenantOperationGuard } from '@/hooks/core/useTenantOperationGuard'
   import { buildSupabasePageRange } from '@/utils/supabase/pagination'
+  import type { TableRequestOptions } from '@/hooks/core/useTable'
   import { documentGroupSpan } from '@/utils/business/document-detail-list'
   import { formatCurrencyValue } from '@/utils/ui'
   import { formatWithDayjs } from '@/utils/time'
@@ -255,15 +256,18 @@
     }
   ])
 
-  async function fetchTableData(params: WorkspaceSearch & { current: number; size: number }) {
+  async function fetchTableData(
+    params: WorkspaceSearch & { current: number; size: number },
+    options?: TableRequestOptions
+  ) {
     const range = buildSupabasePageRange(params)
     const { displayMode, ...filters } = params
     const query = { ...filters, ...range }
     if (displayMode === 'line') {
-      const result = await fetchReimbursementWorkspaceLines(query)
+      const result = await fetchReimbursementWorkspaceLines(query, options)
       return { ...result, total: result.total ?? 0 }
     }
-    const result = await fetchReimbursementWorkspaceList(query)
+    const result = await fetchReimbursementWorkspaceList(query, options)
     return { ...result, total: result.total ?? 0 }
   }
   function mergeDocumentCells({

@@ -1,4 +1,6 @@
 import { useSupabase } from '@/hooks/core/useSupabase'
+import { withRequestOptions } from '@/api/providers/supabase/query'
+import type { ApiRequestOptions } from '@/types/api/request'
 import { buildOrIlikeFilter } from '@/utils/supabase/search'
 import { normalizeNullableText } from '@/utils/form/normalize'
 import type { TravelLoan, TravelLoanItem } from './travel-loan'
@@ -103,7 +105,10 @@ export interface RepayableLoan extends TravelLoan {
 
 const { supabase, keysToSnakeDeep, responseHandle } = useSupabase()
 
-export async function fetchTravelRepaymentList(params: TravelRepaymentSearch = {}) {
+export async function fetchTravelRepaymentList(
+  params: TravelRepaymentSearch = {},
+  options?: ApiRequestOptions
+) {
   let query = supabase
     .from('fms_travel_repayment')
     .select(
@@ -127,14 +132,17 @@ export async function fetchTravelRepaymentList(params: TravelRepaymentSearch = {
     query = query.or(
       buildOrIlikeFilter(['repayment_no', 'applicant_name', 'reason'], params.keyword)
     )
-  return responseHandle<TravelRepayment[]>(() => query, {
+  return responseHandle<TravelRepayment[]>(() => withRequestOptions(query, options), {
     breakReturn: true,
     showErrorMessage: false,
     errorMessage: '还款单加载失败，请检查网络后重试'
   })
 }
 
-export async function fetchTravelRepaymentLineList(params: TravelRepaymentSearch = {}) {
+export async function fetchTravelRepaymentLineList(
+  params: TravelRepaymentSearch = {},
+  options?: ApiRequestOptions
+) {
   let query = supabase
     .from('fms_travel_repayment_item')
     .select('*,repayment:fms_travel_repayment!inner(*)', { count: 'exact' })
@@ -154,7 +162,7 @@ export async function fetchTravelRepaymentLineList(params: TravelRepaymentSearch
       buildOrIlikeFilter(['repayment_no', 'applicant_name', 'reason'], params.keyword),
       { referencedTable: 'repayment' }
     )
-  return responseHandle<TravelRepaymentLine[]>(() => query, {
+  return responseHandle<TravelRepaymentLine[]>(() => withRequestOptions(query, options), {
     breakReturn: true,
     showErrorMessage: false,
     errorMessage: '还款明细加载失败，请检查网络后重试'

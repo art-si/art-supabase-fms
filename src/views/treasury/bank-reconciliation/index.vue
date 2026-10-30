@@ -30,13 +30,51 @@
       </template>
     </BusinessWorkspaceHeader>
 
+    <ElAlert v-if="overviewError" type="warning" :closable="false" show-icon>
+      {{ overviewError }}
+      <ElButton link type="primary" :loading="overviewLoading" @click="loadOverview">
+        重新加载概览
+      </ElButton>
+    </ElAlert>
+    <ElAlert v-if="accountOptionsError" type="warning" :closable="false" show-icon>
+      {{ accountOptionsError }}
+      <ElButton
+        link
+        type="primary"
+        :loading="accountOptionsLoading"
+        @click="loadAccountOptions(table.search.accountSetId, false)"
+      >
+        重新加载账户
+      </ElButton>
+    </ElAlert>
+    <ElAlert v-if="accountSetOptionsError" type="warning" :closable="false" show-icon>
+      {{ accountSetOptionsError }}
+      <ElButton
+        link
+        type="primary"
+        :loading="accountSetOptionsLoading"
+        @click="loadAccountSetOptions"
+      >
+        重新加载账套
+      </ElButton>
+    </ElAlert>
+    <ElAlert v-if="overviewPartial" type="info" :closable="false" show-icon>
+      概览超过 1000 条；分类和待处理流水指标暂不可用，请缩小账套或账户范围。
+    </ElAlert>
+
     <ArtTableQuery
+      :key="tableContextKey"
       class="bank-reconciliation-page__table"
       ref="tableRef"
       v-model="table.search"
       :search-items="searchItems"
       :api-fn="fetchTableData"
+      :response-adapter="adaptTableResponse"
+      :on-success="acceptTableResponse"
+      :on-cache-hit="acceptTableResponse"
+      :on-error="clearListAccess"
       :columns-factory="columnsFactory"
+      :columns-context-key="columnsContextKey"
       :header-actions="headerActions"
       header-actions-placement="workspace"
       :search-bar-props="{ span: 6, labelWidth: 86, isExpand: true, showExpand: false }"
@@ -55,6 +93,11 @@
 </template>
 
 <script setup lang="tsx">
+  import { ElAlert, ElButton } from 'element-plus'
+  import { defaultResponseAdapter } from '@/utils/table/table-utils'
+  import type { TableRequestOptions } from '@/hooks/core/useTable'
+  import { useTenantOperationGuard } from '@/hooks/core/useTenantOperationGuard'
+  import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import FinanceAccountingWorkspaceShell from '@fms/views/modules/finance-accounting-workspace-shell/index.vue'
   import ArtAsyncState from '@/components/core/feedback/art-async-state/index.vue'
   import { useRouteDocumentDrawer } from '@/hooks/core/useRouteDocumentDrawer'
@@ -63,7 +106,8 @@
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
   import type {
     ArtTableQueryExpose,
-    ArtTableQueryHeaderAction
+    ArtTableQueryHeaderAction,
+    ArtTableQueryProps
   } from '@/components/core/tables/art-table-query/index.vue'
   import ArtButtonTable from '@/components/core/forms/art-button-table/index.vue'
   import BusinessTableWorkspaceActions from '@/components/business/business-table-workspace-actions/index.vue'
@@ -107,6 +151,17 @@
   }
 
   const reconciliationStatusOptions = useDictionaryOptions('fmsBankReconciliationStatus')
+  const userStore = useUserStore()
+  const tenantScope = useTenantScopeStore()
+  const route = useRoute()
+  const captureOperation = useTenantOperationGuard()
+  const readScopeKey = computed(
+    () =>
+      `${tenantScope.revision}:${tenantScope.effectiveTenantId ?? 'all'}:${userStore.getUserInfo.userId ?? ''}`
+  )
+  const tableScopeKey = ref(readScopeKey.value)
+  let active = true
+  let needsResume = false
   const tableRef = ref<ArtTableQueryExpose>()
   const importDialogRef = ref<ImportDialogExpose>()
   const drawerRef = ref<DrawerExpose>()
@@ -135,15 +190,51 @@
   })
   const accountSetOptions = ref<Api.Fms.AccountSetOption[]>([])
   const accountSetOptionsLoaded = ref(false)
-  let accountSetOptionsRequest: Promise<void> | undefined
   const { runWithAccountSet } = useFinanceAccountSetPrerequisite()
   const accountOptions = ref<Api.Fms.FundAccountOption[]>([])
   const overviewRows = ref<Batch[]>([])
-  const currentRows = ref<Batch[]>([])
+  const overviewTotal = ref(0)
+  const overviewLoading = ref(false)
+  const overviewReady = ref(false)
+  const overviewError = ref('')
+  const accountOptionsLoading = ref(false)
+  const accountOptionsError = ref('')
+  const accountSetOptionsLoading = ref(false)
+  const accountSetOptionsError = ref('')
+  let overviewRequestId = 0
+  let overviewController: AbortController | undefined
+  let accountOptionsRequestId = 0
+  let accountOptionsController: AbortController | undefined
+  let accountSetOptionsRequestId = 0
+  let accountSetOptionsController: AbortController | undefined
+  const currentRows = computed(
+    () => (tableRef.value?.dataState.rows.value ?? []) as readonly Batch[]
+  )
+  const overviewPartial = computed(
+    () => overviewReady.value && overviewTotal.value > overviewRows.value.length
+  )
   const listFieldAccess = ref<Api.Fms.BankReconciliationFieldAccessMap>({})
+  const adaptTableResponse = (
+    response: Awaited<ReturnType<typeof fetchBankReconciliationList>>
+  ) => ({
+    ...defaultResponseAdapter<Batch>(response),
+    fieldAccess: mergeFieldAccessMaps(response.fieldAccess)
+  })
+  const acceptTableResponse: ArtTableQueryProps['onSuccess'] = (_rows, response) => {
+    const access = response.fieldAccess
+    listFieldAccess.value = mergeFieldAccessMaps(
+      access && typeof access === 'object' && !Array.isArray(access)
+        ? (access as Api.Fms.BankReconciliationFieldAccessMap)
+        : {}
+    )
+  }
+  const clearListAccess = () => {
+    listFieldAccess.value = {}
+  }
   const effectiveFieldAccess = computed(() =>
     mergeFieldAccessMaps(listFieldAccess.value, ...currentRows.value.map((row) => row.fieldAccess))
   )
+  const columnsContextKey = computed(() => JSON.stringify(effectiveFieldAccess.value))
   const canViewListField = (field: Api.Fms.BankReconciliationFieldKey): boolean =>
     canViewField(effectiveFieldAccess.value, field)
   const canViewRowField = (row: Batch, field: Api.Fms.BankReconciliationFieldKey): boolean =>
@@ -151,6 +242,10 @@
   const table = reactive<{ search: SearchParams }>({
     search: { keyword: '', accountSetId: undefined, fundAccountId: undefined, status: undefined }
   })
+  const tableContextKey = computed(
+    () =>
+      `${tableScopeKey.value}:${table.search.accountSetId ?? ''}:${table.search.fundAccountId ?? ''}`
+  )
 
   const searchItems = computed<SearchFormItem[]>(() => [
     {
@@ -161,8 +256,7 @@
         options: accountSetOptions.value,
         clearable: true,
         filterable: true,
-        placeholder: '全部账套',
-        onChange: (value: string) => void loadAccountOptions(value)
+        placeholder: '全部账套'
       }
     },
     {
@@ -218,6 +312,10 @@
       permission: 'FinanceBankReconciliation:Add',
       type: 'add',
       label: '导入银行流水',
+      disabled:
+        !accountSetOptionsLoaded.value ||
+        accountSetOptionsLoading.value ||
+        !!accountSetOptionsError.value,
       onClick: async () => {
         if (!accountSetOptionsLoaded.value) await loadAccountSetOptions()
         if (!accountSetOptionsLoaded.value) return
@@ -239,6 +337,7 @@
 
   const metrics = computed<BusinessWorkspaceMetric[]>(() => {
     const selected = table.search.status
+    const breakdownReady = overviewReady.value && !overviewPartial.value
     const count = (status: Api.Fms.BankReconciliationStatus) =>
       overviewRows.value.filter((row) => row.status === status).length
     const unmatched = overviewRows.value
@@ -248,7 +347,7 @@
       {
         key: 'all',
         label: '对账批次',
-        value: overviewRows.value.length,
+        value: overviewReady.value ? overviewTotal.value : '--',
         description: '当前可见批次',
         icon: 'ri:file-search-line',
         tone: 'primary',
@@ -258,7 +357,7 @@
       {
         key: 'reconciling',
         label: '对账中',
-        value: count('reconciling'),
+        value: breakdownReady ? count('reconciling') : '--',
         description: '仍可调整匹配关系',
         icon: 'ri:loader-2-line',
         tone: 'warning',
@@ -268,7 +367,7 @@
       {
         key: 'reconciled',
         label: '已完成',
-        value: count('reconciled'),
+        value: breakdownReady ? count('reconciled') : '--',
         description: '余额闭合并锁定',
         icon: 'ri:checkbox-circle-line',
         tone: 'success',
@@ -278,10 +377,12 @@
       {
         key: 'exceptions',
         label: '待处理流水',
-        value: unmatched,
-        description: '对账中批次的未匹配与部分匹配',
+        value: breakdownReady ? unmatched : '--',
+        description: overviewPartial.value
+          ? '超过 1000 条，待处理总数待核对'
+          : '对账中批次的未匹配与部分匹配',
         icon: 'ri:error-warning-line',
-        tone: unmatched ? 'danger' : 'success'
+        tone: !breakdownReady ? 'info' : unmatched ? 'danger' : 'success'
       }
     ]
   })
@@ -384,33 +485,88 @@
     ]
   }
 
-  async function fetchTableData(params: TableParams) {
+  async function fetchTableData(params: TableParams, options?: TableRequestOptions) {
     const { from, to } = buildSupabasePageRange({ current: params.current, size: params.size })
-    const result = await fetchBankReconciliationList({ ...params, from, to })
-    listFieldAccess.value = result.fieldAccess
-    currentRows.value = result.data ?? []
-    return result
+    return fetchBankReconciliationList(
+      { ...params, from, to },
+      {
+        ...options,
+        showErrorMessage: false
+      }
+    )
   }
 
   async function loadOverview(): Promise<void> {
-    const result = await fetchBankReconciliationList({
-      accountSetId: table.search.accountSetId,
-      fundAccountId: table.search.fundAccountId,
-      from: 0,
-      to: 999
-    })
-    overviewRows.value = result.data ?? []
-    listFieldAccess.value = result.fieldAccess
+    if (!active) return
+    overviewController?.abort()
+    const controller = new AbortController()
+    overviewController = controller
+    const requestId = ++overviewRequestId
+    const accountSetId = table.search.accountSetId
+    const fundAccountId = table.search.fundAccountId
+    const operationCurrent = captureOperation()
+    const isCurrent = () =>
+      requestId === overviewRequestId &&
+      !controller.signal.aborted &&
+      operationCurrent() &&
+      accountSetId === table.search.accountSetId &&
+      fundAccountId === table.search.fundAccountId
+    overviewRows.value = []
+    overviewTotal.value = 0
+    overviewReady.value = false
+    overviewError.value = ''
+    overviewLoading.value = true
+    try {
+      const result = await fetchBankReconciliationList(
+        { accountSetId, fundAccountId, from: 0, to: 999 },
+        { signal: controller.signal, showErrorMessage: false }
+      )
+      if (!isCurrent()) return
+      if (result.error) throw result.error
+      overviewRows.value = result.data ?? []
+      overviewTotal.value = result.total
+      overviewReady.value = true
+    } catch {
+      if (isCurrent()) overviewError.value = '银行对账概览加载失败，当前指标暂不可用。'
+    } finally {
+      if (requestId === overviewRequestId) overviewLoading.value = false
+    }
   }
 
-  async function loadAccountOptions(accountSetId?: string): Promise<void> {
-    table.search.fundAccountId = undefined
+  async function loadAccountOptions(accountSetId?: string, clearSelection = true): Promise<void> {
+    if (!active) return
+    accountOptionsController?.abort()
+    const controller = new AbortController()
+    accountOptionsController = controller
+    const requestId = ++accountOptionsRequestId
+    const operationCurrent = captureOperation()
+    const isCurrent = () =>
+      requestId === accountOptionsRequestId &&
+      !controller.signal.aborted &&
+      operationCurrent() &&
+      accountSetId === table.search.accountSetId
+    if (clearSelection) table.search.fundAccountId = undefined
+    accountOptionsError.value = ''
     if (!accountSetId) {
       accountOptions.value = []
+      accountOptionsLoading.value = false
       return
     }
-    const { data } = await fetchFundAccountOptions({ accountSetId, status: 'active' })
-    accountOptions.value = (data ?? []).filter((item) => item.accountType !== 'cash')
+    accountOptions.value = []
+    accountOptionsLoading.value = true
+    try {
+      const { data, error } = await fetchFundAccountOptions(
+        { accountSetId, status: 'active' },
+        { signal: controller.signal, showErrorMessage: false }
+      )
+      if (!isCurrent()) return
+      if (error) throw error
+      accountOptions.value = (data ?? []).filter((item) => item.accountType !== 'cash')
+    } catch {
+      if (isCurrent()) accountOptionsError.value = '对账账户加载失败，请重试。'
+    } finally {
+      if (requestId === accountOptionsRequestId) accountOptionsLoading.value = false
+    }
   }
 
   function handleMetricClick(metric: BusinessWorkspaceMetric): void {
@@ -435,33 +591,154 @@
     await refreshAll('update')
   }
 
+  let resettingScope = false
+  const cancelPendingReads = (): void => {
+    overviewRequestId++
+    overviewController?.abort()
+    accountOptionsRequestId++
+    accountOptionsController?.abort()
+    accountSetOptionsRequestId++
+    accountSetOptionsController?.abort()
+  }
+  const clearReadState = (): void => {
+    listFieldAccess.value = {}
+    overviewRows.value = []
+    overviewTotal.value = 0
+    overviewReady.value = false
+    overviewLoading.value = false
+    overviewError.value = ''
+    accountOptions.value = []
+    accountOptionsLoading.value = false
+    accountOptionsError.value = ''
+    accountSetOptions.value = []
+    accountSetOptionsLoaded.value = false
+    accountSetOptionsLoading.value = false
+    accountSetOptionsError.value = ''
+  }
+  const resetScope = (): void => {
+    resettingScope = true
+    table.search = {
+      keyword: '',
+      accountSetId: undefined,
+      fundAccountId: undefined,
+      status: undefined
+    }
+    void nextTick(() => {
+      resettingScope = false
+    })
+    clearReadState()
+  }
+  watch(
+    readScopeKey,
+    () => {
+      tableRef.value?.cancelRequest()
+      cancelPendingReads()
+      if (!active) return
+      resetScope()
+      tableScopeKey.value = readScopeKey.value
+      if (route.name && route.name !== 'FinanceBankReconciliation') return
+      void loadAccountSetOptions()
+      void loadOverview()
+    },
+    { flush: 'sync' }
+  )
+  watch(
+    () => table.search.accountSetId,
+    (accountSetId) => {
+      if (resettingScope) return
+      table.search.fundAccountId = undefined
+      void loadAccountOptions(accountSetId, false)
+    },
+    { flush: 'sync' }
+  )
   watch(
     () => [table.search.accountSetId, table.search.fundAccountId],
-    () => void loadOverview()
+    () => {
+      if (!resettingScope) void loadOverview()
+    },
+    { flush: 'post' }
+  )
+  watch(
+    () => [route.path, route.fullPath] as const,
+    ([path], [previousPath]) => {
+      if (
+        !active ||
+        path !== previousPath ||
+        (route.name && route.name !== 'FinanceBankReconciliation')
+      )
+        return
+      void loadOverview()
+      if (accountOptionsLoading.value) void loadAccountOptions(table.search.accountSetId, false)
+      if (accountSetOptionsLoading.value) void loadAccountSetOptions()
+    },
+    { flush: 'post' }
+  )
+  watch(
+    () => route.path,
+    () => {
+      tableRef.value?.cancelRequest()
+      cancelPendingReads()
+    },
+    { flush: 'sync' }
   )
 
   async function loadAccountSetOptions(): Promise<void> {
-    if (accountSetOptionsRequest) return accountSetOptionsRequest
-    accountSetOptionsRequest = (async () => {
-      const { data, error } = await fetchAccountSetOptions({ status: 'active', from: 0, to: 999 })
-      if (error) return
+    if (!active) return
+    accountSetOptionsController?.abort()
+    const controller = new AbortController()
+    accountSetOptionsController = controller
+    const requestId = ++accountSetOptionsRequestId
+    const operationCurrent = captureOperation()
+    const isCurrent = () =>
+      requestId === accountSetOptionsRequestId && !controller.signal.aborted && operationCurrent()
+    accountSetOptions.value = []
+    accountSetOptionsLoaded.value = false
+    accountSetOptionsError.value = ''
+    accountSetOptionsLoading.value = true
+    try {
+      const { data, error } = await fetchAccountSetOptions(
+        { status: 'active', from: 0, to: 999 },
+        { signal: controller.signal, showErrorMessage: false }
+      )
+      if (!isCurrent()) return
+      if (error) throw error
       accountSetOptions.value = data ?? []
       accountSetOptionsLoaded.value = true
-    })()
-    try {
-      await accountSetOptionsRequest
+    } catch {
+      if (isCurrent()) accountSetOptionsError.value = '账套选项加载失败，请重试。'
     } finally {
-      accountSetOptionsRequest = undefined
+      if (requestId === accountSetOptionsRequestId) accountSetOptionsLoading.value = false
     }
   }
 
   onMounted(async () => {
-    await Promise.all([
-      useUserStore().ensureDictLoaded('fmsBankReconciliationStatus'),
-      loadAccountSetOptions()
-    ])
-    await loadOverview()
+    const operationCurrent = captureOperation()
+    await userStore.ensureDictLoaded('fmsBankReconciliationStatus')
+    if (!operationCurrent()) return
+    await Promise.all([loadAccountSetOptions(), loadOverview()])
   })
+  onDeactivated(() => {
+    active = false
+    needsResume = true
+    tableRef.value?.cancelRequest()
+    cancelPendingReads()
+    clearReadState()
+  })
+  onActivated(() => {
+    if (!needsResume) return
+    needsResume = false
+    active = true
+    if (tableScopeKey.value !== readScopeKey.value) {
+      resetScope()
+      tableScopeKey.value = readScopeKey.value
+    } else {
+      void tableRef.value?.refreshUpdate()
+    }
+    void loadAccountSetOptions()
+    void loadOverview()
+    if (table.search.accountSetId) void loadAccountOptions(table.search.accountSetId, false)
+  })
+  onScopeDispose(cancelPendingReads)
 </script>
 
 <style scoped lang="scss">

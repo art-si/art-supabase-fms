@@ -98,6 +98,7 @@
   import OrganizationScopeFilter from '@/views/system/shared/organization-scope-filter.vue'
   import { fetchOrganizationOptionsTree } from '@/api/system-manage'
   import { buildSupabasePageRange } from '@/utils/supabase/pagination'
+  import type { TableRequestOptions } from '@/hooks/core/useTable'
   import { useRecordDeleteGuard } from '@/hooks/core/useRecordDeleteGuard'
   import { useAuth } from '@/hooks/core/useAuth'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
@@ -194,15 +195,19 @@
   ])
 
   async function fetchTableData(
-    params: PayeeInformationSearch & { current: number; size: number }
+    params: PayeeInformationSearch & { current: number; size: number },
+    options?: TableRequestOptions
   ) {
     const range = buildSupabasePageRange(params)
-    const result = await fetchPayeeInformationList({
-      ...params,
-      ...range,
-      organizationIds: organizationIds.value,
-      tenantId: effectiveTenantId.value
-    })
+    const result = await fetchPayeeInformationList(
+      {
+        ...params,
+        ...range,
+        organizationIds: organizationIds.value,
+        tenantId: effectiveTenantId.value
+      },
+      options
+    )
     return { ...result, total: result.total ?? 0 }
   }
   const columnsFactory = (): ColumnOption<PayeeInformation>[] => [

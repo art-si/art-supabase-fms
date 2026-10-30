@@ -26,12 +26,24 @@
       </ElButton>
     </ElAlert>
 
+    <ElAlert v-if="accountSetsError" type="warning" :closable="false" show-icon>
+      账套选项加载失败，请重试后选择账套或新建账户。
+      <ElButton link type="primary" :loading="accountSetsLoading" @click="loadAccountSets">
+        重新加载账套
+      </ElButton>
+    </ElAlert>
+
     <ArtTableQuery
+      :key="tableContextKey"
       ref="tableRef"
       v-model="table.search"
       class="fund-account-page__table"
       :search-items="searchItems"
       :api-fn="fetchTableData"
+      :response-adapter="responseAdapter"
+      :on-success="acceptTableResult"
+      :on-error="handleTableError"
+      :columns-context-key="columnsContextKey"
       :columns-factory="columnsFactory"
       :header-actions="headerActions"
       header-actions-placement="workspace"
@@ -64,6 +76,11 @@
   import MasterDataDeleteGuard from '@/components/business/master-data-delete-guard/index.vue'
   import { useRecordDeleteGuard } from '@/hooks/core/useRecordDeleteGuard'
   import { useAuth } from '@/hooks/core/useAuth'
+  import { useTenantOperationGuard } from '@/hooks/core/useTenantOperationGuard'
+  import type { TableRequestOptions } from '@/hooks/core/useTable'
+  import { defaultResponseAdapter } from '@/utils/table/table-utils'
+  import type { ApiResponse } from '@/utils/table/table-cache'
+  import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import { financeRouteNames } from '@/router/business-paths'
   import BusinessTableWorkspaceActions from '@/components/business/business-table-workspace-actions/index.vue'
   import BusinessWorkspaceHeader, {
@@ -94,6 +111,9 @@
   type Account = Api.Fms.FundAccountRecord
   type SearchParams = Api.Fms.FundAccountSearchParams
   type TableParams = SearchParams & { current: number; size: number }
+  type TableResponse = ApiResponse<Account> & {
+    fieldAccess: Api.Fms.FundAccountFieldAccessMap
+  }
 
   interface DialogExpose {
     handleOpen: (row?: Account) => Promise<void>
@@ -101,6 +121,16 @@
 
   const { runWithAccountSet } = useFinanceAccountSetPrerequisite()
   const userStore = useUserStore()
+  const tenantScope = useTenantScopeStore()
+  const route = useRoute()
+  const readScopeKey = computed(() =>
+    [tenantScope.effectiveTenantId, tenantScope.revision, userStore.getUserInfo.userId].join(':')
+  )
+  const tableScopeKey = ref(readScopeKey.value)
+  let active = true
+  let needsResume = false
+  let resettingScope = false
+  const captureOperation = useTenantOperationGuard()
   const { getDictMap } = storeToRefs(userStore)
   const tableRef = ref<ArtTableQueryExpose>()
   const dialogRef = ref<DialogExpose>()
@@ -120,16 +150,25 @@
     }
   })
   const accountSetOptions = ref<Api.Fms.AccountSetOption[]>([])
+  const accountSetsLoading = ref(false)
+  const accountSetsError = ref(false)
   const overview = ref<Api.Fms.FundAccountOverview>()
-  const overviewLoading = ref(false)
+  const overviewLoading = ref(true)
+  const overviewReady = ref(false)
   const overviewError = ref(false)
-  const currentRows = ref<Account[]>([])
+  // ArtTableQuery exposes object rows; this page's typed adapter owns their DTO boundary.
+  const currentRows = computed(
+    () => (tableRef.value?.dataState.rows.value as readonly Account[] | undefined) ?? []
+  )
   const listFieldAccess = ref<Api.Fms.FundAccountFieldAccessMap>({})
-  let listRequestId = 0
   let overviewRequestId = 0
+  let accountSetsRequestId = 0
+  let overviewController: AbortController | undefined
+  let accountSetsController: AbortController | undefined
   const effectiveFieldAccess = computed(() =>
     mergeFieldAccessMaps(listFieldAccess.value, ...currentRows.value.map((row) => row.fieldAccess))
   )
+  const columnsContextKey = computed(() => JSON.stringify(effectiveFieldAccess.value))
   const canViewListField = (field: Api.Fms.FundAccountFieldKey): boolean =>
     canViewField(effectiveFieldAccess.value, field)
   const canViewRowField = (row: Account, field: Api.Fms.FundAccountFieldKey): boolean =>
@@ -137,6 +176,9 @@
   const table = reactive<{ search: SearchParams }>({
     search: { keyword: '', accountSetId: undefined, accountType: undefined, status: undefined }
   })
+  const tableContextKey = computed(
+    () => `${tableScopeKey.value}:${table.search.accountSetId ?? ''}`
+  )
 
   const searchItems = computed<SearchFormItem[]>(() => [
     {
@@ -147,6 +189,7 @@
         options: accountSetOptions.value,
         clearable: true,
         filterable: true,
+        loading: accountSetsLoading.value,
         placeholder: '全部账套'
       }
     },
@@ -188,6 +231,7 @@
       permission: 'FinanceFundAccount:Add',
       type: 'add',
       label: '新建资金账户',
+      disabled: accountSetsLoading.value || accountSetsError.value,
       onClick: () =>
         void runWithAccountSet(
           {
@@ -206,7 +250,7 @@
       {
         key: 'all',
         label: '资金账户',
-        value: overviewLoading.value || overviewError.value ? '--' : (value?.accountCount ?? 0),
+        value: overviewReady.value ? (value?.accountCount ?? 0) : '--',
         loading: overviewLoading.value,
         description: '当前可见账户总数',
         icon: 'ri:bank-card-line',
@@ -217,8 +261,7 @@
       {
         key: 'active',
         label: '正常账户',
-        value:
-          overviewLoading.value || overviewError.value ? '--' : (value?.activeAccountCount ?? 0),
+        value: overviewReady.value ? (value?.activeAccountCount ?? 0) : '--',
         loading: overviewLoading.value,
         description: '可承接日常资金业务',
         icon: 'ri:checkbox-circle-line',
@@ -359,51 +402,95 @@
     ]
   }
 
-  async function fetchTableData(params: TableParams) {
-    const requestId = ++listRequestId
-    const accountSetId = params.accountSetId || undefined
-    const isCurrent = () =>
-      requestId === listRequestId && accountSetId === (table.search.accountSetId || undefined)
-    const { from, to } = buildSupabasePageRange({ current: params.current, size: params.size })
-    try {
-      const result = await fetchFundAccountList(
-        { ...params, from, to },
-        { showErrorMessage: false }
-      )
-      if (!isCurrent()) return { ...result, data: [], total: 0, fieldAccess: {} }
-      if (result.error) throw result.error
-      listFieldAccess.value = result.fieldAccess
-      currentRows.value = result.data ?? []
-      return result
-    } catch (error) {
-      if (isCurrent()) {
-        listFieldAccess.value = {}
-        currentRows.value = []
-      }
-      throw error
+  function responseAdapter(
+    response: Awaited<ReturnType<typeof fetchFundAccountList>>
+  ): TableResponse {
+    return {
+      ...defaultResponseAdapter<Account>(response),
+      fieldAccess: mergeFieldAccessMaps(response.fieldAccess)
     }
+  }
+
+  function acceptTableResult(_rows: Account[], response: TableResponse): void {
+    listFieldAccess.value = response.fieldAccess
+  }
+
+  function handleTableError(): void {
+    listFieldAccess.value = {}
+  }
+
+  async function fetchTableData(params: TableParams, options?: TableRequestOptions) {
+    const isCurrent = captureOperation()
+    const { from, to } = buildSupabasePageRange({ current: params.current, size: params.size })
+    const result = await fetchFundAccountList(
+      { ...params, from, to },
+      { ...options, showErrorMessage: false }
+    )
+    if (!isCurrent()) throw new DOMException('查询范围已变化', 'AbortError')
+    return result
   }
 
   async function loadOverview(): Promise<void> {
     const requestId = ++overviewRequestId
+    overviewController?.abort()
+    const controller = new AbortController()
+    overviewController = controller
+    const isCurrentOperation = captureOperation()
     const accountSetId = table.search.accountSetId || undefined
     const isCurrent = () =>
-      requestId === overviewRequestId && accountSetId === (table.search.accountSetId || undefined)
+      requestId === overviewRequestId &&
+      !controller.signal.aborted &&
+      isCurrentOperation() &&
+      accountSetId === (table.search.accountSetId || undefined)
     overview.value = undefined
+    overviewReady.value = false
     overviewError.value = false
     overviewLoading.value = true
     try {
-      const result = await fetchFundAccountOverview(accountSetId, { showErrorMessage: false })
+      const result = await fetchFundAccountOverview(accountSetId, {
+        signal: controller.signal,
+        showErrorMessage: false
+      })
       if (!isCurrent()) return
-      overview.value = result.error ? undefined : (result.data ?? undefined)
-      overviewError.value = Boolean(result.error)
+      if (result.error || !result.data) {
+        overviewError.value = true
+        return
+      }
+      overview.value = result.data
+      overviewReady.value = true
     } catch {
       if (isCurrent()) {
         overview.value = undefined
         overviewError.value = true
       }
     } finally {
-      if (isCurrent()) overviewLoading.value = false
+      if (requestId === overviewRequestId) overviewLoading.value = false
+    }
+  }
+
+  async function loadAccountSets(): Promise<void> {
+    const requestId = ++accountSetsRequestId
+    accountSetsController?.abort()
+    const controller = new AbortController()
+    accountSetsController = controller
+    const isCurrentOperation = captureOperation()
+    const isCurrent = () =>
+      requestId === accountSetsRequestId && !controller.signal.aborted && isCurrentOperation()
+    accountSetOptions.value = []
+    accountSetsError.value = false
+    accountSetsLoading.value = true
+    try {
+      const { data, error } = await fetchAccountSetOptions(
+        { status: 'active', from: 0, to: 999 },
+        { signal: controller.signal, showErrorMessage: false }
+      )
+      if (!isCurrent()) return
+      if (error) throw error
+      accountSetOptions.value = data
+    } catch {
+      if (isCurrent()) accountSetsError.value = true
+    } finally {
+      if (requestId === accountSetsRequestId) accountSetsLoading.value = false
     }
   }
 
@@ -434,25 +521,85 @@
   }
 
   watch(
+    () => [route.path, route.fullPath] as const,
+    ([path], [previousPath]) => {
+      tableRef.value?.cancelRequest()
+      overviewController?.abort()
+      accountSetsController?.abort()
+      if (!active || path !== previousPath) return
+      void tableRef.value?.refreshUpdate()
+      void loadOverview()
+      if (accountSetsLoading.value) void loadAccountSets()
+    },
+    { flush: 'sync' }
+  )
+
+  watch(
     () => table.search.accountSetId,
     () => {
-      ++listRequestId
-      currentRows.value = []
+      if (!active || resettingScope) return
+      tableRef.value?.cancelRequest()
       listFieldAccess.value = {}
-      void tableRef.value?.getData()
       void loadOverview()
     },
     { flush: 'sync' }
   )
 
+  function resetReadScope(): void {
+    tableRef.value?.cancelRequest()
+    listFieldAccess.value = {}
+    resettingScope = true
+    table.search.accountSetId = undefined
+    resettingScope = false
+    tableScopeKey.value = readScopeKey.value
+    void loadOverview()
+    void loadAccountSets()
+  }
+
+  watch(
+    readScopeKey,
+    () => {
+      if (active) resetReadScope()
+    },
+    { flush: 'sync' }
+  )
+
+  onDeactivated(() => {
+    active = false
+    needsResume = true
+    tableRef.value?.cancelRequest()
+    overviewController?.abort()
+    accountSetsController?.abort()
+    overviewReady.value = false
+    overviewLoading.value = false
+    accountSetsLoading.value = false
+    overview.value = undefined
+  })
+
+  onActivated(() => {
+    active = true
+    if (!needsResume) return
+    needsResume = false
+    if (tableScopeKey.value !== readScopeKey.value) resetReadScope()
+    else {
+      void tableRef.value?.refreshUpdate()
+      void loadOverview()
+      void loadAccountSets()
+    }
+  })
+
+  onBeforeUnmount(() => {
+    overviewController?.abort()
+    accountSetsController?.abort()
+  })
+
   onMounted(async () => {
+    void loadOverview()
+    void loadAccountSets()
     await Promise.allSettled([
       userStore.ensureDictLoaded('fmsFundAccountType'),
       userStore.ensureDictLoaded('fmsFundAccountStatus')
     ])
-    const { data } = await fetchAccountSetOptions({ status: 'active', from: 0, to: 999 })
-    accountSetOptions.value = data ?? []
-    await loadOverview()
   })
 </script>
 

@@ -94,6 +94,7 @@
   import ArtEmployeeSelect from '@/components/business/art-employee-select/index.vue'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
+  import type { TableRequestOptions } from '@/hooks/core/useTable'
   import { buildSupabasePageRange } from '@/utils/supabase/pagination'
   import { documentGroupSpan } from '@/utils/business/document-detail-list'
   import { formatCurrencyValue } from '@/utils/ui'
@@ -221,12 +222,15 @@
       onClick: ({ selectedRows }) => printSelected(selectedRows as TableRecord[])
     }
   ])
-  async function fetchTableData(params: LoanSearch & { current: number; size: number }) {
+  async function fetchTableData(
+    params: LoanSearch & { current: number; size: number },
+    options?: TableRequestOptions
+  ) {
     const range = buildSupabasePageRange(params)
     const { displayMode, ...filters } = params
     const query = { ...filters, ...range, tenantId: effectiveTenantId.value }
     if (displayMode === 'line') {
-      const result = await fetchTravelLoanItemList(query)
+      const result = await fetchTravelLoanItemList(query, options)
       const rows = orderBy(
         result.data ?? [],
         [(row) => row.loan.applicationDate, (row) => row.loan.id, (row) => row.lineNo],
@@ -234,7 +238,7 @@
       )
       return { ...result, data: rows, total: result.total ?? 0 }
     }
-    const result = await fetchTravelLoanList(query)
+    const result = await fetchTravelLoanList(query, options)
     return { ...result, total: result.total ?? 0 }
   }
   function mergeDocumentCells({
