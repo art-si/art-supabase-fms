@@ -29,8 +29,6 @@
           v-model="form"
           :items="formItems"
           :rules="rules"
-          :show-submit="false"
-          :show-reset="false"
           label-position="top"
           :span="8"
         />
@@ -70,8 +68,6 @@
               :rules="mobileLineRules"
               :span="24"
               label-position="top"
-              :show-submit="false"
-              :show-reset="false"
             />
             <ArtDescriptions
               v-else

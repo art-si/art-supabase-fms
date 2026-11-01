@@ -3,6 +3,11 @@
     header-icon="ri:exchange-dollar-line"
     :loading="detail.loading"
     ref="drawerRef"
+    @open="
+      () => {
+        activeDetailTab = 'overview'
+      }
+    "
     :show-footer="false"
   >
     <template #subtitle="{ data }"> {{ data.transactionNo }} · 凭证与核销记录 </template>
@@ -17,60 +22,73 @@
         <ElButton type="primary" plain @click="retryLoad">重新加载</ElButton>
       </template>
       <div v-if="detail.data" class="cash-detail">
-        <ArtSectionCard :title="`${directionLabel}概览`" preserve-content-structure>
-          <ArtDescriptions
-            :data="detail.data"
-            :items="descriptionItems"
-            :columns="2"
-            label-width="104px"
-          />
-        </ArtSectionCard>
-
-        <ArtSectionCard
-          v-if="canViewField(detail.data.fieldAccess, 'voucherEvidence')"
-          class="cash-detail__section"
-          :title="`${directionLabel}凭证`"
-          :empty="!detail.data.voucherUrls?.length"
-          :empty-title="
-            getFieldAccess(detail.data.fieldAccess, 'voucherEvidence') === 'masked'
-              ? '凭证内容已脱敏'
-              : '暂无收付款凭证'
-          "
-          :empty-description="
-            getFieldAccess(detail.data.fieldAccess, 'voucherEvidence') === 'masked'
-              ? '当前权限无法查看凭证附件。'
-              : '登记凭证后可在此查看附件。'
-          "
-          :empty-visual-size="64"
-          :min-height="148"
-          preserve-content-structure
-        >
-          <ArtUploadImage :model-value="detail.data.voucherUrls" multiple readonly :size="112" />
-        </ArtSectionCard>
-
-        <ArtSectionCard
-          class="cash-detail__section"
-          title="核销记录"
-          :empty="!detail.data.allocations?.length"
-          empty-title="暂无核销记录"
-          empty-description="完成核销后可在此查看关联对账单与核销金额。"
-          :empty-visual-size="64"
-          :min-height="148"
-          preserve-content-structure
-        >
-          <ArtTable
-            :border="false"
-            :data="detail.data.allocations ?? []"
-            :columns="allocationColumns"
-            :pagination="false"
-            height="auto"
-            :show-table-header="false"
-            table-layout="fixed"
-            empty-height="180px"
-            max-height="430px"
-            empty-text="暂无核销记录"
-          />
-        </ArtSectionCard>
+        <ElTabs v-model="activeDetailTab"
+          ><ElTabPane name="overview" label="收付款信息"
+            ><div class="space-y-4"
+              ><ArtSectionCard :title="`${directionLabel}概览`" preserve-content-structure>
+                <ArtDescriptions
+                  :data="detail.data"
+                  :items="descriptionItems"
+                  :columns="2"
+                  label-width="104px"
+                /> </ArtSectionCard></div
+          ></ElTabPane>
+          <ElTabPane
+            name="evidence"
+            label="收付款凭证"
+            v-if="canViewField(detail.data.fieldAccess, 'voucherEvidence')"
+            ><div class="space-y-4"
+              ><ArtSectionCard
+                v-if="canViewField(detail.data.fieldAccess, 'voucherEvidence')"
+                class="cash-detail__section"
+                :title="`${directionLabel}凭证`"
+                :empty="!detail.data.voucherUrls?.length"
+                :empty-title="
+                  getFieldAccess(detail.data.fieldAccess, 'voucherEvidence') === 'masked'
+                    ? '凭证内容已脱敏'
+                    : '暂无收付款凭证'
+                "
+                :empty-description="
+                  getFieldAccess(detail.data.fieldAccess, 'voucherEvidence') === 'masked'
+                    ? '当前权限无法查看凭证附件。'
+                    : '登记凭证后可在此查看附件。'
+                "
+                :empty-visual-size="64"
+                :min-height="148"
+                preserve-content-structure
+              >
+                <ArtUploadImage
+                  :model-value="detail.data.voucherUrls"
+                  multiple
+                  readonly
+                  :size="112"
+                /> </ArtSectionCard></div
+          ></ElTabPane>
+          <ElTabPane name="allocations" label="核销记录"
+            ><div class="space-y-4"
+              ><ArtSectionCard
+                class="cash-detail__section"
+                title="核销记录"
+                :empty="!detail.data.allocations?.length"
+                empty-title="暂无核销记录"
+                empty-description="完成核销后可在此查看关联对账单与核销金额。"
+                :empty-visual-size="64"
+                :min-height="148"
+                preserve-content-structure
+              >
+                <ArtTable
+                  :border="false"
+                  :data="detail.data.allocations ?? []"
+                  :columns="allocationColumns"
+                  :pagination="false"
+                  height="auto"
+                  :show-table-header="false"
+                  table-layout="fixed"
+                  empty-height="180px"
+                  max-height="430px"
+                  empty-text="暂无核销记录"
+                /> </ArtSectionCard></div></ElTabPane
+        ></ElTabs>
       </div>
     </ArtAsyncState>
   </ArtDrawer>
@@ -125,6 +143,7 @@
 
   const emit = defineEmits<{ changed: [] }>()
   const drawerRef = ref<ArtDrawerExpose<CashTransaction>>()
+  const activeDetailTab = ref('overview')
   const {
     detail: detailData,
     loading,

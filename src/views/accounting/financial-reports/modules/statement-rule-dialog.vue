@@ -30,7 +30,6 @@
           row-key="rowKey"
           :pagination="false"
           :border="false"
-          :show-table-header="false"
           height="auto"
           table-layout="fixed"
           max-height="56vh"
@@ -39,11 +38,8 @@
         <ArtForm
           v-if="rows.length && isNarrow"
           ref="mobileFormRef"
-          :model-value="mobileFormModel"
-          @update:model-value="replaceReactiveModel(mobileFormModel, $event)"
+          v-model="mobileFormModel"
           custom-layout
-          :show-reset="false"
-          :show-submit="false"
           root-class="statement-rule-dialog__mobile-form"
         >
           <div class="statement-rule-dialog__mobile-list">
@@ -67,21 +63,16 @@
                 :prop="`rows.${index}.sourceId`"
                 :rules="editable ? sourceRules : []"
               >
-                <ElSelect
+                <ElTreeSelect
                   v-if="editable"
                   v-model="row.sourceId"
                   :aria-label="`第 ${index + 1} 条${isFormula ? '来源项目' : '会计科目'}`"
                   filterable
                   class="w-full!"
                   :placeholder="isFormula ? '请选择来源项目' : '请选择会计科目'"
-                >
-                  <ElOption
-                    v-for="option in sourceOptions"
-                    :key="option.value"
-                    :label="option.label"
-                    :value="option.value"
-                  />
-                </ElSelect>
+                  :data="sourceOptions"
+                  check-strictly
+                />
                 <span v-else>{{ sourceLabel(row.sourceId) }}</span>
               </ElFormItem>
               <ElFormItem
@@ -160,7 +151,7 @@
 </template>
 
 <script setup lang="tsx">
-  import { replaceReactiveModel } from '@/utils/form/model'
+  import TreeUtils from '@/utils/tree'
   import { useMediaQuery } from '@vueuse/core'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { normalizeNullableText } from '@/utils/form/normalize'
@@ -172,6 +163,7 @@
     ElMessage,
     ElOption,
     ElSelect,
+    ElTreeSelect,
     type FormItemRule
   } from 'element-plus'
   import { storeToRefs } from 'pinia'
@@ -211,6 +203,7 @@
     remark: string
   }
 
+  const optionTree = new TreeUtils({ idKey: 'value', parentKey: 'parentId' })
   const emit = defineEmits<{ success: [] }>()
   const userStore = useUserStore()
   const { getDictMap } = storeToRefs(userStore)
@@ -218,8 +211,13 @@
   const currentItem = ref<Item>()
   const items = ref<Item[]>([])
   const subjects = ref<Api.Fms.SubjectRecord[]>([])
-  const mobileFormModel = reactive({ rows: [] as RuleRow[] })
-  const rows = toRef(mobileFormModel, 'rows')
+  const mobileFormModel = ref({ rows: [] as RuleRow[] })
+  const rows = computed({
+    get: () => mobileFormModel.value.rows,
+    set: (value) => {
+      mobileFormModel.value.rows = value
+    }
+  })
   const ruleTableRef = ref<ArtTableExpose>()
   const mobileFormRef = ref<{ validate: () => Promise<boolean>; clearValidate: () => void }>()
   const editable = ref(false)
@@ -249,17 +247,23 @@
     )
   )
   const sourceOptions = computed(() =>
-    isFormula.value
-      ? items.value
-          .filter((item) => item.calculationMethod === 'mapping' && item.isEnabled)
-          .map((item) => ({ label: `${item.itemCode} ${item.itemName}`, value: item.id }))
-      : subjects.value
-          .filter((subject) => subject.isEnabled)
-          .map((subject) => ({
-            label: `${subject.subjectCode} ${subject.subjectName}`,
-            value: subject.id
+    optionTree.listToTree(
+      isFormula.value
+        ? items.value.map((item) => ({
+            label: `${item.itemCode} ${item.itemName}`,
+            value: item.id,
+            parentId: item.parentId,
+            disabled: item.calculationMethod !== 'mapping' || !item.isEnabled
           }))
+        : subjects.value.map((subject) => ({
+            label: `${subject.subjectCode} ${subject.subjectName}`,
+            value: subject.id,
+            parentId: subject.parentId,
+            disabled: !subject.isEnabled
+          }))
+    )
   )
+
   const ruleHint = computed(() =>
     isFormula.value
       ? '引用当前报表的科目取数行：正数相加、负数相减，来源项目不可重复。'
@@ -297,6 +301,7 @@
     { type: 'globalIndex', label: '#', width: 44, align: 'center' },
     {
       prop: 'sourceId',
+      headerTooltip: '选择会计科目或来源报表项目，同一取数方向不能重复。',
       label: isFormula.value ? '来源项目' : '会计科目',
       minWidth: 230,
       required: true,
@@ -304,17 +309,15 @@
         `第 ${rowIndex + 1} 行未选择${isFormula.value ? '来源项目' : '会计科目'}`,
       formatter: (row) =>
         editable.value ? (
-          <ElSelect
+          <ElTreeSelect
             v-model={row.sourceId}
             aria-label={`第 ${rows.value.indexOf(row) + 1} 条${isFormula.value ? '来源项目' : '会计科目'}`}
             filterable
             class="w-full!"
             placeholder={isFormula.value ? '请选择来源项目' : '请选择会计科目'}
-          >
-            {sourceOptions.value.map((option) => (
-              <ElOption key={option.value} label={option.label} value={option.value} />
-            ))}
-          </ElSelect>
+            data={sourceOptions.value}
+            checkStrictly
+          />
         ) : (
           <span class="text-g-800" title={sourceLabel(row.sourceId)}>
             {sourceLabel(row.sourceId)}
@@ -428,7 +431,10 @@
       if (!(await mobileFormRef.value?.validate().catch(() => false))) return false
     } else {
       const tableValidation = await ruleTableRef.value?.validate()
-      if (tableValidation && !tableValidation.valid) return false
+      if (tableValidation && !tableValidation.valid) {
+        if (tableValidation.firstError) ElMessage.warning(tableValidation.firstError.message)
+        return false
+      }
     }
     const keys = rows.value.map((row) =>
       isFormula.value ? row.sourceId : `${row.sourceId}:${row.mappingDirection}`

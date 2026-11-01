@@ -44,10 +44,11 @@
 </template>
 
 <script setup lang="tsx">
+  import TreeUtils from '@/utils/tree'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import { keyBy, round, sumBy } from 'lodash-es'
   import { useMediaQuery } from '@vueuse/core'
-  import { ElInput, ElInputNumber, ElOption, ElSelect, ElTag } from 'element-plus'
+  import { ElInput, ElInputNumber, ElOption, ElSelect, ElTreeSelect, ElTag } from 'element-plus'
   import ArtButtonTable from '@/components/core/forms/art-button-table/index.vue'
   import ArtSectionTitle from '@/components/core/surfaces/art-section-title/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
@@ -75,6 +76,7 @@
     directionOptions?: Array<{ label: string; value: Api.Fms.BalanceDirection }>
   }
 
+  const optionTree = new TreeUtils({ idKey: 'value', parentKey: 'parentId' })
   const props = withDefaults(defineProps<Props>(), {
     readonly: false,
     allowZeroAmount: false,
@@ -85,17 +87,18 @@
   const tableRef = ref<ArtTableExpose>()
   const isCompact = useMediaQuery('(max-width: 900px)')
   const subjectsById = computed(() => keyBy(props.subjects, 'id'))
-  const parentSubjectIds = computed(
-    () => new Set(props.subjects.map((subject) => subject.parentId))
-  )
 
   const subjectOptions = computed(() =>
-    props.subjects
-      .filter((subject) => subject.isEnabled && !parentSubjectIds.value.has(subject.id))
-      .map((subject) => ({
+    optionTree.listToTree(
+      props.subjects.map((subject) => ({
         label: `${subject.subjectCode} ${subject.subjectName}`,
-        value: subject.id
+        value: subject.id,
+        parentId: subject.parentId,
+        disabled:
+          !subject.isEnabled ||
+          props.subjects.some((candidate) => candidate.parentId === subject.id)
       }))
+    )
   )
   const foreignCurrencies = computed(() =>
     props.currencies.filter((item) => !item.isBase && item.isEnabled)
@@ -268,18 +271,21 @@
             row.subjectNameSnapshot || '—'
           )
         return (
-          <ElSelect
+          <ElTreeSelect
             v-model={row.subjectId}
             aria-label={`第 ${row.lineNo} 条分录会计科目`}
             filterable
             placeholder="选择末级科目"
             class="w-full!"
-            onChange={() => handleSubjectChange(row, row.subjectId)}
-          >
-            {subjectOptions.value.map((item) => (
-              <ElOption key={item.value} label={item.label} value={item.value} />
-            ))}
-          </ElSelect>
+            // ElTreeSelect forwards select events through attrs, but omits their TS declarations.
+            {...{
+              onChange: (value: unknown) => {
+                if (typeof value === 'string') handleSubjectChange(row, value)
+              }
+            }}
+            data={subjectOptions.value}
+            checkStrictly
+          />
         )
       }
     },

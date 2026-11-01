@@ -81,8 +81,9 @@
 </template>
 
 <script setup lang="tsx">
+  import TreeUtils from '@/utils/tree'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
-  import { ElButton, ElInput, ElInputNumber, ElMessage, ElOption, ElSelect } from 'element-plus'
+  import { ElButton, ElInput, ElInputNumber, ElMessage, ElTreeSelect } from 'element-plus'
   import { storeToRefs } from 'pinia'
   import ArtSectionTitle from '@/components/core/surfaces/art-section-title/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
@@ -107,6 +108,7 @@
     }>(),
     { readonly: false }
   )
+  const optionTree = new TreeUtils({ idKey: 'value', parentKey: 'parentId' })
   const model = defineModel<Draft[]>({ default: () => [] })
   const userStore = useUserStore()
   const { getDictMap } = storeToRefs(userStore)
@@ -154,14 +156,17 @@
 
   function itemOptions(line: VoucherLine) {
     const direction = lineDirection(line)
-    return props.statementItems
-      .filter(
-        (item) =>
-          item.isEnabled &&
-          item.calculationMethod === 'mapping' &&
-          item.cashFlowDirection === direction
-      )
-      .map((item) => ({ label: `${item.itemCode} ${item.itemName}`, value: item.id }))
+    return optionTree.listToTree(
+      props.statementItems.map((item) => ({
+        label: `${item.itemCode} ${item.itemName}`,
+        value: item.id,
+        parentId: item.parentId,
+        disabled:
+          !item.isEnabled ||
+          item.calculationMethod !== 'mapping' ||
+          item.cashFlowDirection !== direction
+      }))
+    )
   }
 
   function addAllocation(line: VoucherLine): void {
@@ -190,17 +195,15 @@
         requiredMessage: ({ rowIndex }) =>
           `分录 ${line.lineNo} 的第 ${rowIndex + 1} 行未选择现金流量项目`,
         formatter: (row) => (
-          <ElSelect
+          <ElTreeSelect
             v-model={row.statementItemId}
             filterable
             class="w-full!"
             placeholder="请选择现金流量项目"
             disabled={props.readonly}
-          >
-            {itemOptions(line).map((option) => (
-              <ElOption key={option.value} label={option.label} value={option.value} />
-            ))}
-          </ElSelect>
+            data={itemOptions(line)}
+            checkStrictly
+          />
         )
       },
       {

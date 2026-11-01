@@ -1,5 +1,15 @@
 <template>
-  <ArtDrawer header-icon="ri:bill-line" :loading="loading" ref="drawerRef" :show-footer="false">
+  <ArtDrawer
+    header-icon="ri:bill-line"
+    :loading="loading"
+    ref="drawerRef"
+    @open="
+      () => {
+        activeDetailTab = 'overview'
+      }
+    "
+    :show-footer="false"
+  >
     <template #subtitle="{ data }">
       {{ data.invoiceNo || data.invoiceRecordNo }} · 发票信息与审批记录
     </template>
@@ -14,71 +24,89 @@
         <ElButton type="primary" plain @click="retryLoad">重新加载</ElButton>
       </template>
       <div v-if="detail" class="invoice-detail">
-        <ArtSectionCard title="发票信息" preserve-content-structure>
-          <ArtDescriptions
-            :data="detail"
-            :items="descriptionItems"
-            :columns="2"
-            label-width="128px"
-          />
-        </ArtSectionCard>
-
-        <ArtSectionCard
-          v-if="canViewField(detail.fieldAccess, 'invoiceAttachments')"
-          class="invoice-detail__section"
-          title="发票附件"
-          :empty="
-            getFieldAccess(detail.fieldAccess, 'invoiceAttachments') === 'masked' ||
-            !attachmentUrls.length
-          "
-          :empty-title="
-            getFieldAccess(detail.fieldAccess, 'invoiceAttachments') === 'masked'
-              ? '附件内容已脱敏'
-              : '暂无发票附件'
-          "
-          :empty-description="
-            getFieldAccess(detail.fieldAccess, 'invoiceAttachments') === 'masked'
-              ? '当前权限无法查看发票附件。'
-              : '上传附件后可在此查看原始发票。'
-          "
-          :empty-visual-size="64"
-          :min-height="148"
-          preserve-content-structure
-        >
-          <ArtUploadImage :model-value="attachmentUrls" title="发票附件" :size="112" readonly />
-        </ArtSectionCard>
-
-        <ArtSectionCard
-          class="invoice-detail__section"
-          title="关联对账单"
-          :empty="!detail.statementLinks?.length"
-          empty-title="暂未关联对账单"
-          empty-description="发票匹配对账单后，关联关系会显示在这里。"
-          :empty-visual-size="64"
-          :min-height="148"
-          preserve-content-structure
-        >
-          <ArtTable
-            :border="false"
-            :data="detail.statementLinks ?? []"
-            :columns="statementLinkColumns"
-            :pagination="false"
-            height="auto"
-            :show-table-header="false"
-            table-layout="fixed"
-            empty-height="180px"
-            max-height="360px"
-            empty-text="暂未关联对账单"
-          />
-        </ArtSectionCard>
-
-        <ArtSectionCard class="invoice-detail__section" title="审批记录" preserve-content-structure>
-          <WorkflowBusinessHistory
-            business-type="tms_invoice"
-            :business-id="detail.id"
-            :min-height="180"
-          />
-        </ArtSectionCard>
+        <ElTabs v-model="activeDetailTab"
+          ><ElTabPane name="overview" label="发票信息"
+            ><div class="space-y-4"
+              ><ArtSectionCard title="发票信息" preserve-content-structure>
+                <ArtDescriptions
+                  :data="detail"
+                  :items="descriptionItems"
+                  :columns="2"
+                  label-width="128px"
+                /> </ArtSectionCard></div
+          ></ElTabPane>
+          <ElTabPane
+            name="attachments"
+            label="发票附件"
+            v-if="canViewField(detail.fieldAccess, 'invoiceAttachments')"
+            ><div class="space-y-4"
+              ><ArtSectionCard
+                v-if="canViewField(detail.fieldAccess, 'invoiceAttachments')"
+                class="invoice-detail__section"
+                title="发票附件"
+                :empty="
+                  getFieldAccess(detail.fieldAccess, 'invoiceAttachments') === 'masked' ||
+                  !attachmentUrls.length
+                "
+                :empty-title="
+                  getFieldAccess(detail.fieldAccess, 'invoiceAttachments') === 'masked'
+                    ? '附件内容已脱敏'
+                    : '暂无发票附件'
+                "
+                :empty-description="
+                  getFieldAccess(detail.fieldAccess, 'invoiceAttachments') === 'masked'
+                    ? '当前权限无法查看发票附件。'
+                    : '上传附件后可在此查看原始发票。'
+                "
+                :empty-visual-size="64"
+                :min-height="148"
+                preserve-content-structure
+              >
+                <ArtUploadImage
+                  :model-value="attachmentUrls"
+                  title="发票附件"
+                  :size="112"
+                  readonly
+                /> </ArtSectionCard></div
+          ></ElTabPane>
+          <ElTabPane name="statements" label="关联对账单"
+            ><div class="space-y-4"
+              ><ArtSectionCard
+                class="invoice-detail__section"
+                title="关联对账单"
+                :empty="!detail.statementLinks?.length"
+                empty-title="暂未关联对账单"
+                empty-description="发票匹配对账单后，关联关系会显示在这里。"
+                :empty-visual-size="64"
+                :min-height="148"
+                preserve-content-structure
+              >
+                <ArtTable
+                  :border="false"
+                  :data="detail.statementLinks ?? []"
+                  :columns="statementLinkColumns"
+                  :pagination="false"
+                  height="auto"
+                  :show-table-header="false"
+                  table-layout="fixed"
+                  empty-height="180px"
+                  max-height="360px"
+                  empty-text="暂未关联对账单"
+                /> </ArtSectionCard></div
+          ></ElTabPane>
+          <ElTabPane name="history" label="审批记录"
+            ><div class="space-y-4"
+              ><ArtSectionCard
+                class="invoice-detail__section"
+                title="审批记录"
+                preserve-content-structure
+              >
+                <WorkflowBusinessHistory
+                  business-type="tms_invoice"
+                  :business-id="detail.id"
+                  :min-height="180"
+                /> </ArtSectionCard></div></ElTabPane
+        ></ElTabs>
       </div>
     </ArtAsyncState>
   </ArtDrawer>
@@ -110,6 +138,7 @@
   type StatementLink = NonNullable<Invoice['statementLinks']>[number]
 
   const drawerRef = ref<ArtDrawerExpose<Invoice>>()
+  const activeDetailTab = ref('overview')
   const { detail, loading, loadError, loadDetail, openDetail, retryLoad } =
     useDetailRecord<Invoice>(
       (id) => fetchInvoiceDetail(id, { showErrorMessage: false }),

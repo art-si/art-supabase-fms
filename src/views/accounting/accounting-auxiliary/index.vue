@@ -71,7 +71,6 @@
 
     <div class="accounting-auxiliary-page__workspace" :class="{ 'is-focused': focusMode }">
       <ArtSectionCard
-        :show-scrollbar="false"
         title="核算维度"
         subtitle="选择维度后查看其核算项目"
         class="accounting-auxiliary-page__types accounting-workspace-fill-section"
@@ -98,54 +97,52 @@
           />
         </template>
 
-        <div class="accounting-auxiliary-page__type-list-wrap">
-          <div class="accounting-auxiliary-page__type-list">
-            <div
-              v-for="item in workspace.types"
-              :key="item.id"
-              class="accounting-auxiliary-page__type-card"
-              :class="{ 'is-active': item.id === workspace.selectedTypeId }"
+        <div class="accounting-auxiliary-page__type-list">
+          <div
+            v-for="item in workspace.types"
+            :key="item.id"
+            class="accounting-auxiliary-page__type-card"
+            :class="{ 'is-active': item.id === workspace.selectedTypeId }"
+          >
+            <button
+              type="button"
+              class="accounting-auxiliary-page__type-select"
+              :aria-label="`选择核算维度${item.typeName}`"
+              :aria-pressed="item.id === workspace.selectedTypeId"
+              :disabled="mutationBusy"
+              @click="selectType(item.id)"
             >
-              <button
-                type="button"
-                class="accounting-auxiliary-page__type-select"
-                :aria-label="`选择核算维度${item.typeName}`"
-                :aria-pressed="item.id === workspace.selectedTypeId"
-                :disabled="mutationBusy"
-                @click="selectType(item.id)"
-              >
-                <span class="accounting-auxiliary-page__type-icon">
-                  <ArtSvgIcon :icon="sourceIcon(item.sourceType)" />
+              <span class="accounting-auxiliary-page__type-icon">
+                <ArtSvgIcon :icon="sourceIcon(item.sourceType)" />
+              </span>
+              <span class="accounting-auxiliary-page__type-content">
+                <strong>{{ item.typeName }}</strong>
+                <small>{{ item.typeCode }}</small>
+              </span>
+              <span class="accounting-auxiliary-page__type-meta">
+                <span
+                  v-if="item.id === workspace.selectedTypeId"
+                  class="accounting-auxiliary-page__selected-badge"
+                >
+                  <ArtSvgIcon icon="ri:check-line" />已选
                 </span>
-                <span class="accounting-auxiliary-page__type-content">
-                  <strong>{{ item.typeName }}</strong>
-                  <small>{{ item.typeCode }}</small>
-                </span>
-                <span class="accounting-auxiliary-page__type-meta">
-                  <span
-                    v-if="item.id === workspace.selectedTypeId"
-                    class="accounting-auxiliary-page__selected-badge"
-                  >
-                    <ArtSvgIcon icon="ri:check-line" />已选
-                  </span>
-                  <ArtDictDisplay
-                    v-else
-                    dict-code="fmsAuxiliarySourceType"
-                    :value="item.sourceType"
-                    display="text"
-                  />
-                  <ElTag size="small" :type="item.isEnabled ? 'success' : 'info'">
-                    {{ item.isEnabled ? '启用' : '停用' }}
-                  </ElTag>
-                </span>
-              </button>
-              <ArtButtonMore
-                trigger="click"
-                class="accounting-auxiliary-page__type-more"
-                :list="getTypeActions(item)"
-                @click="handleTypeAction($event, item)"
-              />
-            </div>
+                <ArtDictDisplay
+                  v-else
+                  dict-code="fmsAuxiliarySourceType"
+                  :value="item.sourceType"
+                  display="text"
+                />
+                <ElTag size="small" :type="item.isEnabled ? 'success' : 'info'">
+                  {{ item.isEnabled ? '启用' : '停用' }}
+                </ElTag>
+              </span>
+            </button>
+            <ArtButtonMore
+              trigger="click"
+              class="accounting-auxiliary-page__type-more"
+              :list="getTypeActions(item)"
+              @click="handleTypeAction($event, item)"
+            />
           </div>
         </div>
       </ArtSectionCard>
@@ -809,7 +806,7 @@
 
 <style scoped lang="scss">
   .accounting-auxiliary-page {
-    height: auto;
+    height: var(--art-full-height);
     min-height: var(--art-full-height);
 
     &.is-focus-mode {
@@ -840,6 +837,7 @@
     &__workspace {
       display: grid;
       flex: 1;
+      grid-template-rows: minmax(0, 1fr);
       grid-template-columns: minmax(300px, 340px) minmax(0, 1fr);
       gap: 12px;
       min-height: 360px;
@@ -855,17 +853,10 @@
       min-height: 0;
     }
 
-    &__type-list-wrap {
-      flex: 0 0 auto;
-      min-width: 0;
-      min-height: 0;
-    }
-
     &__type-list {
       display: flex;
       flex-direction: column;
       gap: 8px;
-      padding-right: 4px;
     }
 
     &__type-card {

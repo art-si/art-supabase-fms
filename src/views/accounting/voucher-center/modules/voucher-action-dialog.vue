@@ -7,8 +7,6 @@
       :rules="form.rules"
       :span="24"
       label-width="96px"
-      :show-reset="false"
-      :show-submit="false"
     />
   </ArtDialog>
 </template>

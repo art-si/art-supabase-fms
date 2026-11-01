@@ -5,8 +5,6 @@
       v-model="form"
       :items="items"
       :rules="rules"
-      :show-submit="false"
-      :show-reset="false"
       label-position="top"
       :span="12"
     />

@@ -30,8 +30,6 @@
           :span="6"
           label-position="right"
           :label-width="70"
-          :show-submit="false"
-          :show-reset="false"
         />
         <div class="flex flex-wrap items-center gap-3">
           <ElButton type="primary" :disabled="loading || busy" @click="load()"
@@ -84,38 +82,36 @@
             loadError ? '暂不可读取往来单位' : `${partyNodes[0].children.length} 家往来单位`
           "
           :loading="loading && !loaded && !loadError"
+          scroll-max-height="570px"
           @retry="load"
         >
-          <ElInput
-            v-model="partyKeyword"
-            placeholder="搜索往来单位"
-            clearable
-            :disabled="!!loadError"
-            aria-label="搜索往来单位"
-            ><template #prefix><ArtSvgIcon icon="ri:search-line" /></template
-          ></ElInput>
-          <ElScrollbar class="mt-3" max-height="570px"
-            ><ElTree
-              :data="partyNodes"
-              node-key="id"
-              :props="{ label: 'label' }"
-              highlight-current
-              default-expand-all
-              :current-node-key="selectedParty"
-              :expand-on-click-node="false"
-              @node-click="(node) => (selectedParty = node.id)"
-              ><template #default="{ data }"
-                ><span class="art-icon-label min-w-0"
-                  ><ArtSvgIcon
-                    :icon="
-                      data.id === 'all' || isReceivableRelation
-                        ? 'ri:building-line'
-                        : 'ri:truck-line'
-                    "
-                  /><span class="truncate" :title="data.label">{{ data.label }}</span></span
-                ></template
-              ></ElTree
-            ></ElScrollbar
+          <template #toolbar
+            ><ElInput
+              v-model="partyKeyword"
+              placeholder="搜索往来单位"
+              clearable
+              :disabled="!!loadError"
+              aria-label="搜索往来单位"
+              ><template #prefix><ArtSvgIcon icon="ri:search-line" /></template></ElInput
+          ></template>
+          <ElTree
+            :data="partyNodes"
+            node-key="id"
+            :props="{ label: 'label' }"
+            highlight-current
+            default-expand-all
+            :current-node-key="selectedParty"
+            :expand-on-click-node="false"
+            @node-click="(node) => (selectedParty = node.id)"
+            ><template #default="{ data }"
+              ><span class="art-icon-label min-w-0"
+                ><ArtSvgIcon
+                  :icon="
+                    data.id === 'all' || isReceivableRelation ? 'ri:building-line' : 'ri:truck-line'
+                  "
+                /><span class="truncate" :title="data.label">{{ data.label }}</span></span
+              ></template
+            ></ElTree
           >
         </ArtSectionCard>
         <ArtSectionCard

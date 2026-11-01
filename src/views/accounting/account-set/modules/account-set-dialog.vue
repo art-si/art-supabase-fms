@@ -5,6 +5,7 @@
     </template>
     <ArtForm
       ref="formRef"
+      v-model:active-tab="activeTab"
       root-class="art-form--mobile-stack"
       v-model="form.data"
       :items="formItems"
@@ -13,8 +14,6 @@
       :span="12"
       :gutter="20"
       label-width="116px"
-      :show-reset="false"
-      :show-submit="false"
     />
   </ArtDialog>
 </template>
@@ -55,6 +54,7 @@
   const { getDictMap } = storeToRefs(userStore)
   const dialogRef = ref<ArtDialogExpose<{ row?: AccountSet }>>()
   const formRef = ref<{ validate: () => Promise<boolean>; clearValidate: () => void }>()
+  const activeTab = ref('entitySection')
 
   const createInitialForm = (): AccountSetForm => ({
     id: undefined,
@@ -133,7 +133,12 @@
   )
 
   const formItems = computed<FormItem[]>(() => [
-    { label: '核算主体', key: 'entitySection', type: 'divider', span: 24 },
+    {
+      label: '核算主体',
+      key: 'entitySection',
+      type: canShowSensitiveField('accountingPolicy') ? 'tab' : 'divider',
+      span: 24
+    },
     {
       label: '所属租户',
       key: 'tenantId',
@@ -178,7 +183,16 @@
       props: { maxlength: 120, placeholder: '请输入营业执照上的企业名称' }
     },
     ...(canShowSensitiveField('taxRegistration') || canShowSensitiveField('accountingPolicy')
-      ? [{ label: '核算政策', key: 'policySection', type: 'divider' as const, span: 24 }]
+      ? [
+          {
+            label: '政策与启用',
+            key: 'policySection',
+            type: canShowSensitiveField('accountingPolicy')
+              ? ('tab' as const)
+              : ('divider' as const),
+            span: 24
+          }
+        ]
       : []),
     ...(canShowSensitiveField('taxRegistration')
       ? ([
@@ -341,6 +355,7 @@
   }
 
   async function handleOpen(row?: AccountSet): Promise<void> {
+    activeTab.value = 'entitySection'
     await Promise.all([
       userStore.ensureDictLoaded('commonBoolean'),
       userStore.ensureDictLoaded('fmsAccountingStandard'),

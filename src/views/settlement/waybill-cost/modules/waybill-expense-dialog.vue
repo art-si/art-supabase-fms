@@ -1,5 +1,14 @@
 <template>
-  <ArtDialog ref="dialogRef" size="lg" @close="() => void invalidateSession()">
+  <ArtDialog
+    ref="dialogRef"
+    @open="
+      () => {
+        activeTab = ''
+      }
+    "
+    size="lg"
+    @close="() => void invalidateSession()"
+  >
     <ElAlert v-if="saveError" type="error" :closable="false" show-icon class="mb-4">
       <template #title>{{ saveError }}</template>
     </ElAlert>
@@ -7,27 +16,17 @@
       <template #title>{{ ocrLoadError }}</template>
       <ElButton link type="primary" @click="() => loadOcrResult()">重新加载</ElButton>
     </ElAlert>
-    <ExpenseOcrPanel
-      v-if="canUseOcr"
-      ref="ocrPanelRef"
-      v-model="form.data.attachments"
-      :enabled="state.ocrEnabled"
-      :resource-tenant-id="attachmentTenantId"
-      @apply="applyOcrResult"
-      @failed="form.data.ocrStatus = 'failed'"
-    />
 
     <ArtForm
       :key="attachmentTenantId || 'unbound'"
       ref="formRef"
+      v-model:active-tab="activeTab"
       v-model="form.data"
       :items="form.items"
       :rules="form.rules"
       :span="isCompact ? 24 : 12"
       :gutter="20"
       label-width="104px"
-      :show-reset="false"
-      :show-submit="false"
     >
       <template #waybillId>
         <ArtTableSingleSelect
@@ -86,7 +85,16 @@
           @pick-confirm="syncExpenseLocation"
         />
       </template>
-    </ArtForm>
+      <template #expenseEvidence
+        ><ExpenseOcrPanel
+          v-if="canUseOcr"
+          ref="ocrPanelRef"
+          v-model="form.data.attachments"
+          :enabled="state.ocrEnabled"
+          :resource-tenant-id="attachmentTenantId"
+          @apply="applyOcrResult"
+          @failed="form.data.ocrStatus = 'failed'" /></template
+    ></ArtForm>
 
     <ElAlert
       v-if="canViewPaymentDetails && form.data.payeeType === 'driver'"
@@ -212,6 +220,7 @@
   const dialogRef = ref<ArtDialogExpose<ExpenseDialogOpenData>>()
   const ocrLoadError = ref('')
   const ocrResultLoader = shallowRef<ExpenseDialogOpenData['loadOcrResult']>()
+  const activeTab = ref('')
   const formRef = ref<FormExpose>()
   const addressPickerRef = ref<ArtAddressPickerExpose>()
   const ocrPanelRef = ref<{ reset: () => void }>()
@@ -392,7 +401,7 @@
       ]
     })),
     items: computed<FormItem[]>(() => [
-      { label: '业务关联', key: 'relationSection', type: 'divider', span: 24 },
+      { label: '业务关联', key: 'relationSection', type: 'tab', span: 24 },
       {
         label: '费用单号',
         key: 'costNo',
@@ -495,9 +504,21 @@
         }
       },
       {
+        label: '费用说明',
+        key: 'remark',
+        type: 'textarea',
+        span: 24,
+        props: {
+          rows: 3,
+          maxlength: 500,
+          showWordLimit: true,
+          placeholder: '说明费用产生原因、业务背景或票据异常'
+        }
+      },
+      {
         label: '收款与票据',
         key: 'paymentSection',
-        type: 'divider',
+        type: 'tab',
         span: 24,
         hidden: !canViewPaymentDetails.value
       },
@@ -620,7 +641,13 @@
           disabled: !canEditPaymentDetails.value
         }
       },
-      { label: '地点与说明', key: 'locationSection', type: 'divider', span: 24 },
+      {
+        label: '地点与说明',
+        key: 'locationSection',
+        type: 'tab',
+        span: 24,
+        hidden: !canViewExpenseLocation.value
+      },
       {
         label: '',
         key: 'locationPicker',
@@ -629,18 +656,9 @@
         labelWidth: 0,
         hidden: !canViewExpenseLocation.value
       },
-      {
-        label: '费用说明',
-        key: 'remark',
-        type: 'textarea',
-        span: 24,
-        props: {
-          rows: 3,
-          maxlength: 500,
-          showWordLimit: true,
-          placeholder: '说明费用产生原因、业务背景或票据异常'
-        }
-      }
+
+      { key: 'expenseEvidenceSection', label: '票据与识别', type: 'tab', hidden: !canUseOcr.value },
+      { key: 'expenseEvidence', label: '', span: 24, labelWidth: 0, hidden: !canUseOcr.value }
     ])
   })
 

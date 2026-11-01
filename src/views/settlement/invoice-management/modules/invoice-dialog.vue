@@ -1,5 +1,13 @@
 <template>
-  <ArtDialog ref="dialogRef" size="lg">
+  <ArtDialog
+    ref="dialogRef"
+    @open="
+      () => {
+        activeTab = ''
+      }
+    "
+    size="lg"
+  >
     <ElAlert
       v-if="sourceReceivableId"
       class="mb-5"
@@ -7,18 +15,11 @@
       :closable="false"
       :title="`来源财务应收 · ${invoiceCurrency}。客户、税率和金额随来源锁定；填写票号和开票资料后提交审核。`"
     />
-    <InvoiceOcrPanel
-      v-if="canEditInvoiceField('invoiceAttachments')"
-      ref="ocrPanelRef"
-      v-model="attachmentUrls"
-      :direction="form.data.direction"
-      :resource-tenant-id="attachmentTenantId"
-      @apply="handleApplyOcrResult"
-    />
 
     <ArtForm
       root-class="art-form--mobile-stack"
       ref="formRef"
+      v-model:active-tab="activeTab"
       class="invoice-dialog__form"
       v-model="form.data"
       :items="form.items"
@@ -26,8 +27,6 @@
       :span="8"
       :gutter="20"
       label-width="104px"
-      :show-reset="false"
-      :show-submit="false"
     >
       <template #counterpartyId>
         <div class="invoice-dialog__counterparty-field">
@@ -129,7 +128,53 @@
           </template>
         </ArtTableMultipleSelect>
       </template>
-    </ArtForm>
+      <template #invoiceLinks
+        ><ArtSectionCard
+          v-if="selection.statements.length && canViewInvoiceField('invoiceAmounts')"
+          class="invoice-dialog__links"
+          preserve-content-structure
+          title="对账单关联金额"
+        >
+          <ArtTable
+            ref="linkedStatementTableRef"
+            :border="false"
+            height="auto"
+            max-height="300px"
+            :data="linkedStatementRows"
+            row-key="statementId"
+            :columns="linkedStatementColumns"
+            :pagination="false"
+            table-layout="fixed"
+          >
+            <template #linkedAmount="{ row }">
+              <span
+                v-if="getFieldAccess(fieldAccess, 'invoiceAmounts') === 'masked'"
+                class="invoice-dialog__masked-value"
+              >
+                ***
+              </span>
+              <ElInputNumber
+                v-else
+                v-model="selection.linkAmounts[row.statementId]"
+                :min="0.01"
+                :max="getAvailableAmount(row)"
+                :precision="2"
+                :step="100"
+                :disabled="!canEditInvoiceField('invoiceAmounts')"
+                controls-position="right"
+              />
+            </template>
+          </ArtTable> </ArtSectionCard
+      ></template>
+      <template #invoiceEvidence
+        ><InvoiceOcrPanel
+          v-if="canEditInvoiceField('invoiceAttachments')"
+          ref="ocrPanelRef"
+          v-model="attachmentUrls"
+          :direction="form.data.direction"
+          :resource-tenant-id="attachmentTenantId"
+          @apply="handleApplyOcrResult" /></template
+    ></ArtForm>
 
     <div class="invoice-dialog__feedback-stack">
       <ElAlert
@@ -167,44 +212,6 @@
         :title="selectionSummary"
       />
     </div>
-
-    <ArtSectionCard
-      v-if="selection.statements.length && canViewInvoiceField('invoiceAmounts')"
-      class="invoice-dialog__links"
-      preserve-content-structure
-      title="对账单关联金额"
-    >
-      <ArtTable
-        ref="linkedStatementTableRef"
-        :border="false"
-        height="auto"
-        max-height="300px"
-        :show-table-header="false"
-        :data="selection.statements"
-        :columns="linkedStatementColumns"
-        :pagination="false"
-        table-layout="fixed"
-      >
-        <template #linkedAmount="{ row }">
-          <span
-            v-if="getFieldAccess(fieldAccess, 'invoiceAmounts') === 'masked'"
-            class="invoice-dialog__masked-value"
-          >
-            ***
-          </span>
-          <ElInputNumber
-            v-else
-            v-model="selection.linkAmounts[row.statementId]"
-            :min="0.01"
-            :max="getAvailableAmount(row)"
-            :precision="2"
-            :step="100"
-            :disabled="!canEditInvoiceField('invoiceAmounts')"
-            controls-position="right"
-          />
-        </template>
-      </ArtTable>
-    </ArtSectionCard>
   </ArtDialog>
 
   <InvoiceCounterpartyCreateDialog
@@ -280,11 +287,6 @@
   type CounterpartyResolutionStatus =
     Api.Fms.InvoiceCounterpartyResolutionStatus | 'idle' | 'loading' | 'error'
 
-  interface FormExpose {
-    validate: () => Promise<boolean>
-    clearValidate: () => void
-  }
-
   interface InvoiceOcrPanelExpose {
     reset: () => void
   }
@@ -335,7 +337,8 @@
     () => recordTenantId.value || tenantScopeStore.effectiveTenantId || ''
   )
   const dialogRef = ref<ArtDialogExpose<Invoice | undefined>>()
-  const formRef = ref<FormExpose>()
+  const activeTab = ref('')
+  const formRef = ref<InstanceType<typeof ArtForm>>()
   const statementSelectRef = ref<ArtDataSelectExpose>()
   const linkedStatementTableRef =
     ref<import('@/components/core/tables/art-table/index.vue').ArtTableExpose>()
@@ -382,7 +385,7 @@
   const form: UnwrapNestedRefs<FormGroup> = reactive<FormGroup>({
     data: reactive<InvoiceFormModel>(createInitialForm()),
     items: computed(() => [
-      { label: '基本信息', key: 'baseSection', type: 'divider', span: 24 },
+      { label: '基本信息', key: 'baseSection', type: 'tab', span: 24 },
       {
         label: '登记单号',
         key: 'invoiceRecordNo',
@@ -469,7 +472,7 @@
       },
       ...(canViewInvoiceField('invoiceAmounts')
         ? [
-            { label: '金额信息', key: 'amountSection', type: 'divider' as const, span: 24 },
+            { label: '金额信息', key: 'amountSection', type: 'tab' as const, span: 24 },
             {
               label: '不含税金额',
               key: 'amountExcludingTax',
@@ -536,6 +539,26 @@
           showWordLimit: true,
           placeholder: '填写开票说明、认证信息或内部备注'
         }
+      },
+      {
+        key: 'invoiceLinks',
+        label: '',
+        span: 24,
+        labelWidth: 0,
+        hidden: !selection.statements.length || !canViewInvoiceField('invoiceAmounts')
+      },
+      {
+        key: 'invoiceEvidenceSection',
+        label: '附件与识别',
+        type: 'tab',
+        hidden: !canEditInvoiceField('invoiceAttachments')
+      },
+      {
+        key: 'invoiceEvidence',
+        label: '',
+        span: 24,
+        labelWidth: 0,
+        hidden: !canEditInvoiceField('invoiceAttachments')
       }
     ]),
     rules: {
@@ -608,6 +631,12 @@
     }
   ]
 
+  const linkedStatementRows = computed(() =>
+    selection.statements.map((row) => ({
+      ...row,
+      linkedAmount: selection.linkAmounts[String(row.statementId)] ?? 0
+    }))
+  )
   const linkedStatementColumns = computed<ColumnOption<DataSelectRecord>[]>(() => {
     const columns: ColumnOption<DataSelectRecord>[] = [
       { prop: 'statementNo', label: '对账单号', minWidth: 180 },
@@ -639,6 +668,8 @@
       {
         prop: 'linkedAmount',
         label: '本次关联',
+        required: true,
+        headerTooltip: '每笔已关联对账单都需填写大于 0 的本次关联金额。',
         width: 190,
         align: 'right',
         rules: [
@@ -1194,8 +1225,13 @@
       }))
     }
     if (canEditAmounts) {
-      const linkValidation = await linkedStatementTableRef.value?.validate()
+      const linkValidation = await linkedStatementTableRef.value?.validate({ focus: false })
       if (linkValidation && !linkValidation.valid) {
+        await formRef.value?.focusField('invoiceLinks')
+        if (linkValidation.firstError) {
+          await linkedStatementTableRef.value?.validateField(linkValidation.firstError.prop)
+          ElMessage.warning(linkValidation.firstError.message)
+        }
         return false
       }
       const linkedAmountTotal = statementLinks.reduce((total, item) => total + item.linkedAmount, 0)

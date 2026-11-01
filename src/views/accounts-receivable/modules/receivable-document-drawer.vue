@@ -1,5 +1,15 @@
 <template>
-  <ArtDrawer ref="drawerRef" size="full" :loading="loading" :show-confirm-button="editable">
+  <ArtDrawer
+    ref="drawerRef"
+    @open="
+      () => {
+        activeDocumentTab = 'overview'
+      }
+    "
+    size="full"
+    :loading="loading"
+    :show-confirm-button="editable"
+  >
     <ArtAsyncState
       :error="loadError"
       :empty="!document"
@@ -9,72 +19,71 @@
     >
       <template v-if="document">
         <ArtDescriptions :data="identity" :items="identityItems" :columns="4" class="mb-5" />
-        <ArtForm
-          v-if="editable"
-          ref="formRef"
-          v-model="form"
-          :items="headerItems"
-          :rules="rules"
-          :show-submit="false"
-          :show-reset="false"
-          label-position="top"
-          :span="6"
-        />
-        <ArtDescriptions v-else :data="document" :items="detailItems" :columns="4" />
-        <ArtDescriptions
-          v-if="!editable && bookSnapshot?.configured === true && bookSnapshot.accountSetId"
-          class="mt-4"
-          :data="bookSnapshot"
-          :items="bookSnapshotItems"
-          :columns="3"
-        />
-        <ElAlert
-          v-else-if="
-            !editable && document.status === 'approved' && bookSnapshot?.configured === false
-          "
-          class="mt-4"
-          type="warning"
-          :closable="false"
-          :title="bookSnapshot.message || '原账套尚未核实，请先核对历史记账依据。'"
-        />
-        <ArtSectionCard
-          title="应收明细"
-          description="数量型按商品数量计价；金额型用于运输与服务。税率须明确选择。"
-          class="mt-5"
-        >
-          <template v-if="editable" #actions>
-            <div class="flex flex-wrap items-center gap-2">
-              <ElButton :disabled="!editable" @click="materialPicker?.open()"
-                ><ArtSvgIcon icon="ri:add-line" />参选物料</ElButton
+        <ElTabs v-model="activeDocumentTab"
+          ><ElTabPane name="overview" label="单据资料"
+            ><div class="space-y-4"
+              ><ArtForm
+                v-if="editable"
+                ref="formRef"
+                v-model="form"
+                :items="headerItems"
+                :rules="rules"
+                label-position="top"
+                :span="6" />
+              <ArtDescriptions v-else :data="document" :items="detailItems" :columns="4" />
+              <ArtDescriptions
+                v-if="!editable && bookSnapshot?.configured === true && bookSnapshot.accountSetId"
+                class="mt-4"
+                :data="bookSnapshot"
+                :items="bookSnapshotItems"
+                :columns="3" />
+              <ElAlert
+                v-else-if="
+                  !editable && document.status === 'approved' && bookSnapshot?.configured === false
+                "
+                class="mt-4"
+                type="warning"
+                :closable="false"
+                :title="bookSnapshot.message || '原账套尚未核实，请先核对历史记账依据。'" /></div
+          ></ElTabPane>
+          <ElTabPane name="lines" label="应收明细"
+            ><div class="space-y-4"
+              ><ArtSectionCard
+                title="应收明细"
+                description="数量型按商品数量计价；金额型用于运输与服务。税率须明确选择。"
+                class="mt-5"
               >
-              <ElButton @click="addService"><ArtSvgIcon icon="ri:add-line" />新增服务行</ElButton>
-            </div>
-          </template>
-          <ArtForm
-            v-if="editable"
-            v-model="form"
-            :items="entryItems"
-            :show-submit="false"
-            :show-reset="false"
-            :span="8"
-          />
-          <ArtTable
-            ref="lineTable"
-            :data="lines"
-            :columns="lineColumns"
-            :pagination="false"
-            row-key="id"
-            :height="420"
-          />
-          <div
-            class="mt-4 flex flex-wrap justify-end gap-x-6 gap-y-2 text-sm font-medium tabular-nums"
-            aria-live="polite"
-          >
-            <span>金额：{{ money(totals.amount, form.currencyCode) }}</span
-            ><span>税额：{{ money(totals.taxAmount, form.currencyCode) }}</span
-            ><span>价税合计：{{ money(totals.totalAmount, form.currencyCode) }}</span>
-          </div>
-        </ArtSectionCard>
+                <template v-if="editable" #actions>
+                  <div class="flex flex-wrap items-center gap-2">
+                    <ElButton :disabled="!editable" @click="materialPicker?.open()"
+                      ><ArtSvgIcon icon="ri:add-line" />参选物料</ElButton
+                    >
+                    <ElButton @click="addService"
+                      ><ArtSvgIcon icon="ri:add-line" />新增服务行</ElButton
+                    >
+                  </div>
+                </template>
+                <ArtForm v-if="editable" v-model="form" :items="entryItems" :span="8" />
+                <ArtTable
+                  ref="lineTable"
+                  :data="lines"
+                  :columns="lineColumns"
+                  :pagination="false"
+                  row-key="id"
+                  :height="420"
+                />
+                <div
+                  class="mt-4 flex flex-wrap justify-end gap-x-6 gap-y-2 text-sm font-medium tabular-nums"
+                  aria-live="polite"
+                >
+                  <span>金额：{{ money(totals.amount, form.currencyCode) }}</span
+                  ><span>税额：{{ money(totals.taxAmount, form.currencyCode) }}</span
+                  ><span>价税合计：{{ money(totals.totalAmount, form.currencyCode) }}</span>
+                </div>
+              </ArtSectionCard></div
+            ></ElTabPane
+          ></ElTabs
+        >
       </template>
     </ArtAsyncState>
     <ArtTableMultipleSelect
@@ -133,6 +142,7 @@
   import { createArDeleteMetadata } from './ar-delete-metadata'
   import type { MasterDataDeleteResource } from '@/components/business/master-data-delete-guard/index.vue'
   import { getDeleteReferenceContext } from '@/utils/supabase/delete-reference'
+  import { focusFirstInvalidFormField } from '@/utils/form/validation'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import {
     formatSensitiveCurrencyValue as money,
@@ -172,6 +182,7 @@
     linkedQuantity?: number
     reversedQuantity?: number
   }
+  const activeDocumentTab = ref('overview')
   const drawerRef = ref<ArtDrawerExpose>()
   const formRef = ref<InstanceType<typeof ArtForm>>()
   const lineTable = ref<ArtTableExpose>()
@@ -1009,15 +1020,25 @@
       return false
     }
     if (loading.value || loadError.value || !editable.value) return false
-    if (!(await validateArtFormForSubmit(formRef.value))) return false
+    if (!(await validateArtFormForSubmit(formRef.value))) {
+      activeDocumentTab.value = 'overview'
+      await nextTick()
+      const root = formRef.value?.$el
+      if (root instanceof HTMLElement) focusFirstInvalidFormField(shallowRef(root))
+      return false
+    }
     if (!isCurrent()) return false
     if (!lines.value.length) {
+      activeDocumentTab.value = 'lines'
       ElMessage.warning('请至少添加一行应收明细')
       return false
     }
-    const validation = await lineTable.value?.validate()
+    const validation = await lineTable.value?.validate({ focus: false })
     if (!isCurrent()) return false
     if (validation && !validation.valid) {
+      activeDocumentTab.value = 'lines'
+      await nextTick()
+      if (validation.firstError) await lineTable.value?.validateField(validation.firstError.prop)
       ElMessage.warning(validation.firstError?.message || '请补全明细')
       return false
     }

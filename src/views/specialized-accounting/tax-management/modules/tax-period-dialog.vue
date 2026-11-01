@@ -10,21 +10,16 @@
     <ArtForm
       root-class="art-form--mobile-stack"
       ref="formRef"
-      :model-value="form"
-      @update:model-value="replaceReactiveModel(form, $event)"
+      v-model="form"
       :items="items"
       :rules="rules"
       :span="12"
       :gutter="18"
       label-width="112px"
-      :show-reset="false"
-      :show-submit="false"
   /></ArtDialog>
 </template>
 <script setup lang="ts">
   import { normalizeNullableNumber } from '@/utils/form/normalize'
-  import { replaceReactiveModel } from '@/utils/form/model'
-  import { toRef } from 'vue'
   import { useAccountingPeriodOptions } from '../../../modules/use-accounting-period-options'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
@@ -49,7 +44,7 @@
   const accountSetOptions = ref<Api.Fms.AccountSetOption[]>([])
   const currentRecord = shallowRef<Api.Fms.TaxPeriodRecord>()
   const fieldAccess = ref<Api.Fms.TaxFieldAccessMap>({})
-  const form = reactive<Api.Fms.SaveTaxPeriodPayload & { accountSetId: string }>({
+  const form = ref<Api.Fms.SaveTaxPeriodPayload & { accountSetId: string }>({
     accountSetId: '',
     accountingPeriodId: '',
     taxType: 'vat',
@@ -59,16 +54,26 @@
   })
   const { periodOptions, periodsLoading, periodLoadFailed, loadPeriods, resetPeriods } =
     useAccountingPeriodOptions(
-      toRef(form, 'accountSetId'),
-      toRef(form, 'accountingPeriodId'),
-      computed(() => Boolean(form.id))
+      computed({
+        get: () => form.value.accountSetId,
+        set: (value) => {
+          form.value.accountSetId = value
+        }
+      }),
+      computed({
+        get: () => form.value.accountingPeriodId,
+        set: (value) => {
+          form.value.accountingPeriodId = value
+        }
+      }),
+      computed(() => Boolean(form.value.id))
     )
   const rules: FormRules = {
     accountSetId: [{ required: true, message: '请选择账套', trigger: 'change' }],
     accountingPeriodId: [{ required: true, message: '请选择期间', trigger: 'change' }],
     taxType: [{ required: true, message: '请选择税种', trigger: 'change' }]
   }
-  const isEditing = computed(() => Boolean(form.id))
+  const isEditing = computed(() => Boolean(form.value.id))
   const canViewAmounts = computed(
     () => !isEditing.value || canViewField(fieldAccess.value, 'taxAmounts')
   )
@@ -87,7 +92,7 @@
           options: accountSetOptions.value,
           filterable: true,
           onChange: loadPeriods,
-          disabled: Boolean(form.id),
+          disabled: Boolean(form.value.id),
           noDataText: ACCOUNTING_SELECT_EMPTY_TEXT.accountSet
         }
       },
@@ -99,12 +104,12 @@
         props: {
           options: periodOptions.value,
           disabled:
-            Boolean(form.id) ||
-            !form.accountSetId ||
+            Boolean(form.value.id) ||
+            !form.value.accountSetId ||
             periodsLoading.value ||
             periodLoadFailed.value,
           loading: periodsLoading.value,
-          noDataText: form.accountSetId
+          noDataText: form.value.accountSetId
             ? ACCOUNTING_SELECT_EMPTY_TEXT.openAccountingPeriod
             : ACCOUNTING_SELECT_EMPTY_TEXT.chooseAccountSet
         }
@@ -114,7 +119,7 @@
         key: 'taxType',
         type: 'select',
         span: 24,
-        props: { options: getDictMap.value.fmsTaxType ?? [], disabled: Boolean(form.id) }
+        props: { options: getDictMap.value.fmsTaxType ?? [], disabled: Boolean(form.value.id) }
       }
     ]
     if (canViewAmounts.value) {
@@ -171,16 +176,16 @@
       if (periodsLoading.value || periodLoadFailed.value) return false
       if (!(await validateArtFormForSubmit(formRef.value))) return false
       const result = await saveTaxPeriod({
-        id: form.id,
-        accountingPeriodId: form.accountingPeriodId,
-        taxType: form.taxType,
+        id: form.value.id,
+        accountingPeriodId: form.value.accountingPeriodId,
+        taxType: form.value.taxType,
         ...(canEditAmounts.value
           ? {
-              transferableInputAmount: Number(form.transferableInputAmount ?? 0),
-              adjustmentAmount: Number(form.adjustmentAmount ?? 0)
+              transferableInputAmount: Number(form.value.transferableInputAmount ?? 0),
+              adjustmentAmount: Number(form.value.adjustmentAmount ?? 0)
             }
           : {}),
-        remark: form.remark
+        remark: form.value.remark
       })
       if (result.error) throw result.error
       emit('success')
@@ -194,7 +199,7 @@
     resetPeriods()
     accountSetOptions.value = []
     currentRecord.value = undefined
-    form.id = undefined
+    form.value.id = undefined
     const prepare = async () => {
       await userStore.ensureDictLoaded('fmsTaxType')
       const { data, error } = await fetchAccountSetOptions({ status: 'active', from: 0, to: 999 })
@@ -213,7 +218,7 @@
       }
       currentRecord.value = record
       fieldAccess.value = record?.fieldAccess ?? {}
-      Object.assign(form, {
+      Object.assign(form.value, {
         id: record?.id,
         accountSetId:
           record?.accountSetId ?? accountSetId ?? accountSetOptions.value[0]?.value ?? '',

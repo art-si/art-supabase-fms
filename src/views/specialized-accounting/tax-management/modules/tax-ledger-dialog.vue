@@ -5,19 +5,15 @@
     ><ArtForm
       root-class="art-form--mobile-stack"
       ref="formRef"
-      :model-value="form"
-      @update:model-value="replaceReactiveModel(form, $event)"
+      v-model="form"
       :items="items"
       :rules="rules"
       :span="12"
       :gutter="18"
       label-width="104px"
-      :show-reset="false"
-      :show-submit="false"
   /></ArtDialog>
 </template>
 <script setup lang="ts">
-  import { replaceReactiveModel } from '@/utils/form/model'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
@@ -39,7 +35,7 @@
   const dialogRef = ref<ArtDialogExpose>()
   const formRef = ref<{ validate: () => Promise<boolean>; clearValidate: () => void }>()
   const periodId = ref('')
-  const form = reactive<Api.Fms.SaveTaxLedgerLinePayload>({
+  const form = ref<Api.Fms.SaveTaxLedgerLinePayload>({
     sourceType: 'manual',
     sourceNo: null,
     occurredOn: dayjs().format('YYYY-MM-DD'),
@@ -65,8 +61,8 @@
       props: {
         options: [
           ...voucherSourceOptions.filter((option) => ['manual', 'invoice'].includes(option.value)),
-          ...(form.sourceType && !['manual', 'invoice'].includes(form.sourceType)
-            ? [{ label: form.sourceType, value: form.sourceType }]
+          ...(form.value.sourceType && !['manual', 'invoice'].includes(form.value.sourceType)
+            ? [{ label: form.value.sourceType, value: form.value.sourceType }]
             : [])
         ],
         filterable: true,
@@ -121,10 +117,10 @@
     try {
       if (!(await validateArtFormForSubmit(formRef.value))) return false
       const { error } = await saveTaxLedgerLine(periodId.value, {
-        ...form,
-        sourceType: form.sourceType.trim(),
-        sourceNo: normalizeNullableText(form.sourceNo),
-        remark: normalizeNullableText(form.remark)
+        ...form.value,
+        sourceType: form.value.sourceType.trim(),
+        sourceNo: normalizeNullableText(form.value.sourceNo),
+        remark: normalizeNullableText(form.value.remark)
       })
       if (error) return false
       emit('success')
@@ -141,7 +137,7 @@
       return
     }
     periodId.value = period.id
-    Object.assign(form, {
+    Object.assign(form.value, {
       id: line?.id,
       sourceType: line?.sourceType || 'manual',
       sourceNo: line?.sourceNo || null,

@@ -1,19 +1,26 @@
 <template>
-  <ArtDialog ref="dialogRef" size="lg">
+  <ArtDialog
+    ref="dialogRef"
+    @open="
+      () => {
+        activeTab = ''
+      }
+    "
+    size="lg"
+  >
     <template v-if="!isEditing" #subtitle>
       先登记票面与往来信息，保存为草稿；确认收票或出票后进入受控生命周期，不再允许直接修改。
     </template>
     <ArtForm
       root-class="art-form--mobile-stack"
       ref="formRef"
+      v-model:active-tab="activeTab"
       v-model="form.data"
       :items="formItems"
       :rules="form.rules"
       :span="12"
       :gutter="20"
       label-width="104px"
-      :show-reset="false"
-      :show-submit="false"
     />
   </ArtDialog>
 </template>
@@ -52,6 +59,7 @@
   )
   const dialogRef = ref<ArtDialogExpose>()
   const prerequisiteOverlay = createFinancePrerequisiteOverlay(dialogRef)
+  const activeTab = ref('')
   const formRef = ref<{ validate: () => Promise<boolean>; clearValidate: () => void }>()
   const accountSetOptions = ref<Api.Fms.AccountSetOption[]>([])
   const currentRecord = shallowRef<Bill>()
@@ -115,7 +123,7 @@
 
   const formItems = computed<FormItem[]>(() => {
     const items: FormItem[] = [
-      { label: '票据登记', key: 'identitySection', type: 'divider', span: 24 },
+      { label: '票据登记', key: 'identitySection', type: 'tab', span: 24 },
       {
         label: '所属账套',
         key: 'accountSetId',
@@ -194,7 +202,7 @@
     }
 
     items.push(
-      { label: '期限与金额', key: 'amountSection', type: 'divider', span: 24 },
+      { label: '期限与金额', key: 'amountSection', type: 'tab', span: 24 },
       {
         label: '出票日期',
         key: 'issueDate',

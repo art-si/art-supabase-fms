@@ -1,13 +1,13 @@
 <template>
-  <ArtDialog ref="dialogRef" size="lg">
-    <CashVoucherOcrPanel
-      v-if="dialog.mode === 'create'"
-      ref="ocrPanelRef"
-      v-model="form.voucherUrls"
-      direction="payment"
-      :resource-tenant-id="tenantScopeStore.effectiveTenantId || ''"
-      @apply="handleApplyOcrResult"
-    />
+  <ArtDialog
+    ref="dialogRef"
+    @open="
+      () => {
+        activeTab = ''
+      }
+    "
+    size="lg"
+  >
     <ArtDescriptions
       v-if="dialog.mode === 'allocate' && dialog.transaction"
       class="mb-5"
@@ -19,15 +19,13 @@
     <ArtForm
       root-class="art-form--mobile-stack"
       ref="formRef"
-      :model-value="form"
-      @update:model-value="replaceReactiveModel(form, $event)"
-      :items="formItems"
+      v-model:active-tab="activeTab"
+      v-model="form"
+      :items="workspaceItems"
       :rules="formRules"
       :span="12"
       :gutter="20"
       label-width="100px"
-      :show-reset="false"
-      :show-submit="false"
     >
       <template #carrierId>
         <ArtTableSingleSelect
@@ -77,22 +75,31 @@
           <template #empty><FinanceDataSourceEmptyActions source="carrier-statement" /></template>
         </ArtTableMultipleSelect>
       </template>
-    </ArtForm>
-    <div v-if="allocationRows.length" class="payment-allocation">
-      <div class="payment-allocation__header"
-        ><span>核销明细</span
-        ><ElButton plain type="primary" @click="autoAllocate">按未付金额自动分配</ElButton></div
-      >
-      <ArtTable
-        :data="allocationRows"
-        :border="false"
-        :columns="allocationColumns"
-        :pagination="false"
-        height="auto"
-        :show-table-header="false"
-        max-height="300px"
-      />
-    </div>
+      <template #cashEvidence
+        ><CashVoucherOcrPanel
+          v-if="dialog.mode === 'create'"
+          ref="ocrPanelRef"
+          v-model="form.voucherUrls"
+          direction="payment"
+          :resource-tenant-id="tenantScopeStore.effectiveTenantId || ''"
+          @apply="handleApplyOcrResult" /></template
+      ><template #cashAllocationWorkspace
+        ><div v-if="allocationRows.length" class="payment-allocation">
+          <div class="payment-allocation__header"
+            ><span>核销明细</span
+            ><ElButton plain type="primary" @click="autoAllocate">按未付金额自动分配</ElButton></div
+          >
+          <ArtTable
+            ref="allocationTableRef"
+            :data="allocationRows"
+            :border="false"
+            :columns="allocationColumns"
+            :pagination="false"
+            height="auto"
+            max-height="300px"
+          /> </div></template
+    ></ArtForm>
+
     <ElAlert
       v-if="dialog.mode === 'allocate'"
       class="mt-4"
@@ -112,7 +119,6 @@
 </template>
 
 <script setup lang="tsx">
-  import { replaceReactiveModel } from '@/utils/form/model'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { normalizeNullableNumber, normalizeNullableText } from '@/utils/form/normalize'
@@ -133,7 +139,7 @@
     DataSelectFetchParams,
     DataSelectRecord
   } from '@/components/core/forms/art-data-select/types'
-  import ArtTable from '@/components/core/tables/art-table/index.vue'
+  import ArtTable, { type ArtTableExpose } from '@/components/core/tables/art-table/index.vue'
   import type { ColumnOption } from '@/types'
   import {
     allocateCarrierPayment,
@@ -168,21 +174,18 @@
   interface AllocationRow extends Statement {
     allocationAmount: number
   }
-  interface FormExpose {
-    validate: () => Promise<boolean>
-    clearValidate: () => void
-  }
   interface OcrPanelExpose {
     reset: () => void
   }
-
   const emit = defineEmits<{ success: [] }>()
   const userStore = useUserStore()
   const { getDictMap } = storeToRefs(userStore)
   const tenantScopeStore = useTenantScopeStore()
   const dialogRef = ref<ArtDialogExpose>()
-  const formRef = ref<FormExpose>()
+  const activeTab = ref('')
+  const formRef = ref<InstanceType<typeof ArtForm>>()
   const statementSelectRef = ref<ArtDataSelectExpose>()
+  const allocationTableRef = ref<ArtTableExpose<AllocationRow>>()
   const ocrPanelRef = ref<OcrPanelExpose>()
   const ocrResult = ref<Api.Fms.CashVoucherOcrAnalyzeResponse>()
   const transactionNumber = useDocumentNumberRule('tms.cash_transaction')
@@ -207,7 +210,7 @@
     statementIds: [],
     voucherUrls: []
   })
-  const form = reactive<PaymentForm>(initialForm())
+  const form = ref<PaymentForm>(initialForm())
   const allocationSourceItems: ArtDescriptionItem<CashTransaction>[] = [
     { key: 'transactionNo', label: '付款流水号', field: 'transactionNo', copyable: true },
     { key: 'transactionDate', label: '付款日期', field: 'transactionDate', format: 'date' },
@@ -239,7 +242,7 @@
     round(
       dialog.mode === 'allocate'
         ? (normalizeNullableNumber(dialog.transaction?.allocatableAmount) ?? 0)
-        : Number(form.amount || 0),
+        : Number(form.value.amount || 0),
       2
     )
   )
@@ -319,6 +322,14 @@
     {
       prop: 'allocationAmount',
       label: '本次核销',
+      headerTooltip: '填0表示暂不核销；单份对账单核销不能超过未结余额。',
+      rules: {
+        validator: ({ value, row }) =>
+          Number.isFinite(value) &&
+          Number(value) >= 0 &&
+          Number(value) <= Number(row.outstandingAmount ?? 0),
+        message: ({ rowIndex }) => '第 ' + (rowIndex + 1) + ' 行核销金额不能超过未结余额'
+      },
       width: 180,
       formatter: (r) => (
         <ElInputNumber
@@ -451,10 +462,10 @@
     return { data: data ?? [], total: data?.length ?? 0 }
   }
   async function fetchStatementSelectorData(params: DataSelectFetchParams) {
-    if (!form.carrierId) return { data: [], total: 0 }
+    if (!form.value.carrierId) return { data: [], total: 0 }
     const { from, to } = buildSupabasePageRange({ current: params.page, size: params.pageSize })
     const { data, total } = await fetchCarrierStatementAllocatableList({
-      carrierId: form.carrierId,
+      carrierId: form.value.carrierId,
       keyword: params.keyword,
       from,
       to
@@ -468,22 +479,22 @@
     }
   }
   function clearStatements() {
-    form.statementIds = []
+    form.value.statementIds = []
     selection.statements = []
     selection.amounts = {}
   }
   function handleApplyOcrResult(result: Api.Fms.CashVoucherOcrAnalyzeResponse) {
     ocrResult.value = result
     const voucher = result.voucher
-    Object.assign(form, {
-      transactionDate: voucher.transactionDate || form.transactionDate,
-      amount: voucher.amount ?? form.amount,
+    Object.assign(form.value, {
+      transactionDate: voucher.transactionDate || form.value.transactionDate,
+      amount: voucher.amount ?? form.value.amount,
       paymentMethod: voucher.paymentMethod,
-      bankReference: voucher.bankReference || form.bankReference
+      bankReference: voucher.bankReference || form.value.bankReference
     })
     const topMatch = result.matches[0]
     if (topMatch) {
-      form.carrierId = topMatch.counterpartyId
+      form.value.carrierId = topMatch.counterpartyId
       selection.carriers = [
         {
           id: topMatch.counterpartyId,
@@ -503,7 +514,7 @@
     carrierId: string
   ) {
     clearStatements()
-    let remaining = Number(form.amount || 0)
+    let remaining = Number(form.value.amount || 0)
     const selected: DataSelectRecord[] = []
     for (const match of matches) {
       if (remaining <= 0 || match.counterpartyId !== carrierId || match.score < 60) continue
@@ -525,7 +536,7 @@
       })
     }
     selection.statements = selected
-    form.statementIds = selected.map((item) => String(item.id))
+    form.value.statementIds = selected.map((item) => String(item.id))
   }
   function handleCarrierChange() {
     if (dialog.mode === 'allocate') return
@@ -552,11 +563,51 @@
       .map((r) => ({ statementId: r.id, amount: round(Number(selection.amounts[r.id] ?? 0), 2) }))
       .filter((x) => x.amount > 0)
   }
+  const workspaceItems = computed<FormItem[]>(() => {
+    const raw = formItems.value
+    const allocationSlots: FormItem[] = [
+      { key: 'cashAllocationWorkspace', label: '', span: 24, labelWidth: 0 }
+    ]
+    if (dialog.mode === 'allocate') return [...raw, ...allocationSlots]
+    const statement = raw.find((item) => item.key === 'statementIds')
+    return [
+      { key: 'cashIdentity', label: '收付款信息', type: 'tab' },
+      ...raw.filter(
+        (item) =>
+          !['baseSection', 'allocationSection', 'base', 'allocation', 'statementIds'].includes(
+            item.key
+          )
+      ),
+      ...(statement
+        ? [
+            {
+              key: 'cashAllocation',
+              label: '核销分配',
+              type: allocationRows.value.length ? ('tab' as const) : ('divider' as const)
+            },
+            statement,
+            ...allocationSlots
+          ]
+        : []),
+      { key: 'cashEvidenceSection', label: '凭证与识别', type: 'tab' },
+      { key: 'cashEvidence', label: '', span: 24, labelWidth: 0 }
+    ]
+  })
+
   async function handleSubmit(): Promise<boolean> {
     try {
       if (!(await validateArtFormForSubmit(formRef.value))) return false
     } catch (error) {
       notifyFriendlyError(error, '承运商付款校验失败，请重试')
+      return false
+    }
+    const allocationValidation = await allocationTableRef.value?.validate({ focus: false })
+    if (allocationValidation && !allocationValidation.valid) {
+      await formRef.value?.focusField('statementIds')
+      if (allocationValidation.firstError) {
+        await allocationTableRef.value?.validateField(allocationValidation.firstError.prop)
+        ElMessage.warning(allocationValidation.firstError.message)
+      }
       return false
     }
     if (allocationSummary.value.allocated > limit.value) {
@@ -575,15 +626,15 @@
         })
       else {
         const { data: transactionId } = await createCarrierPayment({
-          transactionNo: normalizeNullableText(form.transactionNo),
-          carrierId: form.carrierId,
-          fundAccountId: form.fundAccountId,
-          transactionDate: form.transactionDate,
-          amount: Number(form.amount),
-          paymentMethod: form.paymentMethod,
-          bankReference: normalizeNullableText(form.bankReference),
-          voucherUrls: [...form.voucherUrls],
-          remark: normalizeNullableText(form.remark),
+          transactionNo: normalizeNullableText(form.value.transactionNo),
+          carrierId: form.value.carrierId,
+          fundAccountId: form.value.fundAccountId,
+          transactionDate: form.value.transactionDate,
+          amount: Number(form.value.amount),
+          paymentMethod: form.value.paymentMethod,
+          bankReference: normalizeNullableText(form.value.bankReference),
+          voucherUrls: [...form.value.voucherUrls],
+          remark: normalizeNullableText(form.value.remark),
           allocations: allocations()
         })
         await recordOcrReview(transactionId)
@@ -596,7 +647,7 @@
     }
   }
   async function resetForm() {
-    Object.assign(form, initialForm())
+    Object.assign(form.value, initialForm())
     dialog.transaction = undefined
     selection.carriers = []
     clearStatements()
@@ -616,7 +667,7 @@
     dialog.mode = transaction ? 'allocate' : 'create'
     dialog.transaction = transaction
     if (transaction) {
-      Object.assign(form, {
+      Object.assign(form.value, {
         transactionNo: transaction.transactionNo,
         carrierId: transaction.carrierId ?? '',
         transactionDate: transaction.transactionDate,
@@ -673,11 +724,11 @@
         finalPayload: {
           payerName: ocrResult.value.voucher.payerName,
           payeeName: selection.carriers[0]?.companyName ?? null,
-          transactionDate: form.transactionDate,
-          amount: Number(form.amount),
-          bankReference: normalizeNullableText(form.bankReference),
-          paymentMethod: form.paymentMethod,
-          statementIds: [...form.statementIds]
+          transactionDate: form.value.transactionDate,
+          amount: Number(form.value.amount),
+          bankReference: normalizeNullableText(form.value.bankReference),
+          paymentMethod: form.value.paymentMethod,
+          statementIds: [...form.value.statementIds]
         }
       })
       if (error) ElMessage.warning('付款已登记，但 AI 质量记录失败；不影响正式业务数据')

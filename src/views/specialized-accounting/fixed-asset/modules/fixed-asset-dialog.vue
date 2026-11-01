@@ -12,21 +12,18 @@
     <ArtForm
       root-class="art-form--mobile-stack"
       ref="formRef"
-      :model-value="form"
-      @update:model-value="replaceReactiveModel(form, $event)"
+      v-model:active-tab="activeTab"
+      v-model="form"
       :items="items"
       :rules="rules"
       :span="12"
       :gutter="20"
       label-width="104px"
-      :show-reset="false"
-      :show-submit="false"
     />
   </ArtDialog>
 </template>
 
 <script setup lang="ts">
-  import { replaceReactiveModel } from '@/utils/form/model'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { useAuth } from '@/hooks/core/useAuth'
@@ -53,6 +50,7 @@
   const dialogRef = ref<ArtDialogExpose>()
   const prerequisiteOverlay = createFinancePrerequisiteOverlay(dialogRef)
   const formRef = ref<{ validate: () => Promise<boolean>; clearValidate: () => void }>()
+  const activeTab = ref('identitySection')
   const accountSetOptions = ref<Api.Fms.AccountSetOption[]>([])
   const currentRecord = shallowRef<Api.Fms.FixedAssetRecord>()
   const fieldAccess = ref<Api.Fms.FixedAssetFieldAccessMap>({})
@@ -66,14 +64,18 @@
   let vehicleRequestId = 0
   async function loadVehicles(keyword = ''): Promise<void> {
     const requestId = ++vehicleRequestId
-    if (!form.accountSetId || !canView('assetReferences')) {
+    if (!form.value.accountSetId || !canView('assetReferences')) {
       vehicleOptions.value = []
       vehiclesLoading.value = false
       return
     }
     vehiclesLoading.value = true
     try {
-      const result = await fetchFixedAssetVehicleOptions(form.accountSetId, keyword, form.vehicleId)
+      const result = await fetchFixedAssetVehicleOptions(
+        form.value.accountSetId,
+        keyword,
+        form.value.vehicleId
+      )
       if (requestId !== vehicleRequestId) return
       if (result.error) throw result.error
       vehicleOptions.value = result.data ?? []
@@ -109,17 +111,17 @@
     sourceNo: null,
     remark: null
   })
-  const form = reactive(initial())
+  const form = ref(initial())
   const { hasAuth } = useAuth()
   const savePermission = computed(() =>
-    form.id ? 'FinanceFixedAsset:Edit' : 'FinanceFixedAsset:Add'
+    form.value.id ? 'FinanceFixedAsset:Edit' : 'FinanceFixedAsset:Add'
   )
   function canSave(): boolean {
     if (hasAuth(savePermission.value)) return true
     ElMessage.warning('固定资产操作权限已变化，请刷新页面后重试')
     return false
   }
-  const isEditing = computed(() => Boolean(form.id))
+  const isEditing = computed(() => Boolean(form.value.id))
   const canView = (field: Api.Fms.FixedAssetFieldKey): boolean =>
     !isEditing.value || canViewField(fieldAccess.value, field)
   const canEdit = (field: Api.Fms.FixedAssetFieldKey): boolean =>
@@ -142,13 +144,22 @@
   }
   const items = computed<FormItem[]>(() => {
     const result: FormItem[] = [
-      { label: '资产档案', key: 'identitySection', type: 'divider', span: 24 },
+      {
+        label: '资产档案',
+        key: 'identitySection',
+        type: canView('assetReferences') || canView('assetValues') ? 'tab' : 'divider',
+        span: 24
+      },
       {
         label: '所属账套',
         key: 'accountSetId',
         type: 'select',
         span: 24,
-        props: { options: accountSetOptions.value, filterable: true, disabled: Boolean(form.id) }
+        props: {
+          options: accountSetOptions.value,
+          filterable: true,
+          disabled: Boolean(form.value.id)
+        }
       },
       {
         label: '资产类别',
@@ -159,7 +170,7 @@
           options: categoryOptions.value,
           filterable: true,
           loading: categoriesLoading.value,
-          disabled: !form.accountSetId || categoriesLoading.value || categoriesFailed.value
+          disabled: !form.value.accountSetId || categoriesLoading.value || categoriesFailed.value
         }
       },
       {
@@ -186,7 +197,7 @@
                 remote: true,
                 remoteMethod: loadVehicles,
                 loading: vehiclesLoading.value,
-                disabled: !form.accountSetId,
+                disabled: !form.value.accountSetId,
                 placeholder: '非车辆资产可留空，输入车牌搜索'
               }
             }
@@ -227,7 +238,12 @@
     }
 
     result.push(
-      { label: '购置与折旧', key: 'depreciationSection', type: 'divider', span: 24 },
+      {
+        label: '购置与管理',
+        key: 'depreciationSection',
+        type: canView('assetReferences') || canView('assetValues') ? 'tab' : 'divider',
+        span: 24
+      },
       {
         label: '购置日期',
         key: 'acquisitionDate',
@@ -300,7 +316,6 @@
 
     if (canView('assetCustody')) {
       result.push(
-        { label: '保管信息', key: 'custodySection', type: 'divider', span: 24 },
         canEdit('assetCustody')
           ? {
               label: '存放地点',
@@ -317,16 +332,13 @@
       )
     }
 
-    result.push(
-      { label: '补充说明', key: 'remarkSection', type: 'divider', span: 24 },
-      {
-        label: '备注',
-        key: 'remark',
-        type: 'input',
-        span: 24,
-        props: { type: 'textarea', rows: 3, maxlength: 500 }
-      }
-    )
+    result.push({
+      label: '备注',
+      key: 'remark',
+      type: 'input',
+      span: 24,
+      props: { type: 'textarea', rows: 3, maxlength: 500 }
+    })
     return result
   })
   async function loadCategories(accountSetId: string): Promise<void> {
@@ -337,7 +349,7 @@
     if (!accountSetId) return
     try {
       const { data, error } = await fetchAssetCategoryList(accountSetId)
-      if (requestId !== categoryRequestId || accountSetId !== form.accountSetId) return
+      if (requestId !== categoryRequestId || accountSetId !== form.value.accountSetId) return
       if (error) throw error
       categoryOptions.value = (data ?? [])
         .filter((item) => item.isEnabled)
@@ -354,21 +366,23 @@
     }
   }
   watch(
-    () => form.accountSetId,
+    () => form.value.accountSetId,
     async (value) => {
-      if (!form.id) form.categoryId = ''
-      if (!form.id) form.vehicleId = null
+      if (!form.value.id) form.value.categoryId = ''
+      if (!form.value.id) form.value.vehicleId = null
       await loadCategories(value)
       await loadVehicles()
     }
   )
   watch(
-    () => form.categoryId,
+    () => form.value.categoryId,
     (value) => {
       const item = categoryOptions.value.find((option) => option.value === value)
-      if (item && !form.id) {
-        form.usefulLifeMonths = item.life
-        form.residualValue = Number((Number(form.originalValue ?? 0) * item.rate).toFixed(2))
+      if (item && !form.value.id) {
+        form.value.usefulLifeMonths = item.life
+        form.value.residualValue = Number(
+          (Number(form.value.originalValue ?? 0) * item.rate).toFixed(2)
+        )
       }
     }
   )
@@ -379,46 +393,46 @@
       if (!(await validateArtFormForSubmit(formRef.value))) return false
       if (!canSave()) return false
       if (
-        dayjs(form.readyForUseDate).isBefore(form.acquisitionDate) ||
-        dayjs(form.depreciationStartDate).isBefore(form.readyForUseDate)
+        dayjs(form.value.readyForUseDate).isBefore(form.value.acquisitionDate) ||
+        dayjs(form.value.depreciationStartDate).isBefore(form.value.readyForUseDate)
       ) {
         ElMessage.warning('资产日期顺序不正确')
         return false
       }
       const payload: Api.Fms.SaveFixedAssetPayload = {
-        id: form.id,
-        accountSetId: form.accountSetId,
-        categoryId: form.categoryId,
-        assetNo: form.assetNo.trim(),
-        assetName: form.assetName.trim(),
-        acquisitionDate: form.acquisitionDate,
-        readyForUseDate: form.readyForUseDate,
-        depreciationStartDate: form.depreciationStartDate,
-        usefulLifeMonths: form.usefulLifeMonths,
+        id: form.value.id,
+        accountSetId: form.value.accountSetId,
+        categoryId: form.value.categoryId,
+        assetNo: form.value.assetNo.trim(),
+        assetName: form.value.assetName.trim(),
+        acquisitionDate: form.value.acquisitionDate,
+        readyForUseDate: form.value.readyForUseDate,
+        depreciationStartDate: form.value.depreciationStartDate,
+        usefulLifeMonths: form.value.usefulLifeMonths,
         ...(canEdit('assetValues')
           ? {
-              originalValue: Number(form.originalValue),
-              residualValue: Number(form.residualValue ?? 0)
+              originalValue: Number(form.value.originalValue),
+              residualValue: Number(form.value.residualValue ?? 0)
             }
           : {}),
         ...(canEdit('assetCustody')
           ? {
-              departmentId: form.departmentId || null,
-              employeeId: form.employeeId || null,
-              location: normalizeNullableText(form.location)
+              departmentId: form.value.departmentId || null,
+              employeeId: form.value.employeeId || null,
+              location: normalizeNullableText(form.value.location)
             }
           : {}),
         ...(canEdit('assetReferences')
           ? {
-              specification: normalizeNullableText(form.specification),
-              vehicleId: form.vehicleId || null,
-              serialNo: normalizeNullableText(form.serialNo),
-              sourceType: form.sourceType || null,
-              sourceId: form.sourceId || null,
-              sourceNo: normalizeNullableText(form.sourceNo)
+              specification: normalizeNullableText(form.value.specification),
+              vehicleId: form.value.vehicleId || null,
+              serialNo: normalizeNullableText(form.value.serialNo),
+              sourceType: form.value.sourceType || null,
+              sourceId: form.value.sourceId || null,
+              sourceNo: normalizeNullableText(form.value.sourceNo)
             }
           : {}),
-        remark: normalizeNullableText(form.remark)
+        remark: normalizeNullableText(form.value.remark)
       }
       await saveFixedAsset(payload)
       emit('success')
@@ -429,13 +443,14 @@
     }
   }
   async function handleOpen(row?: Api.Fms.FixedAssetRecord, accountSetId?: string): Promise<void> {
+    activeTab.value = 'identitySection'
     if (!hasAuth(row?.id ? 'FinanceFixedAsset:Edit' : 'FinanceFixedAsset:Add')) {
       ElMessage.warning('当前账号无权新增或编辑固定资产')
       return
     }
     currentRecord.value = row
-    form.id = undefined
-    Object.assign(form, initial())
+    form.value.id = undefined
+    Object.assign(form.value, initial())
     const prepare = async () => {
       const { data: accountSets, error: accountSetError } = await fetchAccountSetOptions({
         status: 'active',
@@ -451,7 +466,7 @@
       currentRecord.value = record
       fieldAccess.value = record?.fieldAccess ?? {}
       Object.assign(
-        form,
+        form.value,
         initial(),
         record && {
           id: record.id,
@@ -491,9 +506,9 @@
         if (accountSetId && !accountSetOptions.value.some((item) => item.value === accountSetId)) {
           throw new Error('所选账套已不可用，请刷新列表后重试')
         }
-        form.accountSetId = accountSetId ?? accountSetOptions.value[0]?.value ?? ''
+        form.value.accountSetId = accountSetId ?? accountSetOptions.value[0]?.value ?? ''
       }
-      if (form.accountSetId) await loadCategories(form.accountSetId)
+      if (form.value.accountSetId) await loadCategories(form.value.accountSetId)
       await loadVehicles()
     }
     await dialogRef.value?.handleOpen(undefined, {

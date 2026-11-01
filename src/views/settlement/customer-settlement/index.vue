@@ -27,8 +27,7 @@
 
     <ArtTableQuery
       ref="tableQueryRef"
-      :model-value="searchQuery"
-      @update:model-value="replaceReactiveModel(searchQuery, $event)"
+      v-model="searchQuery"
       :search-items="searchItems"
       :api-fn="fetchTableData"
       :columns-factory="columnsFactory"
@@ -51,7 +50,6 @@
 </template>
 
 <script setup lang="tsx">
-  import { replaceReactiveModel } from '@/utils/form/model'
   import ArtButtonTable from '@/components/core/forms/art-button-table/index.vue'
   import ArtButtonMore, {
     type ButtonMoreItem
@@ -156,7 +154,7 @@
       tone: 'success'
     }
   ])
-  const searchQuery = reactive<SearchParams>({
+  const searchQuery = ref<SearchParams>({
     customerId: customerDeleteContext.value.customerId,
     keyword: '',
     periodRange: [],
@@ -551,13 +549,14 @@
     const context = customerDeleteContext.value
     const customerId = context.active ? context.customerId : ''
     const recordId = context.active ? context.recordId : ''
-    const changed = searchQuery.customerId !== customerId || searchQuery.recordId !== recordId
-    Object.assign(searchQuery, {
+    const changed =
+      searchQuery.value.customerId !== customerId || searchQuery.value.recordId !== recordId
+    Object.assign(searchQuery.value, {
       customerId,
       recordId
     })
     if (context.active || changed) {
-      Object.assign(searchQuery, { keyword: '', periodRange: [], status: '' })
+      Object.assign(searchQuery.value, { keyword: '', periodRange: [], status: '' })
     }
     if (changed || forceRefresh) {
       void nextTick().then(() => tableQueryRef.value?.refreshCreate())
@@ -573,8 +572,8 @@
   watch(
     () => route.query.status,
     (value) => {
-      if (typeof value !== 'string' || searchQuery.status === value) return
-      searchQuery.status = value
+      if (typeof value !== 'string' || searchQuery.value.status === value) return
+      searchQuery.value.status = value
       void tableQueryRef.value?.getData()
     }
   )

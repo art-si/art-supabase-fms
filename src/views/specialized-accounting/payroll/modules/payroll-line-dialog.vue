@@ -1,18 +1,23 @@
 <template>
-  <ArtDialog ref="dialogRef" size="md"
+  <ArtDialog
+    ref="dialogRef"
+    @open="
+      () => {
+        activeTab = ''
+      }
+    "
+    size="md"
     ><template #subtitle>金额构成按员工快照保存，不依赖后续人事档案变更。</template
     ><ArtForm
       root-class="art-form--mobile-stack"
       ref="formRef"
-      :model-value="form"
-      @update:model-value="replaceReactiveModel(form, $event)"
+      v-model:active-tab="activeTab"
+      v-model="form"
       :items="items"
       :rules="rules"
       :span="12"
       :gutter="18"
       label-width="100px"
-      :show-reset="false"
-      :show-submit="false"
     >
       <template #employeeId>
         <span
@@ -31,16 +36,22 @@
           search-placeholder="搜索姓名或工号"
         />
       </template>
-      <template #earningItems><PayrollItemsEditor v-model="earningRows" /></template>
-      <template #deductionItems><PayrollItemsEditor v-model="deductionRows" /></template>
-      <template #employerCostItems><PayrollItemsEditor v-model="employerRows" /></template>
+      <template #earningItems
+        ><PayrollItemsEditor ref="earningEditorRef" v-model="earningRows"
+      /></template>
+      <template #deductionItems
+        ><PayrollItemsEditor ref="deductionEditorRef" v-model="deductionRows"
+      /></template>
+      <template #employerCostItems
+        ><PayrollItemsEditor ref="employerEditorRef" v-model="employerRows"
+      /></template>
     </ArtForm>
   </ArtDialog>
 </template>
 <script setup lang="ts">
   import { normalizeNullableNumber } from '@/utils/form/normalize'
   import { round, sumBy } from 'lodash-es'
-  import { replaceReactiveModel } from '@/utils/form/model'
+
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import type { FormRules } from 'element-plus'
@@ -60,16 +71,20 @@
   defineOptions({ name: 'FinancePayrollLineDialog' })
   const emit = defineEmits<{ success: [] }>()
   const dialogRef = ref<ArtDialogExpose>()
-  const formRef = ref<{
-    validate: () => Promise<boolean>
-    clearValidate: (fields?: string | string[]) => void
-  }>()
+  const formRef = ref<InstanceType<typeof ArtForm>>()
+  const activeTab = ref('')
+  const earningEditorRef = ref<InstanceType<typeof PayrollItemsEditor>>()
+  const deductionEditorRef = ref<InstanceType<typeof PayrollItemsEditor>>()
+  const employerEditorRef = ref<InstanceType<typeof PayrollItemsEditor>>()
   const runId = ref('')
   const runTenantId = ref('')
   const earningRows = ref<PayrollItemRow[]>([])
   const deductionRows = ref<PayrollItemRow[]>([])
   const employerRows = ref<PayrollItemRow[]>([])
-  const form = reactive({
+  const showPayrollTabs = computed(
+    () => earningRows.value.length + deductionRows.value.length + employerRows.value.length > 4
+  )
+  const form = ref({
     employeeId: '',
     grossAmount: 0,
     deductionAmount: 0,
@@ -83,7 +98,7 @@
     deductionAmount: [
       {
         validator: (_rule, value, callback) => {
-          if (Number(value) > form.grossAmount) {
+          if (Number(value) > form.value.grossAmount) {
             callback(new Error('扣款金额不能超过应发金额'))
           } else {
             callback()
@@ -96,15 +111,15 @@
   watch(
     [earningRows, deductionRows, employerRows],
     () => {
-      form.grossAmount = round(
+      form.value.grossAmount = round(
         sumBy(earningRows.value, (row) => row.amount ?? 0),
         2
       )
-      form.deductionAmount = round(
+      form.value.deductionAmount = round(
         sumBy(deductionRows.value, (row) => row.amount ?? 0),
         2
       )
-      form.employerCostAmount = round(
+      form.value.employerCostAmount = round(
         sumBy(employerRows.value, (row) => row.amount ?? 0),
         2
       )
@@ -112,55 +127,70 @@
     { deep: true }
   )
   const items = computed<FormItem[]>(() => [
-    { label: '员工快照', key: 'employeeSection', type: 'divider', span: 24 },
     {
       label: '员工',
       key: 'employeeId',
       type: 'input',
       span: 24
     },
-    { label: '薪资构成', key: 'amountSection', type: 'divider', span: 24 },
-    { label: '收入项目', key: 'earningItems', span: 24 },
-    { label: '扣款项目', key: 'deductionItems', span: 24 },
-    { label: '企业承担', key: 'employerCostItems', span: 24 },
     {
       label: '应发金额',
       key: 'grossAmount',
       type: 'text',
-      props: { formatter: () => formatCurrencyValue(form.grossAmount) }
+      props: { formatter: () => formatCurrencyValue(form.value.grossAmount) }
     },
     {
       label: '扣款金额',
       key: 'deductionAmount',
       type: 'text',
-      props: { formatter: () => formatCurrencyValue(form.deductionAmount) }
+      props: { formatter: () => formatCurrencyValue(form.value.deductionAmount) }
     },
     {
       label: '企业成本',
       key: 'employerCostAmount',
       type: 'text',
-      props: { formatter: () => formatCurrencyValue(form.employerCostAmount) }
+      props: { formatter: () => formatCurrencyValue(form.value.employerCostAmount) }
     },
     {
       label: '实发金额',
       key: 'netAmount',
       type: 'text',
       props: {
-        formatter: () => formatCurrencyValue(form.netAmount)
+        formatter: () => formatCurrencyValue(form.value.netAmount)
       },
       description: '按应发金额减去扣款金额自动计算。'
     },
-    { label: '明细说明', key: 'remarkSection', type: 'divider', span: 24 },
-    { label: '备注', key: 'remark', type: 'input', span: 24, props: { type: 'textarea', rows: 3 } }
+    { label: '备注', key: 'remark', type: 'input', span: 24, props: { type: 'textarea', rows: 3 } },
+    {
+      key: 'earningSection',
+      label: '收入项目',
+      type: showPayrollTabs.value ? 'tab' : 'divider',
+      span: 24
+    },
+    { label: '', key: 'earningItems', span: 24 },
+    {
+      key: 'deductionSection',
+      label: '扣款项目',
+      type: showPayrollTabs.value ? 'tab' : 'divider',
+      span: 24
+    },
+    { label: '', key: 'deductionItems', span: 24 },
+    {
+      key: 'employerSection',
+      label: '企业承担',
+      type: showPayrollTabs.value ? 'tab' : 'divider',
+      span: 24
+    },
+    { label: '', key: 'employerCostItems', span: 24 }
   ])
   watch(
-    () => form.employeeId,
+    () => form.value.employeeId,
     () => formRef.value?.clearValidate('employeeId')
   )
   watch(
-    () => [form.grossAmount, form.deductionAmount] as const,
+    () => [form.value.grossAmount, form.value.deductionAmount] as const,
     ([grossAmount, deductionAmount]) => {
-      form.netAmount = Math.max(grossAmount - deductionAmount, 0)
+      form.value.netAmount = Math.max(grossAmount - deductionAmount, 0)
       if (deductionAmount <= grossAmount) formRef.value?.clearValidate('deductionAmount')
     },
     { immediate: true }
@@ -174,19 +204,32 @@
   async function submit(): Promise<boolean> {
     try {
       if (!(await validateArtFormForSubmit(formRef.value))) return false
+      for (const [field, editor] of [
+        ['earningItems', earningEditorRef],
+        ['deductionItems', deductionEditorRef],
+        ['employerCostItems', employerEditorRef]
+      ] as const) {
+        const result = await editor.value?.validate({ focus: false })
+        if (result && !result.valid) {
+          await formRef.value?.focusField(field)
+          await editor.value?.validate()
+          ElMessage.warning(result.firstError?.message || '请检查薪酬项目')
+          return false
+        }
+      }
       const earnings = buildPayrollItems(earningRows.value)
       const deductions = buildPayrollItems(deductionRows.value)
       const employer = buildPayrollItems(employerRows.value)
       if (deductions.total > earnings.total) throw new Error('扣款金额不能超过应发金额')
       const result = await savePayrollLine(runId.value, {
-        employeeId: form.employeeId,
+        employeeId: form.value.employeeId,
         earningItems: earnings.items,
         deductionItems: deductions.items,
         employerCostItems: employer.items,
         grossAmount: earnings.total,
         deductionAmount: deductions.total,
         employerCostAmount: employer.total,
-        remark: form.remark
+        remark: form.value.remark
       })
       if (result.error) throw result.error
       emit('success')
@@ -228,7 +271,7 @@
       notifyFriendlyError(error, '薪酬项目加载失败，请刷新后重试')
       return
     }
-    Object.assign(form, {
+    Object.assign(form.value, {
       employeeId: line?.employeeId || '',
       grossAmount: normalizeNullableNumber(line?.grossAmount) ?? 0,
       deductionAmount: normalizeNullableNumber(line?.deductionAmount) ?? 0,

@@ -1,50 +1,56 @@
 <template>
-  <ArtDialog ref="dialogRef" size="lg">
+  <ArtDialog
+    ref="dialogRef"
+    @open="
+      () => {
+        activeTab = ''
+      }
+    "
+    size="lg"
+  >
     <div class="posting-rule-dialog">
       <ArtForm
         root-class="art-form--mobile-stack"
         ref="formRef"
+        v-model:active-tab="activeTab"
         v-model="form.data"
         :items="form.items"
         :rules="form.rules"
         :span="12"
         :gutter="18"
         label-width="96px"
-        :show-reset="false"
-        :show-submit="false"
         scroll-to-error
-      />
+        ><template #postingLines
+          ><ArtSectionCard
+            class="posting-rule-dialog__lines"
+            aria-label="制证分录规则"
+            preserve-content-structure
+          >
+            <template #header>
+              <div class="posting-rule-dialog__section-head">
+                <div>
+                  <ArtSectionTitle :show-line="false">制证分录规则</ArtSectionTitle>
+                  <p>金额口径与倍率共同计算分录金额；借贷双方必须至少各一条。</p>
+                </div>
+                <ElButton type="primary" plain @click="addLine">
+                  <ArtSvgIcon icon="ri:add-line" />新增分录
+                </ElButton>
+              </div>
+            </template>
 
-      <ArtSectionCard
-        class="posting-rule-dialog__lines"
-        aria-label="制证分录规则"
-        preserve-content-structure
-      >
-        <template #header>
-          <div class="posting-rule-dialog__section-head">
-            <div>
-              <ArtSectionTitle :show-line="false">制证分录规则</ArtSectionTitle>
-              <p>金额口径与倍率共同计算分录金额；借贷双方必须至少各一条。</p>
-            </div>
-            <ElButton type="primary" plain @click="addLine">
-              <ArtSvgIcon icon="ri:add-line" />新增分录
-            </ElButton>
-          </div>
-        </template>
-
-        <ArtTable
-          ref="lineTableRef"
-          :border="false"
-          :data="form.lines"
-          :columns="lineColumns"
-          :pagination="false"
-          table-layout="fixed"
-          :scrollbar-always-on="false"
-          empty-text="暂无制证分录"
-          empty-description="请新增借方和贷方分录，形成完整的会计规则。"
-          empty-height="180px"
-        />
-      </ArtSectionCard>
+            <ArtTable
+              ref="lineTableRef"
+              :border="false"
+              :data="form.lines"
+              :columns="lineColumns"
+              :pagination="false"
+              table-layout="fixed"
+              :scrollbar-always-on="false"
+              empty-text="暂无制证分录"
+              empty-description="请新增借方和贷方分录，形成完整的会计规则。"
+              empty-height="180px"
+            /> </ArtSectionCard></template
+      ></ArtForm>
     </div>
 
     <PostingLineAuxiliaryDialog ref="auxiliaryDialogRef" />
@@ -52,6 +58,7 @@
 </template>
 
 <script setup lang="tsx">
+  import TreeUtils from '@/utils/tree'
   import { ref, reactive, computed } from 'vue'
   import { storeToRefs } from 'pinia'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
@@ -65,7 +72,8 @@
     ElMessage,
     ElOption,
     ElSegmented,
-    ElSelect
+    ElSelect,
+    ElTreeSelect
   } from 'element-plus'
   import type { ComputedRef, UnwrapNestedRefs } from 'vue'
   import type { FormRules } from 'element-plus'
@@ -115,11 +123,6 @@
     remark: string
   }
 
-  interface FormExpose {
-    validate: () => Promise<boolean>
-    clearValidate: () => void
-  }
-
   interface AuxiliaryDialogExpose {
     handleOpen: (
       value: Record<string, string>,
@@ -136,6 +139,7 @@
     rules: FormRules<FormData>
   }
 
+  const optionTree = new TreeUtils({ idKey: 'value', parentKey: 'parentId' })
   const emit = defineEmits<{ success: [] }>()
   const userStore = useUserStore()
   const { getDictMap } = storeToRefs(userStore)
@@ -147,7 +151,8 @@
   )
   const dialogRef = ref<ArtDialogExpose<Rule | undefined>>()
   const auxiliaryDialogRef = ref<AuxiliaryDialogExpose>()
-  const formRef = ref<FormExpose>()
+  const activeTab = ref('')
+  const formRef = ref<InstanceType<typeof ArtForm>>()
   const lineTableRef = ref<ArtTableExpose>()
   const context = reactive<DialogContext>({
     accountSet: { label: '', value: '', status: 'draft', tenantId: '' },
@@ -206,17 +211,17 @@
       .filter((item) => ['debit', 'credit'].includes(String(item.value)))
       .map((item) => ({ label: item.label ?? item.name, value: String(item.value) }))
   )
-  const subjectOptions = computed<SelectOption[]>(() =>
-    context.subjects
-      .filter(
-        (subject) =>
-          subject.isEnabled &&
-          !context.subjects.some((candidate) => candidate.parentId === subject.id)
-      )
-      .map((subject) => ({
+  const subjectOptions = computed(() =>
+    optionTree.listToTree(
+      context.subjects.map((subject) => ({
         label: `${subject.subjectCode} ${subject.subjectName}`,
-        value: subject.id
+        value: subject.id,
+        parentId: subject.parentId,
+        disabled:
+          !subject.isEnabled ||
+          context.subjects.some((candidate) => candidate.parentId === subject.id)
       }))
+    )
   )
   const payloadOptions = computed<SelectOption[]>(() => {
     const event = form.data.sourceEvent
@@ -301,7 +306,7 @@
     data: createInitialForm(),
     lines: [createLine(1, 'debit'), createLine(2, 'credit')],
     items: computed<FormItem[]>(() => [
-      { label: '规则信息', key: 'identitySection', type: 'divider', span: 24 },
+      { label: '规则信息', key: 'identitySection', type: 'tab', span: 24 },
       {
         label: '账套',
         key: 'accountSetId',
@@ -379,7 +384,7 @@
             }
           ]
         : []),
-      { label: '生效管理', key: 'validitySection', type: 'divider', span: 24 },
+      { label: '生效管理', key: 'validitySection', type: 'tab', span: 24 },
       {
         label: '生效日期',
         key: 'effectiveFrom',
@@ -404,7 +409,9 @@
         type: 'input',
         span: 24,
         props: { type: 'textarea', rows: 3, maxlength: 500, showWordLimit: true }
-      }
+      },
+      { key: 'postingLinesSection', label: '分录规则', type: 'tab' },
+      { key: 'postingLines', label: '', span: 24, labelWidth: 0 }
     ]),
     rules: {
       accountSetId: [{ required: true, message: '请选择账套', trigger: 'change' }],
@@ -431,16 +438,19 @@
     return context.subjects.find((subject) => subject.id === row.subjectId)
   }
 
-  function cashFlowOptions(row: Line): SelectOption[] {
+  function cashFlowOptions(row: Line) {
     const direction: Api.Fms.CashFlowDirection = row.direction === 'debit' ? 'receipt' : 'payment'
-    return context.cashFlowItems
-      .filter(
-        (item) =>
-          item.isEnabled &&
-          item.calculationMethod === 'mapping' &&
-          item.cashFlowDirection === direction
-      )
-      .map((item) => ({ label: `${item.itemCode} ${item.itemName}`, value: item.id }))
+    return optionTree.listToTree(
+      context.cashFlowItems.map((item) => ({
+        label: `${item.itemCode} ${item.itemName}`,
+        value: item.id,
+        parentId: item.parentId,
+        disabled:
+          !item.isEnabled ||
+          item.calculationMethod !== 'mapping' ||
+          item.cashFlowDirection !== direction
+      }))
+    )
   }
 
   function updateLineSubject(row: Line, subjectId: string): void {
@@ -513,18 +523,21 @@
       requiredMessage: ({ rowIndex }) => `第 ${rowIndex + 1} 条制证分录未选择会计科目`,
       minWidth: 220,
       formatter: (row) => (
-        <ElSelect
+        <ElTreeSelect
           v-model={row.subjectId}
           aria-label={`第 ${row.lineNo} 行会计科目`}
           filterable
           class="w-full!"
           placeholder="选择末级科目"
-          onChange={() => updateLineSubject(row, row.subjectId)}
-        >
-          {subjectOptions.value.map((item) => (
-            <ElOption key={item.value} label={item.label} value={item.value} />
-          ))}
-        </ElSelect>
+          // ElTreeSelect forwards select events through attrs, but omits their TS declarations.
+          {...{
+            onChange: (value: unknown) => {
+              if (typeof value === 'string') updateLineSubject(row, value)
+            }
+          }}
+          data={subjectOptions.value}
+          checkStrictly
+        />
       )
     },
     ...(hasCashFlow.value
@@ -543,17 +556,15 @@
             minWidth: 220,
             formatter: (row: Line) =>
               lineSubject(row)?.cashFlowRequired ? (
-                <ElSelect
+                <ElTreeSelect
                   v-model={row.cashFlowItemId}
                   aria-label={`第 ${row.lineNo} 行现金流量项目`}
                   filterable
                   class="w-full!"
                   placeholder="现金科目必选"
-                >
-                  {cashFlowOptions(row).map((item) => (
-                    <ElOption key={item.value} label={item.label} value={item.value} />
-                  ))}
-                </ElSelect>
+                  data={cashFlowOptions(row)}
+                  checkStrictly
+                />
               ) : (
                 <span class="text-g-500">无需归集</span>
               )
@@ -662,8 +673,13 @@
       ElMessage.warning('制证规则至少需要两条分录')
       return false
     }
-    const tableValidation = await lineTableRef.value?.validate()
+    const tableValidation = await lineTableRef.value?.validate({ focus: false })
     if (tableValidation && !tableValidation.valid) {
+      await formRef.value?.focusField('postingLines')
+      if (tableValidation.firstError) {
+        await lineTableRef.value?.validateField(tableValidation.firstError.prop)
+        ElMessage.warning(tableValidation.firstError.message)
+      }
       return false
     }
     if (!form.lines.some((line) => line.direction === 'debit')) {

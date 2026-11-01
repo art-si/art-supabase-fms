@@ -17,83 +17,88 @@
         <ElButton type="primary" plain @click="retryLoad">重新加载</ElButton>
       </template>
       <div v-if="detail" class="fund-transfer-detail">
-        <ArtSectionCard title="调拨信息" preserve-content-structure>
-          <ArtDescriptions
-            :data="detail"
-            :items="descriptionItems"
-            :columns="2"
-            label-width="104px"
-          />
-        </ArtSectionCard>
-
-        <section
-          v-if="showTransferFlow"
-          class="fund-transfer-detail__flow"
-          :class="{ 'is-amount-only': !canViewAccounts }"
-          aria-label="资金流向"
-        >
-          <p
-            v-if="detail.status === 'reversed'"
-            class="col-span-full m-0 text-sm text-[var(--el-text-color-secondary)]"
-          >
-            原调拨已冲销，以下为原始转账方向；反向流水已恢复本次调拨金额。
-          </p>
-          <div v-if="canViewAccounts">
-            <small>转出账户</small>
-            <strong>{{ detail.sourceAccountName || '--' }}</strong>
-            <span>{{ detail.sourceAccountNoMasked || '--' }}</span>
-          </div>
-          <div class="fund-transfer-detail__arrow">
-            <ArtSvgIcon icon="ri:arrow-right-line" />
-            <strong v-if="canViewAmounts">{{
-              formatSensitiveCurrencyValue(detail.amount, detail?.currencyCode)
-            }}</strong>
-            <small v-if="canViewAmounts && hasFeeAmount">
-              手续费 {{ formatSensitiveCurrencyValue(detail.feeAmount, detail?.currencyCode) }}
-            </small>
-          </div>
-          <div v-if="canViewAccounts">
-            <small>转入账户</small>
-            <strong>{{ detail.targetAccountName || '--' }}</strong>
-            <span>{{ detail.targetAccountNoMasked || '--' }}</span>
-          </div>
-        </section>
-
-        <ArtSectionCard
-          class="fund-transfer-detail__section"
-          title="操作轨迹"
-          :empty="!actions.length"
-          empty-title="暂无操作记录"
-          empty-description="提交、审核和执行调拨后，可在此查看操作轨迹。"
-          :empty-visual-size="64"
-          :min-height="148"
-          preserve-content-structure
-        >
-          <ol v-if="isMobile" class="m-0 grid list-none gap-4 p-0">
-            <li v-for="action in actions" :key="action.id" class="grid min-w-0 gap-3">
-              <strong class="text-sm text-g-900">{{ actionLabels[action.action] }}</strong>
+        <ElTabs v-model="activeTab">
+          <ElTabPane name="details" label="调拨资料" class="grid gap-4">
+            <ArtSectionCard title="调拨信息" preserve-content-structure>
               <ArtDescriptions
-                :data="action"
-                :items="actionItems(action)"
-                :columns="1"
-                label-width="88px"
+                :data="detail"
+                :items="descriptionItems"
+                :columns="2"
+                label-width="104px"
               />
-            </li>
-          </ol>
-          <ArtTable
-            v-else
-            :border="false"
-            :data="actions"
-            :columns="actionColumns"
-            :pagination="false"
-            height="auto"
-            :show-table-header="false"
-            table-layout="fixed"
-            empty-height="160px"
-            max-height="320px"
-            empty-text="暂无操作记录"
-          />
-        </ArtSectionCard>
+            </ArtSectionCard>
+
+            <section
+              v-if="showTransferFlow"
+              class="fund-transfer-detail__flow"
+              :class="{ 'is-amount-only': !canViewAccounts }"
+              aria-label="资金流向"
+            >
+              <p
+                v-if="detail.status === 'reversed'"
+                class="col-span-full m-0 text-sm text-[var(--el-text-color-secondary)]"
+              >
+                原调拨已冲销，以下为原始转账方向；反向流水已恢复本次调拨金额。
+              </p>
+              <div v-if="canViewAccounts">
+                <small>转出账户</small>
+                <strong>{{ detail.sourceAccountName || '--' }}</strong>
+                <span>{{ detail.sourceAccountNoMasked || '--' }}</span>
+              </div>
+              <div class="fund-transfer-detail__arrow">
+                <ArtSvgIcon icon="ri:arrow-right-line" />
+                <strong v-if="canViewAmounts">{{
+                  formatSensitiveCurrencyValue(detail.amount, detail?.currencyCode)
+                }}</strong>
+                <small v-if="canViewAmounts && hasFeeAmount">
+                  手续费 {{ formatSensitiveCurrencyValue(detail.feeAmount, detail?.currencyCode) }}
+                </small>
+              </div>
+              <div v-if="canViewAccounts">
+                <small>转入账户</small>
+                <strong>{{ detail.targetAccountName || '--' }}</strong>
+                <span>{{ detail.targetAccountNoMasked || '--' }}</span>
+              </div>
+            </section>
+          </ElTabPane>
+          <ElTabPane name="actions" label="操作轨迹">
+            <ArtSectionCard
+              class="fund-transfer-detail__section"
+              title="操作轨迹"
+              :empty="!actions.length"
+              empty-title="暂无操作记录"
+              empty-description="提交、审核和执行调拨后，可在此查看操作轨迹。"
+              :empty-visual-size="64"
+              :min-height="148"
+              preserve-content-structure
+            >
+              <ol v-if="isMobile" class="m-0 grid list-none gap-4 p-0">
+                <li v-for="action in actions" :key="action.id" class="grid min-w-0 gap-3">
+                  <strong class="text-sm text-g-900">{{ actionLabels[action.action] }}</strong>
+                  <ArtDescriptions
+                    :data="action"
+                    :items="actionItems(action)"
+                    :columns="1"
+                    label-width="88px"
+                  />
+                </li>
+              </ol>
+              <ArtTable
+                v-else
+                :border="false"
+                :data="actions"
+                :columns="actionColumns"
+                :pagination="false"
+                height="auto"
+                :show-table-header="false"
+                table-layout="fixed"
+                empty-height="160px"
+                max-height="320px"
+                empty-text="暂无操作记录"
+              />
+            </ArtSectionCard>
+          </ElTabPane>
+        </ElTabs>
       </div>
     </ArtAsyncState>
   </ArtDrawer>
@@ -125,6 +130,7 @@
   }
 
   const drawerRef = ref<ArtDrawerExpose<Transfer>>()
+  const activeTab = ref('details')
   const {
     detail: loadedDetail,
     loading,
@@ -244,6 +250,7 @@
   }
 
   async function handleOpen(row: Transfer): Promise<void> {
+    activeTab.value = 'details'
     openDetail(row.id)
     await drawerRef.value?.handleOpen(row, {
       title: '资金调拨详情',

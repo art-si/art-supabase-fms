@@ -11,8 +11,7 @@
       </BusinessWorkspaceHeader>
       <ArtTableQuery
         ref="tableRef"
-        :model-value="search"
-        @update:model-value="replaceReactiveModel(search, $event)"
+        v-model="search"
         :api-fn="fetchRows"
         :search-items="searchItems"
         :columns-factory="columnsFactory"
@@ -108,7 +107,6 @@
   </ArtPermissionGuard>
 </template>
 <script setup lang="tsx">
-  import { replaceReactiveModel } from '@/utils/form/model'
   import { createArDeleteMetadata } from './ar-delete-metadata'
   import { useRouteDocumentDrawer } from '@/hooks/core/useRouteDocumentDrawer'
   import { useRouteOperationGuard } from '@/hooks/core/useRouteTableContext'
@@ -116,7 +114,7 @@
   import ArPrintSheet, { type ArPrintRecord } from './ar-print-sheet.vue'
   import FinanceVoucherPreview from '@/components/business/finance-voucher-preview/index.vue'
   import type { DataSelectColumn } from '@/components/core/forms/art-data-select/types'
-  import { ref, computed, reactive, watch } from 'vue'
+  import { ref, computed, watch } from 'vue'
   import { useRoute, useRouter } from 'vue-router'
   import { ElMessage, ElButton } from 'element-plus'
   import { uniq, groupBy } from 'lodash-es'
@@ -234,7 +232,7 @@
         ? '应收核销另需收款核销工作台查看及核销权限，请联系管理员授权。'
         : '审核确认财务应收，按明细控制收款占用、核销、开票与退款。'
   )
-  const search = reactive({
+  const search = ref({
     keyword: '',
     status: '',
     organizationId: '',
@@ -829,7 +827,7 @@
       fixed: 'left',
       link: { permission: permissions.value.View, onClick: viewDocument }
     },
-    ...(search.viewMode === 'line'
+    ...(search.value.viewMode === 'line'
       ? [
           {
             prop: 'lineNo',
@@ -908,7 +906,7 @@
     { prop: 'requestDepartmentName', label: '申请部门', minWidth: 160 },
     { prop: 'sourceType', label: '源单类型', minWidth: 150, dict: { code: 'arSourceType' } },
     { prop: 'sourceNo', label: '来源单据号', minWidth: 200 },
-    ...(search.viewMode === 'line'
+    ...(search.value.viewMode === 'line'
       ? [
           {
             prop: 'sourceLineNo',

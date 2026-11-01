@@ -48,8 +48,7 @@
 
     <ArtTableQuery
       ref="tableRef"
-      :model-value="search"
-      @update:model-value="replaceReactiveModel(search, $event)"
+      v-model="search"
       class="financial-reports-page__table"
       :search-items="searchItems"
       :api-fn="fetchTableData"
@@ -76,7 +75,6 @@
 
 <script setup lang="tsx">
   import { uniq } from 'lodash-es'
-  import { replaceReactiveModel } from '@/utils/form/model'
   import FinanceAccountingWorkspaceShell from '@fms/views/modules/finance-accounting-workspace-shell/index.vue'
   import { storeToRefs } from 'pinia'
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
@@ -135,7 +133,7 @@
   const periods = ref<Api.Fms.AccountingPeriodRecord[]>([])
   const reportRows = ref<ReportRow[]>([])
   const listFieldAccess = ref<Api.Fms.FinancialReportFieldAccessMap>({})
-  const search = reactive<SearchData>({
+  const search = ref<SearchData>({
     accountSetId: '',
     fiscalYear: new Date().getFullYear(),
     periodFrom: 1,
@@ -159,7 +157,7 @@
 
   const periodOptions = computed(() =>
     periods.value
-      .filter((item) => item.fiscalYear === search.fiscalYear)
+      .filter((item) => item.fiscalYear === search.value.fiscalYear)
       .map((item) => ({ label: `第 ${item.periodNo} 期`, value: item.periodNo }))
   )
 
@@ -195,8 +193,8 @@
       props: {
         options: yearOptions.value,
         placeholder: '请选择年度',
-        disabled: !search.accountSetId,
-        noDataText: search.accountSetId
+        disabled: !search.value.accountSetId,
+        noDataText: search.value.accountSetId
           ? ACCOUNTING_SELECT_EMPTY_TEXT.fiscalYear
           : ACCOUNTING_SELECT_EMPTY_TEXT.chooseAccountSet,
         onChange: handleFiscalYearChange
@@ -209,8 +207,8 @@
       props: {
         options: periodOptions.value,
         placeholder: '起始期间',
-        disabled: !search.accountSetId,
-        noDataText: search.accountSetId
+        disabled: !search.value.accountSetId,
+        noDataText: search.value.accountSetId
           ? ACCOUNTING_SELECT_EMPTY_TEXT.accountingPeriod
           : ACCOUNTING_SELECT_EMPTY_TEXT.chooseAccountSet
       }
@@ -222,8 +220,8 @@
       props: {
         options: periodOptions.value,
         placeholder: '截止期间',
-        disabled: !search.accountSetId,
-        noDataText: search.accountSetId
+        disabled: !search.value.accountSetId,
+        noDataText: search.value.accountSetId
           ? ACCOUNTING_SELECT_EMPTY_TEXT.accountingPeriod
           : ACCOUNTING_SELECT_EMPTY_TEXT.chooseAccountSet
       }
@@ -243,7 +241,7 @@
     {
       permission: 'FinanceFinancialReports:Export',
       type: 'export',
-      exportFilename: () => `${activeStatementLabel.value}-${search.fiscalYear}年`,
+      exportFilename: () => `${activeStatementLabel.value}-${search.value.fiscalYear}年`,
       exportSheetName: activeStatementLabel.value,
       exportColumns: () => [
         { key: 'lineNo', title: '行次' },
@@ -530,8 +528,8 @@
     }
     const periodFrom = Math.min(Number(params.periodFrom || 1), Number(params.periodTo || 12))
     const periodTo = Math.max(Number(params.periodFrom || 1), Number(params.periodTo || 12))
-    search.periodFrom = periodFrom
-    search.periodTo = periodTo
+    search.value.periodFrom = periodFrom
+    search.value.periodTo = periodTo
     const result = await fetchFinancialStatementReport({
       accountSetId: params.accountSetId,
       statementType: activeType.value,
@@ -545,20 +543,20 @@
   }
 
   async function handleAccountSetChange(value: string): Promise<void> {
-    search.accountSetId = value || ''
+    search.value.accountSetId = value || ''
     periods.value = []
     if (!value) return
     const { data } = await fetchAccountingPeriodList(value)
     periods.value = data ?? []
-    if (!yearOptions.value.some((item) => item.value === search.fiscalYear)) {
-      search.fiscalYear = yearOptions.value[0]?.value ?? new Date().getFullYear()
+    if (!yearOptions.value.some((item) => item.value === search.value.fiscalYear)) {
+      search.value.fiscalYear = yearOptions.value[0]?.value ?? new Date().getFullYear()
     }
     handleFiscalYearChange()
   }
 
   function handleFiscalYearChange(): void {
-    search.periodFrom = periodOptions.value[0]?.value ?? 1
-    search.periodTo = periodOptions.value.at(-1)?.value ?? 12
+    search.value.periodFrom = periodOptions.value[0]?.value ?? 1
+    search.value.periodTo = periodOptions.value.at(-1)?.value ?? 12
   }
 
   function handleTabChange(): void {
@@ -572,11 +570,11 @@
       !(await ensureAccountSet({
         actionLabel: canEditConfig.value ? '维护财务报表取数口径' : '查看财务报表取数口径',
         activeRequired: true,
-        available: Boolean(search.accountSetId)
+        available: Boolean(search.value.accountSetId)
       }))
     )
       return
-    await configDrawerRef.value?.handleOpen(search.accountSetId, activeType.value)
+    await configDrawerRef.value?.handleOpen(search.value.accountSetId, activeType.value)
   }
 
   function refreshReport(): void {
@@ -591,9 +589,9 @@
     ])
     const { data } = await fetchAccountSetOptions({ status: 'active', from: 0, to: 999 })
     accountSetOptions.value = data ?? []
-    search.accountSetId = accountSetOptions.value[0]?.value ?? ''
-    if (!search.accountSetId) return
-    await handleAccountSetChange(search.accountSetId)
+    search.value.accountSetId = accountSetOptions.value[0]?.value ?? ''
+    if (!search.value.accountSetId) return
+    await handleAccountSetChange(search.value.accountSetId)
     await nextTick()
     await tableRef.value?.getData()
   }

@@ -18,8 +18,7 @@
 
     <ArtTableQuery
       ref="tableQueryRef"
-      :model-value="searchQuery"
-      @update:model-value="replaceReactiveModel(searchQuery, $event)"
+      v-model="searchQuery"
       :search-items="searchItems"
       :api-fn="fetchTableData"
       :columns-factory="columnsFactory"
@@ -39,7 +38,6 @@
 </template>
 
 <script setup lang="tsx">
-  import { replaceReactiveModel } from '@/utils/form/model'
   import { ElTag } from 'element-plus'
   import ArtTooltip from '@/components/core/feedback/art-tooltip/index.vue'
   import type { SearchFormItem } from '@/components/core/forms/art-search-bar/index.vue'
@@ -80,7 +78,7 @@
   const profitAnalysisDrawerRef = ref<ProfitAnalysisDrawerExpose>()
   const profitFieldAccess = ref<Api.Fms.WaybillProfitFieldAccessMap>({})
 
-  const searchQuery = reactive<SearchParams>({
+  const searchQuery = ref<SearchParams>({
     keyword: '',
     waybillStatus: '',
     completedAtRange: []

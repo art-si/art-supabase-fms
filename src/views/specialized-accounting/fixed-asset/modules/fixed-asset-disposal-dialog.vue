@@ -25,9 +25,6 @@
       :items="form.items"
       :rules="form.rules"
       label-width="104px"
-      :show-reset="false"
-      :show-submit="false"
-      @update:model-value="replaceReactiveModel(form, $event)"
     />
   </ArtDialog>
 </template>
@@ -36,7 +33,7 @@
   import { normalizeNullableNumber } from '@/utils/form/normalize'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
-  import { replaceReactiveModel } from '@/utils/form/model'
+
   import dayjs from 'dayjs'
   import type { ComputedRef } from 'vue'
   import type { FormItemRule, FormRules } from 'element-plus'
@@ -97,7 +94,7 @@
     callback()
   }
 
-  const form = reactive<{
+  const form = ref<{
     data: DisposalForm
     items: ComputedRef<FormItem[]>
     rules: FormRules<DisposalForm>
@@ -181,20 +178,20 @@
   })
 
   const disposalResult = computed(() => {
-    const difference = Number(form.data.amount || 0) - netBookValue.value
+    const difference = Number(form.value.data.amount || 0) - netBookValue.value
     const result = difference >= 0 ? '预计处置收益' : '预计处置损失'
     return {
       type: difference >= 0 ? ('success' as const) : ('warning' as const),
       title: `账面净值 ${formatCurrencyValue(netBookValue.value)} · ${result} ${formatCurrencyValue(Math.abs(difference))}`,
       description:
-        Number(form.data.amount || 0) > 0
+        Number(form.value.data.amount || 0) > 0
           ? '确认后将同步生成资产处置事件、会计凭证和资金日记账。'
           : '确认后将生成资产处置事件和会计凭证，不产生资金流水。'
     }
   })
 
   async function reset(): Promise<void> {
-    Object.assign(form.data, createInitialForm())
+    Object.assign(form.value.data, createInitialForm())
     accountOptions.value = []
     currentAsset.value = undefined
     await nextTick()
@@ -212,11 +209,11 @@
     const asset = currentAsset.value
     if (!canDisposeAsset(asset) || !asset) return false
     const result = await actFixedAsset(asset.id, 'dispose', {
-      actionDate: form.data.actionDate,
-      amount: Number(form.data.amount || 0),
-      fundAccountId: form.data.fundAccountId || undefined,
-      referenceNo: form.data.referenceNo.trim() || undefined,
-      reason: form.data.reason.trim()
+      actionDate: form.value.data.actionDate,
+      amount: Number(form.value.data.amount || 0),
+      fundAccountId: form.value.data.fundAccountId || undefined,
+      referenceNo: form.value.data.referenceNo.trim() || undefined,
+      reason: form.value.data.reason.trim()
     })
     if (result.error) throw result.error
     emit('success')

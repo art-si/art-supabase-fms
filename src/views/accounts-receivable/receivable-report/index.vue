@@ -15,8 +15,7 @@
           emptyDescription: '请核对截止日期与筛选条件，并确认来源应收已审核。'
         }"
         ref="tableRef"
-        :model-value="search"
-        @update:model-value="replaceReactiveModel(search, $event)"
+        v-model="search"
         :api-fn="loadReport"
         :search-items="searchItems"
         :columns-factory="columns"
@@ -38,8 +37,7 @@
   </ArtPermissionGuard>
 </template>
 <script setup lang="ts">
-  import { replaceReactiveModel } from '@/utils/form/model'
-  import { ref, reactive, computed, watch } from 'vue'
+  import { ref, computed, watch } from 'vue'
   import dayjs from 'dayjs'
   import { fetchArOrganizationTree } from '@/api/receivables'
   import { fetchArReport, fetchArOptions, type ArReportRow } from '@/api/receivables'
@@ -72,7 +70,7 @@
   async function loadReport(query: ReportQuery) {
     const version = ++queryVersion
     const isCurrentRoute = captureRoute()
-    const params = { ...search, ...query }
+    const params = { ...search.value, ...query }
     const result = await fetchArReport(params)
     if (version === queryVersion && isCurrentRoute()) appliedQuery.value = params
     return result
@@ -90,7 +88,7 @@
     if (result.data.length !== result.total) throw new Error('报表数据不完整，请重新查询后导出')
     return result
   }
-  const search = reactive({
+  const search = ref({
     mode: 'detail',
     asOfDate: dayjs().format('YYYY-MM-DD'),
     agingBasis: 'due',

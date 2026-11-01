@@ -3,6 +3,11 @@
     header-icon="ri:bank-card-line"
     :loading="loading"
     ref="drawerRef"
+    @open="
+      () => {
+        activeDetailTab = 'overview'
+      }
+    "
     :show-footer="false"
   >
     <template #subtitle="{ data }"> {{ data.billNo }} · 票据信息与流转记录 </template>
@@ -18,44 +23,53 @@
       </template>
       <template v-if="bill">
         <div class="commercial-bill-detail">
-          <ArtSectionCard title="票据信息" preserve-content-structure>
-            <ArtDescriptions :data="bill" :items="detailItems" :columns="2" label-width="104px" />
-          </ArtSectionCard>
-
-          <ArtSectionCard
-            class="commercial-bill-detail__events"
-            title="流转记录"
-            subtitle="保留每次状态变化的操作时间、金额与业务依据"
-            :empty="!events.length"
-            empty-title="草稿尚未产生流转记录"
-            empty-description="票据提交或状态变化后，操作记录会显示在这里。"
-            :empty-visual-size="64"
-            :min-height="148"
-            preserve-content-structure
-          >
-            <ElTimeline>
-              <ElTimelineItem
-                v-for="event in events"
-                :key="event.id"
-                :timestamp="formatWithDayjs(event.createTime, 'YYYY-MM-DD HH:mm') || '--'"
-                placement="top"
-                :type="event.eventType === 'cancelled' ? 'danger' : 'primary'"
-              >
-                <div class="commercial-bill-detail__event-card">
-                  <strong>{{
-                    userStore.getDictItemByValue('fmsBillEventType', event.eventType)?.label ??
-                    event.eventType
-                  }}</strong>
+          <ElTabs v-model="activeDetailTab"
+            ><ElTabPane name="overview" label="票据信息"
+              ><div class="space-y-4"
+                ><ArtSectionCard title="票据信息" preserve-content-structure>
                   <ArtDescriptions
-                    :data="event"
-                    :items="eventItems(event)"
+                    :data="bill"
+                    :items="detailItems"
                     :columns="2"
-                    label-width="88px"
-                  />
-                </div>
-              </ElTimelineItem>
-            </ElTimeline>
-          </ArtSectionCard>
+                    label-width="104px"
+                  /> </ArtSectionCard></div
+            ></ElTabPane>
+            <ElTabPane name="history" label="流转记录"
+              ><div class="space-y-4"
+                ><ArtSectionCard
+                  class="commercial-bill-detail__events"
+                  title="流转记录"
+                  subtitle="保留每次状态变化的操作时间、金额与业务依据"
+                  :empty="!events.length"
+                  empty-title="草稿尚未产生流转记录"
+                  empty-description="票据提交或状态变化后，操作记录会显示在这里。"
+                  :empty-visual-size="64"
+                  :min-height="148"
+                  preserve-content-structure
+                >
+                  <ElTimeline>
+                    <ElTimelineItem
+                      v-for="event in events"
+                      :key="event.id"
+                      :timestamp="formatWithDayjs(event.createTime, 'YYYY-MM-DD HH:mm') || '--'"
+                      placement="top"
+                      :type="event.eventType === 'cancelled' ? 'danger' : 'primary'"
+                    >
+                      <div class="commercial-bill-detail__event-card">
+                        <strong>{{
+                          userStore.getDictItemByValue('fmsBillEventType', event.eventType)
+                            ?.label ?? event.eventType
+                        }}</strong>
+                        <ArtDescriptions
+                          :data="event"
+                          :items="eventItems(event)"
+                          :columns="2"
+                          label-width="88px"
+                        />
+                      </div>
+                    </ElTimelineItem>
+                  </ElTimeline> </ArtSectionCard></div></ElTabPane
+          ></ElTabs>
         </div>
       </template>
     </ArtAsyncState>
@@ -89,6 +103,7 @@
   const userStore = useUserStore()
 
   const drawerRef = ref<ArtDrawerExpose<Bill>>()
+  const activeDetailTab = ref('overview')
   const {
     detail: loadedDetail,
     loading,

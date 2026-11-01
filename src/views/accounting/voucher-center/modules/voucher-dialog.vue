@@ -1,5 +1,13 @@
 <template>
-  <ArtDialog ref="dialogRef" size="xl">
+  <ArtDialog
+    ref="dialogRef"
+    @open="
+      () => {
+        activeTab = ''
+      }
+    "
+    size="xl"
+  >
     <VoucherRelatedLayout :source="relatedSource" :before-navigate="() => dialogRef?.handleClose()">
       <div class="voucher-dialog">
         <ElAlert
@@ -12,6 +20,7 @@
         />
         <ArtForm
           ref="formRef"
+          v-model:active-tab="activeTab"
           root-class="art-form--mobile-stack"
           v-model="form.data"
           :items="form.items"
@@ -19,67 +28,65 @@
           :span="8"
           :gutter="18"
           label-width="92px"
-          :show-reset="false"
-          :show-submit="false"
           :disabled="!canEditVoucher"
           scroll-to-error
-        />
+          ><template #voucherLines
+            ><div class="space-y-4"
+              ><VoucherEntryLines
+                ref="lineEditorRef"
+                v-model="form.data.lines"
+                :subjects="context.subjects"
+                :currencies="context.currencies"
+                :auxiliary-items="context.auxiliaryItems"
+                :readonly="!amountEditable || templateLoading" />
 
-        <VoucherEntryLines
-          ref="lineEditorRef"
-          v-model="form.data.lines"
-          :subjects="context.subjects"
-          :currencies="context.currencies"
-          :auxiliary-items="context.auxiliaryItems"
-          :readonly="!amountEditable || templateLoading"
-        />
-
-        <CashFlowAllocationPanel
-          ref="cashFlowPanelRef"
-          v-model="cashFlowDrafts"
-          :lines="form.data.lines"
-          :subjects="context.subjects"
-          :statement-items="context.cashFlowItems"
-          :readonly="!amountEditable"
-        />
-
-        <ArtSectionCard
-          v-if="canViewAttachments"
-          class="voucher-dialog__attachments"
-          :empty="!form.data.attachments.length"
-          empty-title="暂无原始凭证附件"
-          empty-description="上传回单、发票或合同，保留记账依据。"
-          :empty-visual-size="64"
-          :min-height="148"
-          preserve-content-structure
-        >
-          <template #header
-            ><div class="voucher-dialog__section-header">
-              <div>
-                <ArtSectionTitle :show-line="false">原始凭证附件</ArtSectionTitle>
-                <p>支持上传回单、发票、合同或其他记账依据，附件与凭证一并留存。</p>
-              </div>
-              <ArtUploadFile
-                v-if="canEditAttachments"
-                :resource-tenant-id="context.accountSet.tenantId"
-                :disabled="!context.accountSet.tenantId"
-                title="上传附件"
-                :show-file-list="false"
-                :show-tip="false"
-                inline
-                @resource-change="handleAttachmentUpload"
-              /> </div
+              <CashFlowAllocationPanel
+                ref="cashFlowPanelRef"
+                v-model="cashFlowDrafts"
+                :lines="form.data.lines"
+                :subjects="context.subjects"
+                :statement-items="context.cashFlowItems"
+                :readonly="!amountEditable" /></div
           ></template>
-          <ArtTable
-            :border="false"
-            :data="form.data.attachments"
-            :columns="attachmentColumns"
-            :pagination="false"
-            :show-table-header="false"
-            empty-height="120px"
-            empty-text="暂无附件"
-          />
-        </ArtSectionCard>
+          <template #voucherAttachments
+            ><div class="space-y-4"
+              ><ArtSectionCard
+                v-if="canViewAttachments"
+                class="voucher-dialog__attachments"
+                :empty="!form.data.attachments.length"
+                empty-title="暂无原始凭证附件"
+                empty-description="上传回单、发票或合同，保留记账依据。"
+                :empty-visual-size="64"
+                :min-height="148"
+                preserve-content-structure
+              >
+                <template #header
+                  ><div class="voucher-dialog__section-header">
+                    <div>
+                      <ArtSectionTitle :show-line="false">原始凭证附件</ArtSectionTitle>
+                      <p>支持上传回单、发票、合同或其他记账依据，附件与凭证一并留存。</p>
+                    </div>
+                    <ArtUploadFile
+                      v-if="canEditAttachments"
+                      :resource-tenant-id="context.accountSet.tenantId"
+                      :disabled="!context.accountSet.tenantId"
+                      title="上传附件"
+                      :show-file-list="false"
+                      :show-tip="false"
+                      inline
+                      @resource-change="handleAttachmentUpload"
+                    /> </div
+                ></template>
+                <ArtTable
+                  :border="false"
+                  :data="form.data.attachments"
+                  :columns="attachmentColumns"
+                  :pagination="false"
+                  :show-table-header="false"
+                  empty-height="120px"
+                  empty-text="暂无附件"
+                /> </ArtSectionCard></div></template
+        ></ArtForm>
       </div>
     </VoucherRelatedLayout>
 
@@ -189,6 +196,7 @@
   const userStore = useUserStore()
   const { getDictMap } = storeToRefs(userStore)
   const dialogRef = ref<ArtDialogExpose<Voucher | undefined>>()
+  const activeTab = ref('')
   const formRef = ref<FormExpose>()
   const lineEditorRef = ref<{
     isBalanced: boolean
@@ -263,6 +271,8 @@
   const form: UnwrapNestedRefs<FormGroup> = reactive<FormGroup>({
     data: createInitialForm(),
     items: computed<FormItem[]>(() => [
+      { key: 'voucherBaseSection', label: '凭证信息', type: 'tab' },
+
       {
         label: '账套',
         key: 'accountSetId',
@@ -335,6 +345,21 @@
           maxlength: 80,
           disabled: true
         }
+      },
+      { key: 'voucherLinesSection', label: '分录与现金流', type: 'tab' },
+      { key: 'voucherLines', label: '', span: 24, labelWidth: 0 },
+      {
+        key: 'voucherAttachmentsSection',
+        label: '原始附件',
+        type: 'tab',
+        hidden: !canViewAttachments.value
+      },
+      {
+        key: 'voucherAttachments',
+        label: '',
+        span: 24,
+        labelWidth: 0,
+        hidden: !canViewAttachments.value
       }
     ]),
     rules: {
@@ -419,6 +444,8 @@
       notifyFriendlyError(error, '记账凭证校验失败，请重试')
       return false
     }
+    activeTab.value = 'voucherLinesSection'
+    await nextTick()
     if (!(await validateLines())) return false
     if (!canSave()) {
       ElMessage.warning('凭证操作权限已变化，请刷新页面后重试')

@@ -3,15 +3,12 @@
     <ArtForm
       root-class="art-form--mobile-stack"
       ref="formRef"
-      :model-value="form"
-      @update:model-value="replaceReactiveModel(form, $event)"
+      v-model="form"
       :items="formItems"
       :rules="formRules"
       :span="12"
       :gutter="20"
       label-width="104px"
-      :show-reset="false"
-      :show-submit="false"
     >
       <template #customerId>
         <ArtTableSingleSelect
@@ -75,7 +72,6 @@
 </template>
 
 <script setup lang="ts">
-  import { replaceReactiveModel } from '@/utils/form/model'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { normalizeNullableText } from '@/utils/form/normalize'
@@ -142,10 +138,10 @@
     remark: ''
   })
 
-  const form = reactive<StatementForm>(createInitialForm())
+  const form = ref<StatementForm>(createInitialForm())
 
   const canSelectWaybill = computed(() =>
-    Boolean(form.customerId && form.periodRange?.[0] && form.periodRange?.[1])
+    Boolean(form.value.customerId && form.value.periodRange?.[0] && form.value.periodRange?.[1])
   )
 
   const amountAccess = computed(() => getFieldAccess(fieldAccess.value, 'statementAmounts'))
@@ -299,9 +295,9 @@
       fieldAccess: access,
       total
     } = await fetchCustomerStatementEligibleWaybills({
-      customerId: form.customerId,
-      periodStart: form.periodRange[0],
-      periodEnd: form.periodRange[1],
+      customerId: form.value.customerId,
+      periodStart: form.value.periodRange[0],
+      periodEnd: form.value.periodRange[1],
       keyword: params.keyword,
       from,
       to
@@ -315,15 +311,15 @@
   }
 
   function handleCriteriaChange(): void {
-    form.orderIds = []
+    form.value.orderIds = []
     selectedWaybills.value = []
     fieldAccess.value = {}
     void waybillSelectRef.value?.reload()
   }
 
   function replaceForm(nextForm: StatementForm): void {
-    Object.keys(form).forEach((key) => delete form[key as keyof StatementForm])
-    Object.assign(form, nextForm)
+    Object.keys(form.value).forEach((key) => delete form.value[key as keyof StatementForm])
+    Object.assign(form.value, nextForm)
   }
 
   async function resetForm(): Promise<void> {
@@ -344,12 +340,12 @@
     }
 
     const payload: CreatePayload = {
-      statementNo: normalizeNullableText(form.statementNo),
-      customerId: form.customerId,
-      periodStart: form.periodRange[0],
-      periodEnd: form.periodRange[1],
-      orderIds: [...form.orderIds],
-      remark: normalizeNullableText(form.remark)
+      statementNo: normalizeNullableText(form.value.statementNo),
+      customerId: form.value.customerId,
+      periodStart: form.value.periodRange[0],
+      periodEnd: form.value.periodRange[1],
+      orderIds: [...form.value.orderIds],
+      remark: normalizeNullableText(form.value.remark)
     }
 
     try {

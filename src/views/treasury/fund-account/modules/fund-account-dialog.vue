@@ -24,14 +24,13 @@
     <ArtForm
       root-class="art-form--mobile-stack"
       ref="formRef"
+      v-model:active-tab="activeTab"
       v-model="form.data"
       :items="formItems"
       :rules="form.rules"
       :span="12"
       :gutter="20"
       label-width="112px"
-      :show-reset="false"
-      :show-submit="false"
     />
   </ArtDialog>
 </template>
@@ -63,6 +62,7 @@
   const booleanOptions = useDictionaryOptions('commonBoolean', (value) => value === 'true')
   const dialogRef = ref<ArtDialogExpose>()
   const formRef = ref<{ validate: () => Promise<boolean>; clearValidate: () => void }>()
+  const activeTab = ref('identitySection')
   const accountSetOptions = ref<Api.Fms.AccountSetOption[]>([])
   const currencyOptions = ref<Array<{ label: string; value: string }>>([])
   const currencyLoading = ref(false)
@@ -152,7 +152,15 @@
   const isBank = computed(() => form.data.accountType === 'bank')
 
   const formItems = computed<FormItem[]>(() => [
-    { label: '账户信息', key: 'identitySection', type: 'divider', span: 24 },
+    {
+      label: '账户信息',
+      key: 'identitySection',
+      type:
+        canViewSensitiveField('accountDetails') || canViewSensitiveField('accountBalances')
+          ? 'tab'
+          : 'divider',
+      span: 24
+    },
     {
       label: '所属账套',
       key: 'accountSetId',
@@ -205,11 +213,13 @@
       props: { options: accountTypeOptions }
     },
     {
-      label: '开户信息',
+      label: '资金与设置',
       key: 'bankSection',
-      type: 'divider',
-      span: 24,
-      hidden: !canViewSensitiveField('accountDetails')
+      type:
+        canViewSensitiveField('accountDetails') || canViewSensitiveField('accountBalances')
+          ? 'tab'
+          : 'divider',
+      span: 24
     },
     {
       label: '资金账号',
@@ -395,6 +405,7 @@
   }
 
   async function handleOpen(row?: Account): Promise<void> {
+    activeTab.value = 'identitySection'
     currencyRequestId++
     currencyOptions.value = []
     currencyLoading.value = false

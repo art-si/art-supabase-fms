@@ -2,6 +2,11 @@
   <ArtDrawer
     :loading="loading"
     ref="drawerRef"
+    @open="
+      () => {
+        activeDetailTab = 'overview'
+      }
+    "
     header-icon="ri:bank-card-line"
     :show-footer="false"
   >
@@ -16,80 +21,89 @@
         <ElButton type="primary" plain @click="retryLoad">重新加载</ElButton>
       </template>
       <div v-if="detail" class="payment-application-detail">
-        <ArtSectionCard title="申请信息" preserve-content-structure>
-          <ArtDescriptions
-            :data="detail"
-            :items="descriptionItems"
-            :columns="2"
-            label-width="104px"
-          />
-        </ArtSectionCard>
-
-        <ArtSectionCard
-          class="payment-application-detail__section"
-          title="付款明细"
-          :empty="!detail.items?.length"
-          empty-title="暂无付款明细"
-          empty-description="添加付款项目后可在此核对金额与收款对象。"
-          :empty-visual-size="64"
-          :min-height="148"
-          preserve-content-structure
-        >
-          <ArtTable
-            :border="false"
-            :data="detail.items ?? []"
-            :columns="itemColumns"
-            :pagination="false"
-            height="auto"
-            :show-table-header="false"
-            table-layout="fixed"
-            empty-height="180px"
-            max-height="320px"
-            empty-text="暂无付款明细"
-          />
-        </ArtSectionCard>
-
-        <ArtSectionCard
-          v-if="canViewField(detail.fieldAccess, 'basisEvidence')"
-          class="payment-application-detail__section"
-          title="付款依据"
-          :empty="
-            getFieldAccess(detail.fieldAccess, 'basisEvidence') === 'masked' ||
-            !detail.basisUrls?.length
-          "
-          :empty-title="
-            getFieldAccess(detail.fieldAccess, 'basisEvidence') === 'masked'
-              ? '付款依据已脱敏'
-              : '暂无付款依据'
-          "
-          :empty-description="
-            getFieldAccess(detail.fieldAccess, 'basisEvidence') === 'masked'
-              ? '当前权限无法查看付款依据。'
-              : '上传付款依据后可在此查看附件。'
-          "
-          :empty-visual-size="64"
-          :min-height="148"
-          preserve-content-structure
-        >
-          <ArtUploadImage
-            :model-value="detail.basisUrls ?? []"
-            title="付款依据"
-            :size="112"
-            readonly
-          />
-        </ArtSectionCard>
-
-        <ArtSectionCard
-          class="payment-application-detail__section"
-          title="审批记录"
-          preserve-content-structure
-        >
-          <WorkflowBusinessHistory
-            business-type="tms_carrier_payment_application"
-            :business-id="detail.id"
-            :min-height="180"
-          />
-        </ArtSectionCard>
+        <ElTabs v-model="activeDetailTab"
+          ><ElTabPane name="overview" label="申请信息"
+            ><div class="space-y-4"
+              ><ArtSectionCard title="申请信息" preserve-content-structure>
+                <ArtDescriptions
+                  :data="detail"
+                  :items="descriptionItems"
+                  :columns="2"
+                  label-width="104px"
+                /> </ArtSectionCard></div
+          ></ElTabPane>
+          <ElTabPane name="lines" label="付款明细"
+            ><div class="space-y-4"
+              ><ArtSectionCard
+                class="payment-application-detail__section"
+                title="付款明细"
+                :empty="!detail.items?.length"
+                empty-title="暂无付款明细"
+                empty-description="添加付款项目后可在此核对金额与收款对象。"
+                :empty-visual-size="64"
+                :min-height="148"
+                preserve-content-structure
+              >
+                <ArtTable
+                  :border="false"
+                  :data="detail.items ?? []"
+                  :columns="itemColumns"
+                  :pagination="false"
+                  height="auto"
+                  :show-table-header="false"
+                  table-layout="fixed"
+                  empty-height="180px"
+                  max-height="320px"
+                  empty-text="暂无付款明细"
+                /> </ArtSectionCard></div
+          ></ElTabPane>
+          <ElTabPane
+            name="evidence"
+            label="付款依据"
+            v-if="canViewField(detail.fieldAccess, 'basisEvidence')"
+            ><div class="space-y-4"
+              ><ArtSectionCard
+                v-if="canViewField(detail.fieldAccess, 'basisEvidence')"
+                class="payment-application-detail__section"
+                title="付款依据"
+                :empty="
+                  getFieldAccess(detail.fieldAccess, 'basisEvidence') === 'masked' ||
+                  !detail.basisUrls?.length
+                "
+                :empty-title="
+                  getFieldAccess(detail.fieldAccess, 'basisEvidence') === 'masked'
+                    ? '付款依据已脱敏'
+                    : '暂无付款依据'
+                "
+                :empty-description="
+                  getFieldAccess(detail.fieldAccess, 'basisEvidence') === 'masked'
+                    ? '当前权限无法查看付款依据。'
+                    : '上传付款依据后可在此查看附件。'
+                "
+                :empty-visual-size="64"
+                :min-height="148"
+                preserve-content-structure
+              >
+                <ArtUploadImage
+                  :model-value="detail.basisUrls ?? []"
+                  title="付款依据"
+                  :size="112"
+                  readonly
+                /> </ArtSectionCard></div
+          ></ElTabPane>
+          <ElTabPane name="history" label="审批记录"
+            ><div class="space-y-4"
+              ><ArtSectionCard
+                class="payment-application-detail__section"
+                title="审批记录"
+                preserve-content-structure
+              >
+                <WorkflowBusinessHistory
+                  business-type="tms_carrier_payment_application"
+                  :business-id="detail.id"
+                  :min-height="180"
+                /> </ArtSectionCard></div></ElTabPane
+        ></ElTabs>
       </div>
     </ArtAsyncState>
   </ArtDrawer>
@@ -119,6 +133,7 @@
   type ApplicationItem = Api.Fms.CarrierPaymentApplicationItem
 
   const drawerRef = ref<ArtDrawerExpose<Application>>()
+  const activeDetailTab = ref('overview')
   const { detail, loading, loadError, loadDetail, openDetail, retryLoad } =
     useDetailRecord<Application>(
       (id) => fetchCarrierPaymentApplicationDetail(id, { showErrorMessage: false }),

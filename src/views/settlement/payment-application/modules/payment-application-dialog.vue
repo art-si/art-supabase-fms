@@ -1,15 +1,22 @@
 <template>
-  <ArtDialog ref="dialogRef" size="md">
+  <ArtDialog
+    ref="dialogRef"
+    @open="
+      () => {
+        activeTab = ''
+      }
+    "
+    size="md"
+  >
     <ArtForm
       ref="formRef"
+      v-model:active-tab="activeTab"
       v-model="form.data"
       :items="form.items"
       :rules="form.rules"
       :span="isCompact ? 24 : 12"
       :gutter="20"
       label-width="108px"
-      :show-reset="false"
-      :show-submit="false"
     >
       <template #carrierId>
         <ArtTableSingleSelect
@@ -73,36 +80,36 @@
         />
         <ElAlert v-else type="info" :closable="false" show-icon title="付款依据内容已脱敏" />
       </template>
-    </ArtForm>
-
-    <ArtSectionCard
-      v-if="allocationRows.length && canViewApplicationField('applicationAmounts')"
-      class="payment-application-dialog__allocation"
-      title="付款分配"
-      preserve-content-structure
-    >
-      <template #actions>
-        <ElButton
-          v-if="canEditApplicationField('applicationAmounts')"
-          plain
-          type="primary"
-          @click="autoAllocate"
-        >
-          <template #icon><ArtSvgIcon icon="ri:magic-line" /></template>
-          按可申请余额自动分配
-        </ElButton>
-      </template>
-      <ArtTable
-        :data="allocationRows"
-        :border="false"
-        :columns="allocationColumns"
-        :pagination="false"
-        height="auto"
-        :show-table-header="false"
-        table-layout="fixed"
-        max-height="300px"
-      />
-    </ArtSectionCard>
+      <template #allocationWorkspace
+        ><div class="space-y-4"
+          ><ArtSectionCard
+            v-if="allocationRows.length && canViewApplicationField('applicationAmounts')"
+            class="payment-application-dialog__allocation"
+            title="付款分配"
+            preserve-content-structure
+          >
+            <template #actions>
+              <ElButton
+                v-if="canEditApplicationField('applicationAmounts')"
+                plain
+                type="primary"
+                @click="autoAllocate"
+              >
+                <template #icon><ArtSvgIcon icon="ri:magic-line" /></template>
+                按可申请余额自动分配
+              </ElButton>
+            </template>
+            <ArtTable
+              ref="allocationTableRef"
+              :data="allocationRows"
+              :border="false"
+              :columns="allocationColumns"
+              :pagination="false"
+              height="auto"
+              table-layout="fixed"
+              max-height="300px"
+            /> </ArtSectionCard></div></template
+    ></ArtForm>
 
     <ElAlert
       v-if="canViewApplicationField('applicationAmounts')"
@@ -144,7 +151,7 @@
   } from '@/components/core/forms/art-data-select/types'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import ArtUploadImage from '@/components/core/forms/art-upload-image/index.vue'
-  import ArtTable from '@/components/core/tables/art-table/index.vue'
+  import ArtTable, { type ArtTableExpose } from '@/components/core/tables/art-table/index.vue'
   import type { ColumnOption } from '@/types'
   import {
     fetchCarrierOptions,
@@ -195,17 +202,14 @@
     amounts: Record<string, number>
   }
 
-  interface FormExpose {
-    validate: () => Promise<boolean>
-    clearValidate: () => void
-  }
-
   const emit = defineEmits<{ success: [] }>()
   const isCompact = useMediaQuery('(max-width: 767px)')
   const userStore = useUserStore()
   const { getDictMap } = storeToRefs(userStore)
   const dialogRef = ref<ArtDialogExpose<Application>>()
-  const formRef = ref<FormExpose>()
+  const activeTab = ref('')
+  const formRef = ref<InstanceType<typeof ArtForm>>()
+  const allocationTableRef = ref<ArtTableExpose<AllocationRow>>()
   const statementSelectRef = ref<ArtDataSelectExpose>()
   const applicationNumber = useDocumentNumberRule('tms.carrier_payment_application')
   const fieldAccess = ref<Api.Fms.CarrierPaymentApplicationFieldAccessMap>({
@@ -265,7 +269,12 @@
       paymentMethod: [{ required: true, message: '请选择付款方式', trigger: 'change' }]
     },
     items: computed<FormItem[]>(() => [
-      { label: '申请信息', key: 'base', type: 'divider', span: 24 },
+      {
+        label: '申请信息',
+        key: 'base',
+        type: allocationRows.value.length ? 'tab' : 'divider',
+        span: 24
+      },
       {
         label: '申请单号',
         key: 'applicationNo',
@@ -336,7 +345,20 @@
             { label: '应付核销', key: 'allocation', type: 'divider' as const, span: 24 },
             { label: '承运商对账单', key: 'statementIds', type: 'input' as const, span: 24 }
           ]
-        : [])
+        : []),
+      {
+        key: 'allocationSection',
+        label: '付款分配',
+        type: allocationRows.value.length ? 'tab' : 'divider',
+        hidden: !allocationRows.value.length
+      },
+      {
+        key: 'allocationWorkspace',
+        label: '',
+        span: 24,
+        labelWidth: 0,
+        hidden: !allocationRows.value.length
+      }
     ])
   })
 
@@ -417,6 +439,14 @@
     {
       prop: 'allocationAmount',
       label: '本次申请',
+      headerTooltip: '填 0 表示本次不申请此单；本次分配不能超过该单可申请余额。',
+      rules: {
+        validator: ({ value, row }) =>
+          Number.isFinite(value) &&
+          Number(value) >= 0 &&
+          Number(value) <= Number(row.outstandingAmount ?? 0),
+        message: ({ rowIndex }) => '第 ' + (rowIndex + 1) + ' 行申请金额不能超出可申请余额'
+      },
       width: 180,
       formatter: (row) =>
         getFieldAccess(fieldAccess.value, 'applicationAmounts') === 'masked' ? (
@@ -518,6 +548,17 @@
     } catch (error) {
       notifyFriendlyError(error, '付款申请校验失败，请重试')
       return false
+    }
+    if (canEditApplicationField('applicationAmounts')) {
+      const validation = await allocationTableRef.value?.validate({ focus: false })
+      if (validation && !validation.valid) {
+        await formRef.value?.focusField('allocationWorkspace')
+        if (validation.firstError) {
+          await allocationTableRef.value?.validateField(validation.firstError.prop)
+          ElMessage.warning(validation.firstError.message)
+        }
+        return false
+      }
     }
     if (canEditApplicationField('applicationAmounts') && !buildAllocations().length) {
       ElMessage.warning('请至少选择一份待付款对账单')

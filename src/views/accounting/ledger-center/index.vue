@@ -51,8 +51,7 @@
 
         <ArtTableQuery
           ref="balanceTableRef"
-          :model-value="balanceSearch"
-          @update:model-value="replaceReactiveModel(balanceSearch, $event)"
+          v-model="balanceSearch"
           :search-items="balanceSearchItems"
           :api-fn="fetchBalanceTableData"
           :columns-factory="balanceColumnsFactory"
@@ -83,8 +82,7 @@
 
         <ArtTableQuery
           ref="generalTableRef"
-          :model-value="generalSearch"
-          @update:model-value="replaceReactiveModel(generalSearch, $event)"
+          v-model="generalSearch"
           :search-items="generalSearchItems"
           :api-fn="fetchGeneralTableData"
           :columns-factory="generalColumnsFactory"
@@ -122,8 +120,7 @@
 
         <ArtTableQuery
           ref="subsidiaryTableRef"
-          :model-value="subsidiarySearch"
-          @update:model-value="replaceReactiveModel(subsidiarySearch, $event)"
+          v-model="subsidiarySearch"
           :search-items="subsidiarySearchItems"
           :api-fn="fetchSubsidiaryTableData"
           :columns-factory="subsidiaryColumnsFactory"
@@ -147,9 +144,9 @@
 </template>
 
 <script setup lang="tsx">
+  import TreeUtils from '@/utils/tree'
   import { uniq } from 'lodash-es'
   import ArtAsyncState from '@/components/core/feedback/art-async-state/index.vue'
-  import { replaceReactiveModel } from '@/utils/form/model'
   import FinanceAccountingWorkspaceShell from '@fms/views/modules/finance-accounting-workspace-shell/index.vue'
   import VoucherDetailDrawer from '@fms/views/accounting/voucher-center/modules/voucher-detail-drawer.vue'
   import '../../modules/accounting-workspace-tabs.scss'
@@ -206,6 +203,7 @@
     auxiliaryItems: Api.Fms.AuxiliaryItemRecord[]
   }
 
+  const optionTree = new TreeUtils({ idKey: 'value', parentKey: 'parentId' })
   const userStore = useUserStore()
   const { hasAuth } = useAuth()
   const voucherDetailRef = ref<InstanceType<typeof VoucherDetailDrawer>>()
@@ -252,7 +250,7 @@
     subsidiary: { periods: [], subjects: [], auxiliaryTypes: [], auxiliaryItems: [] }
   })
 
-  const balanceSearch = reactive<Api.Fms.SubjectBalanceReportParams>({
+  const balanceSearch = ref<Api.Fms.SubjectBalanceReportParams>({
     accountSetId: '',
     fiscalYear: new Date().getFullYear(),
     periodFrom: 1,
@@ -260,14 +258,14 @@
     subjectId: null,
     hideZero: true
   })
-  const generalSearch = reactive<Api.Fms.LedgerReportParams>({
+  const generalSearch = ref<Api.Fms.LedgerReportParams>({
     accountSetId: '',
     fiscalYear: new Date().getFullYear(),
     periodFrom: 1,
     periodTo: 12,
     subjectId: null
   })
-  const subsidiarySearch = reactive<Api.Fms.SubsidiaryLedgerReportParams>({
+  const subsidiarySearch = ref<Api.Fms.SubsidiaryLedgerReportParams>({
     accountSetId: '',
     fiscalYear: new Date().getFullYear(),
     periodFrom: 1,
@@ -278,9 +276,9 @@
   })
 
   const getSearch = (tab: LedgerTab) => {
-    if (tab === 'balance') return balanceSearch
-    if (tab === 'general') return generalSearch
-    return subsidiarySearch
+    if (tab === 'balance') return balanceSearch.value
+    if (tab === 'general') return generalSearch.value
+    return subsidiarySearch.value
   }
 
   const getTableRef = (tab: LedgerTab): ArtTableQueryExpose | undefined => {
@@ -307,10 +305,13 @@
   }
 
   const subjectOptions = (tab: LedgerTab) =>
-    contexts[tab].subjects.map((item) => ({
-      label: `${item.subjectCode} ${item.subjectName}${item.isEnabled ? '' : '（停用）'}`,
-      value: item.id
-    }))
+    optionTree.listToTree(
+      contexts[tab].subjects.map((item) => ({
+        label: `${item.subjectCode} ${item.subjectName}${item.isEnabled ? '' : '（停用）'}`,
+        value: item.id,
+        parentId: item.parentId
+      }))
+    )
 
   const auxiliaryTypeOptions = computed(() =>
     contexts.subsidiary.auxiliaryTypes
@@ -357,10 +358,11 @@
       {
         label: '会计科目',
         key: 'subjectId',
-        type: 'select',
+        type: 'treeSelect',
         span: 12,
         props: {
-          options: subjectOptions(tab),
+          data: subjectOptions(tab),
+          checkStrictly: true,
           filterable: true,
           clearable: tab === 'balance',
           placeholder: tab === 'balance' ? '全部科目' : '请选择科目',
@@ -430,8 +432,8 @@
               filterable: true,
               clearable: true,
               placeholder: '全部辅助类型',
-              disabled: !subsidiarySearch.accountSetId,
-              noDataText: subsidiarySearch.accountSetId
+              disabled: !subsidiarySearch.value.accountSetId,
+              noDataText: subsidiarySearch.value.accountSetId
                 ? ACCOUNTING_SELECT_EMPTY_TEXT.auxiliaryType
                 : ACCOUNTING_SELECT_EMPTY_TEXT.chooseAccountSet,
               onChange: (value: string) => void handleAuxiliaryTypeChange(value)
@@ -446,9 +448,11 @@
               options: auxiliaryItemOptions.value,
               filterable: true,
               clearable: true,
-              disabled: !subsidiarySearch.auxiliaryTypeId,
-              placeholder: subsidiarySearch.auxiliaryTypeId ? '全部辅助项目' : '请先选择辅助类型',
-              noDataText: subsidiarySearch.auxiliaryTypeId
+              disabled: !subsidiarySearch.value.auxiliaryTypeId,
+              placeholder: subsidiarySearch.value.auxiliaryTypeId
+                ? '全部辅助项目'
+                : '请先选择辅助类型',
+              noDataText: subsidiarySearch.value.auxiliaryTypeId
                 ? ACCOUNTING_SELECT_EMPTY_TEXT.auxiliaryItem
                 : '请先选择辅助类型'
             }
@@ -1150,7 +1154,7 @@
     params: Api.Fms.SubjectBalanceReportParams & TablePageParams
   ) {
     if (!params.accountSetId || !params.fiscalYear) return pagedResult([], params)
-    normalizePeriodRange(balanceSearch)
+    normalizePeriodRange(balanceSearch.value)
     const { data, fieldAccess } = await fetchSubjectBalanceReport({
       ...params,
       periodFrom: Math.min(Number(params.periodFrom || 1), Number(params.periodTo || 12)),
@@ -1166,7 +1170,7 @@
       generalRows.value = []
       return pagedResult([], params)
     }
-    normalizePeriodRange(generalSearch)
+    normalizePeriodRange(generalSearch.value)
     const { data, fieldAccess } = await fetchGeneralLedgerReport({
       ...params,
       subjectId: params.subjectId,
@@ -1185,7 +1189,7 @@
       subsidiaryRows.value = []
       return pagedResult([], params)
     }
-    normalizePeriodRange(subsidiarySearch)
+    normalizePeriodRange(subsidiarySearch.value)
     const { data, fieldAccess } = await fetchSubsidiaryLedgerReport({
       ...params,
       periodFrom: Math.min(Number(params.periodFrom || 1), Number(params.periodTo || 12)),
@@ -1222,14 +1226,14 @@
     }
     handleFiscalYearChange(tab)
     if (tab === 'balance') {
-      balanceSearch.subjectId = preferredSubjectId ?? null
+      balanceSearch.value.subjectId = preferredSubjectId ?? null
       return
     }
     const fallbackSubjectId = contexts[tab].subjects[0]?.id ?? ''
     search.subjectId = preferredSubjectId || fallbackSubjectId
     if (tab === 'subsidiary') {
-      subsidiarySearch.auxiliaryTypeId = null
-      subsidiarySearch.auxiliaryItemId = null
+      subsidiarySearch.value.auxiliaryTypeId = null
+      subsidiarySearch.value.auxiliaryItemId = null
     }
   }
 
@@ -1248,11 +1252,14 @@
   }
 
   async function handleAuxiliaryTypeChange(auxiliaryTypeId: string): Promise<void> {
-    subsidiarySearch.auxiliaryTypeId = auxiliaryTypeId || null
-    subsidiarySearch.auxiliaryItemId = null
+    subsidiarySearch.value.auxiliaryTypeId = auxiliaryTypeId || null
+    subsidiarySearch.value.auxiliaryItemId = null
     contexts.subsidiary.auxiliaryItems = []
-    if (!subsidiarySearch.accountSetId || !auxiliaryTypeId) return
-    const { data } = await fetchAuxiliaryItemList(subsidiarySearch.accountSetId, auxiliaryTypeId)
+    if (!subsidiarySearch.value.accountSetId || !auxiliaryTypeId) return
+    const { data } = await fetchAuxiliaryItemList(
+      subsidiarySearch.value.accountSetId,
+      auxiliaryTypeId
+    )
     contexts.subsidiary.auxiliaryItems = data ?? []
   }
 
@@ -1277,17 +1284,17 @@
   }
 
   async function openGeneralLedger(row: BalanceRecord): Promise<void> {
-    await prepareTargetTab('general', balanceSearch, row.subjectId)
+    await prepareTargetTab('general', balanceSearch.value, row.subjectId)
   }
 
   async function openSubsidiaryLedger(row: GeneralRecord): Promise<void> {
-    if (!generalSearch.subjectId) return
+    if (!generalSearch.value.subjectId) return
     const scopedSearch = {
-      ...generalSearch,
+      ...generalSearch.value,
       periodFrom: row.periodNo,
       periodTo: row.periodNo
     }
-    await prepareTargetTab('subsidiary', scopedSearch, generalSearch.subjectId)
+    await prepareTargetTab('subsidiary', scopedSearch, generalSearch.value.subjectId)
   }
 
   const subsidiaryRowKey = (row: Record<string, unknown>): string =>
@@ -1302,9 +1309,9 @@
       const defaultAccountSetId = accountSetOptions.value[0]?.value ?? ''
       if (!defaultAccountSetId) return
 
-      balanceSearch.accountSetId = defaultAccountSetId
-      generalSearch.accountSetId = defaultAccountSetId
-      subsidiarySearch.accountSetId = defaultAccountSetId
+      balanceSearch.value.accountSetId = defaultAccountSetId
+      generalSearch.value.accountSetId = defaultAccountSetId
+      subsidiarySearch.value.accountSetId = defaultAccountSetId
       await Promise.all([
         loadContext('balance', defaultAccountSetId),
         loadContext('general', defaultAccountSetId),

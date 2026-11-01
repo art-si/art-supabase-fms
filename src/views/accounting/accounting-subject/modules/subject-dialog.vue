@@ -6,6 +6,7 @@
     <ArtForm
       root-class="art-form--mobile-stack"
       ref="formRef"
+      v-model:active-tab="activeTab"
       v-model="form.data"
       :items="formItems"
       :rules="form.rules"
@@ -13,8 +14,6 @@
       :span="12"
       :gutter="20"
       label-width="110px"
-      :show-reset="false"
-      :show-submit="false"
     />
   </ArtDialog>
 </template>
@@ -57,6 +56,7 @@
   const { getDictMap } = storeToRefs(userStore)
   const dialogRef = ref<ArtDialogExpose>()
   const formRef = ref<{ validate: () => Promise<boolean>; clearValidate: () => void }>()
+  const activeTab = ref('baseSection')
   const context = reactive({
     accountSet: undefined as AccountSetOption | undefined,
     subjects: [] as Subject[],
@@ -143,12 +143,16 @@
         ? subjectTree.getDescendants<Subject>(tree, context.current.id, true).map((item) => item.id)
         : []
     )
-    return context.subjects
-      .filter((item) => !excludedIds.has(item.id))
-      .map((item) => ({
-        label: `${'　'.repeat(Math.max(item.level - 1, 0))}${item.subjectCode} ${item.subjectName}`,
-        value: item.id
-      }))
+    return subjectTree.listToTree(
+      context.subjects
+        .filter((item) => !excludedIds.has(item.id))
+        .map((item) => ({
+          id: item.id,
+          parentId: item.parentId,
+          label: `${item.subjectCode} ${item.subjectName}`,
+          value: item.id
+        }))
+    )
   })
 
   const parentSubject = computed(() =>
@@ -156,15 +160,16 @@
   )
 
   const formItems = computed<FormItem[]>(() => [
-    { label: '基本信息', key: 'baseSection', type: 'divider', span: 24 },
+    { label: '基本信息', key: 'baseSection', type: 'tab', span: 24 },
     {
       label: '上级科目',
       key: 'parentId',
-      type: 'select',
+      type: 'treeSelect',
       span: 24,
       help: '存在下级科目后，当前科目的上级和编码不可变更。',
       props: {
-        options: parentOptions.value,
+        data: parentOptions.value,
+        checkStrictly: true,
         clearable: true,
         filterable: true,
         placeholder: '不选择表示一级科目',
@@ -204,7 +209,7 @@
       span: 12,
       props: { options: directionOptions.value, disabled: Boolean(parentSubject.value) }
     },
-    { label: '核算属性', key: 'attributeSection', type: 'divider', span: 24 },
+    { label: '核算设置', key: 'attributeSection', type: 'tab', span: 24 },
     {
       label: '数量核算',
       key: 'allowQuantity',
@@ -369,6 +374,7 @@
     auxiliaryTypes: Api.Fms.AuxiliaryTypeRecord[],
     row?: Subject
   ): Promise<void> {
+    activeTab.value = 'baseSection'
     context.accountSet = accountSet
     context.subjects = subjects
     context.auxiliaryTypes = auxiliaryTypes

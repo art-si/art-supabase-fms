@@ -5,21 +5,17 @@
     >
     <ArtForm
       ref="formRef"
-      :model-value="form"
-      @update:model-value="replaceReactiveModel(form, $event)"
+      v-model="form"
       :items="items"
       :rules="rules"
       :span="isNarrow ? 24 : 12"
       :gutter="18"
       label-width="106px"
-      :show-reset="false"
-      :show-submit="false"
     />
   </ArtDialog>
 </template>
 
 <script setup lang="ts">
-  import { replaceReactiveModel } from '@/utils/form/model'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
@@ -64,7 +60,7 @@
     disposalSubjectId: null,
     remark: null
   })
-  const form = reactive(initial())
+  const form = ref(initial())
   const rules: FormRules = {
     accountSetId: [{ required: true, message: '请选择账套', trigger: 'change' }],
     categoryCode: [
@@ -82,7 +78,11 @@
       key: 'accountSetId',
       type: 'select',
       span: 24,
-      props: { options: accountSetOptions.value, filterable: true, disabled: Boolean(form.id) }
+      props: {
+        options: accountSetOptions.value,
+        filterable: true,
+        disabled: Boolean(form.value.id)
+      }
     },
     {
       label: '类别编码',
@@ -149,9 +149,9 @@
     try {
       if (!(await validateArtFormForSubmit(formRef.value))) return false
       const result = await saveAssetCategory({
-        ...form,
-        categoryCode: form.categoryCode.trim().toUpperCase(),
-        categoryName: form.categoryName.trim()
+        ...form.value,
+        categoryCode: form.value.categoryCode.trim().toUpperCase(),
+        categoryName: form.value.categoryName.trim()
       })
       if (result.error) throw result.error
       emit('success')
@@ -166,10 +166,10 @@
     row?: Api.Fms.AssetCategoryRecord
   ): Promise<void> {
     accountSetOptions.value = []
-    delete form.id
-    Object.assign(form, initial())
+    delete form.value.id
+    Object.assign(form.value, initial())
     if (row) {
-      Object.assign(form, {
+      Object.assign(form.value, {
         id: row.id,
         accountSetId: row.accountSetId,
         categoryCode: row.categoryCode,
@@ -212,7 +212,7 @@
           ) {
             throw new Error('所选账套已不可用，请刷新列表后重试')
           }
-          form.accountSetId = accountSetId ?? accountSetOptions.value[0]?.value ?? ''
+          form.value.accountSetId = accountSetId ?? accountSetOptions.value[0]?.value ?? ''
         } catch (error) {
           notifyFriendlyError(error, '账套加载失败，请重新打开重试')
           await dialogRef.value?.handleClose()

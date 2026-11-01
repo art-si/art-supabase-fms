@@ -2,6 +2,11 @@
   <ArtDrawer
     :loading="loading"
     ref="drawerRef"
+    @open="
+      () => {
+        activeDetailTab = 'overview'
+      }
+    "
     header-icon="ri:file-text-line"
     :show-footer="false"
   >
@@ -16,47 +21,52 @@
         <ElButton type="primary" plain @click="retryLoad">重新加载</ElButton>
       </template>
       <div v-if="detail" class="statement-detail">
-        <ArtSectionCard title="对账概览" preserve-content-structure>
-          <ArtDescriptions
-            :data="detail"
-            :items="descriptionItems"
-            :columns="2"
-            label-width="104px"
-          />
-        </ArtSectionCard>
-
-        <ArtSectionCard
-          class="statement-detail__section"
-          title="运单明细"
-          :empty="!detail.items?.length"
-          empty-title="暂无运单明细"
-          empty-description="生成对账单后，可在此查看纳入账期的运单。"
-          :empty-visual-size="64"
-          :min-height="148"
-          preserve-content-structure
-        >
-          <ArtTable
-            :border="false"
-            :data="detail.items ?? []"
-            :columns="itemColumns"
-            :pagination="false"
-            height="auto"
-            :show-table-header="false"
-            max-height="420px"
-          />
-        </ArtSectionCard>
-
-        <ArtSectionCard
-          class="statement-detail__section"
-          title="审批记录"
-          preserve-content-structure
-        >
-          <WorkflowBusinessHistory
-            business-type="tms_customer_statement"
-            :business-id="detail.id"
-            :min-height="180"
-          />
-        </ArtSectionCard>
+        <ElTabs v-model="activeDetailTab"
+          ><ElTabPane name="overview" label="对账概览"
+            ><div class="space-y-4"
+              ><ArtSectionCard title="对账概览" preserve-content-structure>
+                <ArtDescriptions
+                  :data="detail"
+                  :items="descriptionItems"
+                  :columns="2"
+                  label-width="104px"
+                /> </ArtSectionCard></div
+          ></ElTabPane>
+          <ElTabPane name="lines" label="运单明细"
+            ><div class="space-y-4"
+              ><ArtSectionCard
+                class="statement-detail__section"
+                title="运单明细"
+                :empty="!detail.items?.length"
+                empty-title="暂无运单明细"
+                empty-description="生成对账单后，可在此查看纳入账期的运单。"
+                :empty-visual-size="64"
+                :min-height="148"
+                preserve-content-structure
+              >
+                <ArtTable
+                  :border="false"
+                  :data="detail.items ?? []"
+                  :columns="itemColumns"
+                  :pagination="false"
+                  height="auto"
+                  :show-table-header="false"
+                  max-height="420px"
+                /> </ArtSectionCard></div
+          ></ElTabPane>
+          <ElTabPane name="workflow" label="审批记录"
+            ><div class="space-y-4"
+              ><ArtSectionCard
+                class="statement-detail__section"
+                title="审批记录"
+                preserve-content-structure
+              >
+                <WorkflowBusinessHistory
+                  business-type="tms_customer_statement"
+                  :business-id="detail.id"
+                  :min-height="180"
+                /> </ArtSectionCard></div></ElTabPane
+        ></ElTabs>
       </div>
     </ArtAsyncState>
   </ArtDrawer>
@@ -85,6 +95,7 @@
   type CustomerStatementItem = Api.Fms.CustomerStatementItem
 
   const drawerRef = ref<ArtDrawerExpose<CustomerStatement>>()
+  const activeDetailTab = ref('overview')
   const { detail, loading, loadError, loadDetail, openDetail, retryLoad } =
     useDetailRecord<CustomerStatement>(
       fetchCustomerStatementDetail,

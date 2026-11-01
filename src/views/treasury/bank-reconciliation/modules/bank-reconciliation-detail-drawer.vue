@@ -1,5 +1,15 @@
 <template>
-  <ArtDrawer header-icon="ri:bank-line" :loading="loading" ref="drawerRef" :show-footer="false">
+  <ArtDrawer
+    header-icon="ri:bank-line"
+    :loading="loading"
+    ref="drawerRef"
+    @open="
+      () => {
+        activeDetailTab = 'overview'
+      }
+    "
+    :show-footer="false"
+  >
     <ArtAsyncState
       :error="loadError?.message"
       :empty="!loading && !detail"
@@ -45,167 +55,178 @@
           </div>
         </div>
 
-        <ArtSectionCard title="批次信息" preserve-content-structure>
-          <ArtDescriptions
-            :data="detail"
-            :items="descriptionItems"
-            :columns="2"
-            label-width="104px"
-          />
-        </ArtSectionCard>
-
-        <ArtSectionCard
-          class="bank-reconciliation-detail__section"
-          title="银行流水"
-          :empty="!lines.length"
-          empty-title="暂无银行流水"
-          empty-description="导入流水后可在此查看匹配与处理状态。"
-          :empty-visual-size="64"
-          :min-height="148"
-          preserve-content-structure
-        >
-          <ArtTable
-            v-if="!isCompact"
-            :border="false"
-            :data="lines"
-            :columns="lineColumns"
-            :pagination="false"
-            height="auto"
-            :show-table-header="false"
-            table-layout="fixed"
-            empty-height="220px"
-            max-height="430px"
-            empty-text="暂无银行流水"
-          />
-          <div v-else class="grid gap-3">
-            <article
-              v-for="line in lines"
-              :key="line.id"
-              class="grid gap-3 rounded border border-g-200 p-3"
-            >
-              <div class="flex items-start justify-between gap-3">
-                <div class="min-w-0">
-                  <strong class="block text-g-900"
-                    >第 {{ line.lineNo }} 行 · {{ line.transactionDate }}</strong
+        <ElTabs v-model="activeDetailTab"
+          ><ElTabPane name="overview" label="批次信息"
+            ><div class="space-y-4"
+              ><ArtSectionCard title="批次信息" preserve-content-structure>
+                <ArtDescriptions
+                  :data="detail"
+                  :items="descriptionItems"
+                  :columns="2"
+                  label-width="104px"
+                /> </ArtSectionCard></div
+          ></ElTabPane>
+          <ElTabPane name="lines" label="流水与匹配"
+            ><div class="space-y-4"
+              ><ArtSectionCard
+                class="bank-reconciliation-detail__section"
+                title="银行流水"
+                :empty="!lines.length"
+                empty-title="暂无银行流水"
+                empty-description="导入流水后可在此查看匹配与处理状态。"
+                :empty-visual-size="64"
+                :min-height="148"
+                preserve-content-structure
+              >
+                <ArtTable
+                  v-if="!isCompact"
+                  :border="false"
+                  :data="lines"
+                  :columns="lineColumns"
+                  :pagination="false"
+                  height="auto"
+                  :show-table-header="false"
+                  table-layout="fixed"
+                  empty-height="220px"
+                  max-height="430px"
+                  empty-text="暂无银行流水"
+                />
+                <div v-else class="grid gap-3">
+                  <article
+                    v-for="line in lines"
+                    :key="line.id"
+                    class="grid gap-3 rounded border border-g-200 p-3"
                   >
-                  <span
-                    v-if="canViewDetailField('accountDetails')"
-                    class="block break-words text-sm text-g-600"
-                    >{{ line.counterpartyName || '未填写对方名称' }}</span
-                  >
+                    <div class="flex items-start justify-between gap-3">
+                      <div class="min-w-0">
+                        <strong class="block text-g-900"
+                          >第 {{ line.lineNo }} 行 · {{ line.transactionDate }}</strong
+                        >
+                        <span
+                          v-if="canViewDetailField('accountDetails')"
+                          class="block break-words text-sm text-g-600"
+                          >{{ line.counterpartyName || '未填写对方名称' }}</span
+                        >
+                      </div>
+                      <LineActions :row="line" />
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                      <ArtDictDisplay
+                        dict-code="fmsFundLedgerDirection"
+                        :value="line.direction"
+                        display="tag"
+                      />
+                      <ArtDictDisplay
+                        dict-code="fmsBankStatementLineStatus"
+                        :value="line.status"
+                        display="tag"
+                      />
+                    </div>
+                    <dl
+                      v-if="canViewDetailField('statementAmounts')"
+                      class="grid grid-cols-2 gap-3 text-sm"
+                    >
+                      <div
+                        ><dt class="text-g-600">银行金额</dt
+                        ><dd class="m-0 font-medium text-g-900">{{
+                          formatSensitiveCurrencyValue(line.amount, detail?.currencyCode)
+                        }}</dd></div
+                      >
+                      <div
+                        ><dt class="text-g-600">已匹配金额</dt
+                        ><dd class="m-0 font-medium text-g-900">{{
+                          formatSensitiveCurrencyValue(line.matchedAmount, detail?.currencyCode)
+                        }}</dd></div
+                      >
+                    </dl>
+                    <p
+                      v-if="canViewDetailField('bankReferences')"
+                      class="m-0 break-words text-xs text-g-600"
+                      >银行参考号：{{ line.bankReference || '--' }}</p
+                    >
+                  </article>
                 </div>
-                <LineActions :row="line" />
-              </div>
-              <div class="flex flex-wrap gap-2">
-                <ArtDictDisplay
-                  dict-code="fmsFundLedgerDirection"
-                  :value="line.direction"
-                  display="tag"
-                />
-                <ArtDictDisplay
-                  dict-code="fmsBankStatementLineStatus"
-                  :value="line.status"
-                  display="tag"
-                />
-              </div>
-              <dl
-                v-if="canViewDetailField('statementAmounts')"
-                class="grid grid-cols-2 gap-3 text-sm"
-              >
-                <div
-                  ><dt class="text-g-600">银行金额</dt
-                  ><dd class="m-0 font-medium text-g-900">{{
-                    formatSensitiveCurrencyValue(line.amount, detail?.currencyCode)
-                  }}</dd></div
-                >
-                <div
-                  ><dt class="text-g-600">已匹配金额</dt
-                  ><dd class="m-0 font-medium text-g-900">{{
-                    formatSensitiveCurrencyValue(line.matchedAmount, detail?.currencyCode)
-                  }}</dd></div
-                >
-              </dl>
-              <p
-                v-if="canViewDetailField('bankReferences')"
-                class="m-0 break-words text-xs text-g-600"
-                >银行参考号：{{ line.bankReference || '--' }}</p
-              >
-            </article>
-          </div>
-        </ArtSectionCard>
+              </ArtSectionCard>
 
-        <ArtSectionCard
-          v-if="selectedLine"
-          class="bank-reconciliation-detail__section"
-          :title="`匹配记录 · 第 ${selectedLine.lineNo} 行`"
-          :empty="!matches.length"
-          :loading="matchesLoading"
-          :error="matchesError?.message"
-          empty-title="该银行流水暂无匹配记录"
-          :empty-description="
-            selectedLine.status === 'ignored'
-              ? '该流水已忽略，无需关联资金流水。'
-              : '完成自动或手动匹配后，关联资金流水会显示在这里。'
-          "
-          :empty-visual-size="64"
-          :min-height="148"
-          preserve-content-structure
-          @retry="retryMatches"
-        >
-          <ArtTable
-            v-if="!isCompact"
-            :border="false"
-            :data="matches"
-            :columns="matchColumns"
-            :pagination="false"
-            height="auto"
-            :show-table-header="false"
-            table-layout="fixed"
-            empty-height="150px"
-            max-height="260px"
-            empty-text="该银行流水暂无匹配记录"
-          />
-          <div v-else class="grid gap-3">
-            <article
-              v-for="match in matches"
-              :key="match.id"
-              class="grid gap-3 rounded border border-g-200 p-3"
-            >
-              <div class="flex items-start justify-between gap-3">
-                <div class="min-w-0">
-                  <strong class="block text-sm text-g-900">{{
-                    formatWithDayjs(match.matchedAt, 'YYYY-MM-DD HH:mm') || '--'
-                  }}</strong>
-                  <span class="block break-words text-sm text-g-600">{{
-                    match.ledgerEntry
-                      ? `${match.ledgerEntry.entryDate} · ${match.ledgerEntry.summary}`
-                      : '暂无关联资金流水'
-                  }}</span>
-                </div>
-                <ArtButtonTable
-                  v-if="canAdjustMatches && hasAuth('FinanceBankReconciliation:Unmatch')"
-                  type="delete"
-                  permission="FinanceBankReconciliation:Unmatch"
-                  label="撤销匹配"
-                  @click="handleUnmatch(match)"
-                />
-              </div>
-              <div class="flex flex-wrap items-center justify-between gap-2">
-                <ArtDictDisplay
-                  dict-code="fmsBankMatchType"
-                  :value="match.matchType"
-                  display="tag"
-                />
-                <strong v-if="canViewDetailField('statementAmounts')" class="text-sm text-g-900">{{
-                  formatSensitiveCurrencyValue(match.matchedAmount, detail?.currencyCode)
-                }}</strong>
-              </div>
-              <p class="m-0 break-words text-xs text-g-600"
-                >操作人：{{ match.matchedBy || '--' }}</p
+              <ArtSectionCard
+                v-if="selectedLine"
+                class="bank-reconciliation-detail__section"
+                :title="`匹配记录 · 第 ${selectedLine.lineNo} 行`"
+                :empty="!matches.length"
+                :loading="matchesLoading"
+                :error="matchesError?.message"
+                empty-title="该银行流水暂无匹配记录"
+                :empty-description="
+                  selectedLine.status === 'ignored'
+                    ? '该流水已忽略，无需关联资金流水。'
+                    : '完成自动或手动匹配后，关联资金流水会显示在这里。'
+                "
+                :empty-visual-size="64"
+                :min-height="148"
+                preserve-content-structure
+                @retry="retryMatches"
               >
-            </article>
-          </div>
-        </ArtSectionCard>
+                <ArtTable
+                  v-if="!isCompact"
+                  :border="false"
+                  :data="matches"
+                  :columns="matchColumns"
+                  :pagination="false"
+                  height="auto"
+                  :show-table-header="false"
+                  table-layout="fixed"
+                  empty-height="150px"
+                  max-height="260px"
+                  empty-text="该银行流水暂无匹配记录"
+                />
+                <div v-else class="grid gap-3">
+                  <article
+                    v-for="match in matches"
+                    :key="match.id"
+                    class="grid gap-3 rounded border border-g-200 p-3"
+                  >
+                    <div class="flex items-start justify-between gap-3">
+                      <div class="min-w-0">
+                        <strong class="block text-sm text-g-900">{{
+                          formatWithDayjs(match.matchedAt, 'YYYY-MM-DD HH:mm') || '--'
+                        }}</strong>
+                        <span class="block break-words text-sm text-g-600">{{
+                          match.ledgerEntry
+                            ? `${match.ledgerEntry.entryDate} · ${match.ledgerEntry.summary}`
+                            : '暂无关联资金流水'
+                        }}</span>
+                      </div>
+                      <ArtButtonTable
+                        v-if="canAdjustMatches && hasAuth('FinanceBankReconciliation:Unmatch')"
+                        type="delete"
+                        permission="FinanceBankReconciliation:Unmatch"
+                        label="撤销匹配"
+                        @click="handleUnmatch(match)"
+                      />
+                    </div>
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                      <ArtDictDisplay
+                        dict-code="fmsBankMatchType"
+                        :value="match.matchType"
+                        display="tag"
+                      />
+                      <strong
+                        v-if="canViewDetailField('statementAmounts')"
+                        class="text-sm text-g-900"
+                        >{{
+                          formatSensitiveCurrencyValue(match.matchedAmount, detail?.currencyCode)
+                        }}</strong
+                      >
+                    </div>
+                    <p class="m-0 break-words text-xs text-g-600"
+                      >操作人：{{ match.matchedBy || '--' }}</p
+                    >
+                  </article>
+                </div>
+              </ArtSectionCard></div
+            ></ElTabPane
+          ></ElTabs
+        >
 
         <BankLineMatchDialog ref="matchDialogRef" @success="handleMatchChanged" />
       </div>
@@ -258,6 +279,7 @@
   const { hasAuth } = useAuth()
   const userStore = useUserStore()
   const drawerRef = ref<ArtDrawerExpose<Batch>>()
+  const activeDetailTab = ref('overview')
   const matchDialogRef = ref<MatchDialogExpose>()
   const detail = shallowRef<Batch>()
   const lines = shallowRef<Line[]>([])

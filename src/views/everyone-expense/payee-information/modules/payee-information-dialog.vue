@@ -8,8 +8,6 @@
       :span="12"
       :gutter="20"
       label-position="top"
-      :show-reset="false"
-      :show-submit="false"
     >
       <template #employeeId>
         <ArtEmployeeSelect
@@ -100,7 +98,6 @@
   const model = ref<FormModel>(initial())
 
   const items = computed<FormItem[]>(() => [
-    { key: 'identity', label: '收款人', type: 'divider', span: 24 },
     {
       key: 'isEmployee',
       label: '是否职员',
@@ -128,7 +125,6 @@
             props: { checkStrictly: true, clearable: true }
           }
         ]),
-    { key: 'account', label: '银行账户', type: 'divider', span: 24 },
     {
       key: 'bankName',
       label: '收款银行',
@@ -170,7 +166,6 @@
       childrenField: 'children',
       props: { filterable: true, clearable: true, checkStrictly: true }
     },
-    { key: 'access', label: '使用设置', type: 'divider', span: 24 },
     { key: 'authorizedUse', label: '授权使用', type: 'switch' },
     ...(model.value.authorizedUse
       ? [{ key: 'userEmployeeId', label: '使用人', type: 'input' as const }]

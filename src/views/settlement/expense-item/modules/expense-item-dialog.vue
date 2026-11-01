@@ -3,22 +3,18 @@
     <ArtForm
       root-class="art-form--mobile-stack"
       ref="formRef"
-      :model-value="form"
-      @update:model-value="replaceReactiveModel(form, $event)"
+      v-model="form"
       :items="items"
       :rules="rules"
       :validate-on-rule-change="false"
       :span="12"
       :gutter="20"
       label-width="108px"
-      :show-reset="false"
-      :show-submit="false"
     />
   </ArtDialog>
 </template>
 
 <script setup lang="ts">
-  import { replaceReactiveModel } from '@/utils/form/model'
   import {
     normalizeNonNullableText,
     normalizeNullableNumber,
@@ -70,7 +66,7 @@
     remark: ''
   })
 
-  const form = reactive<ExpenseItemForm>(createInitialForm())
+  const form = ref<ExpenseItemForm>(createInitialForm())
   const parentOptions = ref<ExpenseItem[]>([])
 
   const rules = computed<FormRules<ExpenseItemForm>>(() => ({
@@ -86,7 +82,7 @@
         trigger: 'blur'
       }
     ],
-    businessCategory: form.isSelectable
+    businessCategory: form.value.isSelectable
       ? [{ required: true, message: '请选择业务分类', trigger: 'change' }]
       : [],
     sort: [{ type: 'number', min: 0, max: 9999, message: '排序范围为 0 到 9999' }],
@@ -142,7 +138,7 @@
       key: 'businessCategory',
       type: 'select',
       span: 24,
-      hidden: !form.isSelectable,
+      hidden: !form.value.isSelectable,
       props: {
         options: getDictMap.value.tmsWaybillCostType ?? [],
         placeholder: '请选择费用所属业务分类'
@@ -152,7 +148,7 @@
       label: '允许报销',
       key: 'reimbursementAllowed',
       type: 'segment',
-      hidden: !form.isSelectable,
+      hidden: !form.value.isSelectable,
       props: { options: booleanOptions.value }
     },
     {
@@ -176,18 +172,20 @@
       if (!(await validateArtFormForSubmit(formRef.value))) return false
       if (!checkSavePermission()) return false
       const payload: Api.Fms.ExpenseItemWritePayload = {
-        parentId: form.parentId || null,
-        itemCode: normalizeNonNullableText(form.itemCode),
-        itemName: normalizeNonNullableText(form.itemName),
-        businessCategory: form.isSelectable ? form.businessCategory || null : null,
-        isSelectable: form.isSelectable,
-        reimbursementAllowed: form.isSelectable && form.reimbursementAllowed,
-        isEnabled: form.isEnabled,
-        sort: normalizeNullableNumber(form.sort) ?? 0,
-        remark: normalizeNullableText(form.remark)
+        parentId: form.value.parentId || null,
+        itemCode: normalizeNonNullableText(form.value.itemCode),
+        itemName: normalizeNonNullableText(form.value.itemName),
+        businessCategory: form.value.isSelectable ? form.value.businessCategory || null : null,
+        isSelectable: form.value.isSelectable,
+        reimbursementAllowed: form.value.isSelectable && form.value.reimbursementAllowed,
+        isEnabled: form.value.isEnabled,
+        sort: normalizeNullableNumber(form.value.sort) ?? 0,
+        remark: normalizeNullableText(form.value.remark)
       }
-      const type = form.id ? 'edit' : 'add'
-      await (form.id ? editExpenseItem({ ...payload, id: form.id }) : addExpenseItem(payload))
+      const type = form.value.id ? 'edit' : 'add'
+      await (form.value.id
+        ? editExpenseItem({ ...payload, id: form.value.id })
+        : addExpenseItem(payload))
       emit('success', type)
       return true
     } catch (error) {
@@ -214,9 +212,9 @@
     }
     savePermission.value = permission
     parentOptions.value = []
-    Object.assign(form, createInitialForm(), row ? structuredClone(toRaw(row)) : {})
-    delete (form as ExpenseItem).children
-    if (!row && parent?.id) form.parentId = parent.id
+    Object.assign(form.value, createInitialForm(), row ? structuredClone(toRaw(row)) : {})
+    delete (form.value as ExpenseItem).children
+    if (!row && parent?.id) form.value.parentId = parent.id
     await dialogRef.value?.handleOpen(
       { row, parent },
       {
@@ -242,7 +240,7 @@
             if (result.error) throw result.error
             parentOptions.value = parentTreeUtils.removeNodesByCondition(
               result.data,
-              (node) => node.id === form.id
+              (node) => node.id === form.value.id
             ).tree
             formRef.value?.clearValidate()
           } catch (error) {

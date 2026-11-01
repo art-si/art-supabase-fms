@@ -1,8 +1,18 @@
 <template>
-  <ArtDialog ref="dialogRef" size="xl" :show-footer="!readOnly">
+  <ArtDialog
+    ref="dialogRef"
+    @open="
+      () => {
+        activeTab = ''
+      }
+    "
+    size="xl"
+    :show-footer="!readOnly"
+  >
     <div class="flex min-w-0 flex-col gap-5">
       <ArtForm
         ref="formRef"
+        v-model:active-tab="activeTab"
         v-model="model"
         :items="items"
         :rules="rules"
@@ -10,8 +20,6 @@
         :span="12"
         :gutter="20"
         label-position="top"
-        :show-reset="false"
-        :show-submit="false"
       >
         <template #applicantEmployeeId>
           <ArtEmployeeSelect
@@ -24,96 +32,102 @@
             @update:model-value="setApplicant"
           />
         </template>
-      </ArtForm>
-      <ElAlert
-        v-if="!model.applicantEmployeeId"
-        type="warning"
-        :closable="false"
-        title="当前账号未关联员工花名册，请联系管理员完成员工绑定后再填单。"
-      />
-      <p v-else class="px-4 text-sm text-[var(--art-gray-700)]">
-        申请人公司：{{ applicantCompanyName || '待设置' }} · 费用承担公司：{{
-          expenseCompanyName || '待设置'
-        }}
-      </p>
-
-      <ArtSectionCard
-        class="mx-4 min-w-0"
-        title="行程信息"
-        :subtitle="`费用合计：${formatCurrencyValue(totalAmount)} · 预计天数：${estimatedDays} 天`"
-        :empty="!lines.length"
-        empty-title="尚未添加行程"
-        empty-description="添加出发地、目的地和行程日期后，可保存出差申请草稿。"
-        :min-height="200"
-      >
-        <template #actions>
-          <ElButton
-            v-if="!readOnly"
-            type="primary"
-            plain
-            :disabled="!model.applicantEmployeeId"
-            @click="addLine"
-          >
-            <ArtSvgIcon icon="ri:add-line" aria-hidden="true" />
-            添加行程
-          </ElButton>
-        </template>
-        <div v-if="lines.length" class="grid gap-3 sm:grid-cols-2">
-          <article
-            v-for="(line, index) in lines"
-            :key="line.id || index"
-            class="min-w-0 rounded-[var(--art-surface-radius)] border border-[var(--el-border-color-light)] p-4"
-          >
-            <div class="flex min-w-0 items-start justify-between gap-2">
-              <strong
-                class="min-w-0 truncate"
-                :title="`${line.departurePlace} → ${line.destinationPlace}`"
-              >
-                {{ line.departurePlace }} → {{ line.destinationPlace }}
-              </strong>
-              <span class="text-sm font-semibold tabular-nums">{{
-                formatCurrencyValue(line.requestedAmount)
-              }}</span>
-            </div>
-            <p class="mt-2 text-xs text-[var(--art-gray-700)]"
-              >{{ line.startDate }} 至 {{ line.endDate }}</p
+        <template #baseContext
+          ><div class="space-y-4"
+            ><ElAlert
+              v-if="!model.applicantEmployeeId"
+              type="warning"
+              :closable="false"
+              title="当前账号未关联员工花名册，请联系管理员完成员工绑定后再填单。"
+            />
+            <p v-else class="px-4 text-sm text-[var(--art-gray-700)]">
+              申请人公司：{{ applicantCompanyName || '待设置' }} · 费用承担公司：{{
+                expenseCompanyName || '待设置'
+              }}
+            </p></div
+          ></template
+        >
+        <template #travelWorkspace
+          ><div class="space-y-4"
+            ><ArtSectionCard
+              class="mx-4 min-w-0"
+              title="行程信息"
+              :subtitle="`费用合计：${formatCurrencyValue(totalAmount)} · 预计天数：${estimatedDays} 天`"
+              :empty="!lines.length"
+              empty-title="尚未添加行程"
+              empty-description="添加出发地、目的地和行程日期后，可保存出差申请草稿。"
+              :min-height="200"
             >
-            <div v-if="!readOnly" class="mt-3 flex justify-end">
-              <BusinessTableRowActions>
-                <ArtButtonTable
-                  type="edit"
-                  :permission="
-                    model.id ? 'FinanceTravelApplication:Edit' : 'FinanceTravelApplication:Add'
-                  "
-                  @click="editLine(index)"
-                />
-                <ArtButtonTable
-                  type="delete"
-                  :permission="
-                    model.id
-                      ? 'FinanceTravelApplication:DeleteLine'
-                      : 'FinanceTravelApplication:Add'
-                  "
-                  @click="removeLine(index)"
-                />
-              </BusinessTableRowActions>
-            </div>
-          </article>
-        </div>
-      </ArtSectionCard>
+              <template #actions>
+                <ElButton
+                  v-if="!readOnly"
+                  type="primary"
+                  plain
+                  :disabled="!model.applicantEmployeeId"
+                  @click="addLine"
+                >
+                  <ArtSvgIcon icon="ri:add-line" aria-hidden="true" />
+                  添加行程
+                </ElButton>
+              </template>
+              <div v-if="lines.length" class="grid gap-3 sm:grid-cols-2">
+                <article
+                  v-for="(line, index) in lines"
+                  :key="line.id || index"
+                  class="min-w-0 rounded-[var(--art-surface-radius)] border border-[var(--el-border-color-light)] p-4"
+                >
+                  <div class="flex min-w-0 items-start justify-between gap-2">
+                    <strong
+                      class="min-w-0 truncate"
+                      :title="`${line.departurePlace} → ${line.destinationPlace}`"
+                    >
+                      {{ line.departurePlace }} → {{ line.destinationPlace }}
+                    </strong>
+                    <span class="text-sm font-semibold tabular-nums">{{
+                      formatCurrencyValue(line.requestedAmount)
+                    }}</span>
+                  </div>
+                  <p class="mt-2 text-xs text-[var(--art-gray-700)]"
+                    >{{ line.startDate }} 至 {{ line.endDate }}</p
+                  >
+                  <div v-if="!readOnly" class="mt-3 flex justify-end">
+                    <BusinessTableRowActions>
+                      <ArtButtonTable
+                        type="edit"
+                        :permission="
+                          model.id
+                            ? 'FinanceTravelApplication:Edit'
+                            : 'FinanceTravelApplication:Add'
+                        "
+                        @click="editLine(index)"
+                      />
+                      <ArtButtonTable
+                        type="delete"
+                        :permission="
+                          model.id
+                            ? 'FinanceTravelApplication:DeleteLine'
+                            : 'FinanceTravelApplication:Add'
+                        "
+                        @click="removeLine(index)"
+                      />
+                    </BusinessTableRowActions>
+                  </div>
+                </article>
+              </div>
+            </ArtSectionCard>
 
-      <section class="px-4">
-        <ArtSectionTitle>附件</ArtSectionTitle>
-        <ArtUploadFile
-          v-model="model.attachmentUrls"
-          :disabled="readOnly"
-          multiple
-          :limit="8"
-          :resource-tenant-id="model.tenantId"
-          accept=".pdf,.doc,.docx,.xls,.xlsx,image/*"
-          tip="支持文档和图片，单个文件不超过 20 MB"
-        />
-      </section>
+            <section class="px-4">
+              <ArtSectionTitle>附件</ArtSectionTitle>
+              <ArtUploadFile
+                v-model="model.attachmentUrls"
+                :disabled="readOnly"
+                multiple
+                :limit="8"
+                :resource-tenant-id="model.tenantId"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,image/*"
+                tip="支持文档和图片，单个文件不超过 20 MB"
+              /> </section></div></template
+      ></ArtForm>
     </div>
     <TravelItineraryDialog ref="itineraryDialogRef" @save="saveLine" />
     <MasterDataDeleteGuard ref="deleteGuardRef" />
@@ -187,6 +201,7 @@
   const { hasAuth } = useAuth()
   const captureOperation = useTenantOperationGuard('FinanceTravelApplication:View')
   const session = useArtOverlaySession(() => Boolean(unref(dialogRef.value?.visible)))
+  const activeTab = ref('')
   const formRef = ref<InstanceType<typeof ArtForm>>()
   const itineraryDialogRef = ref<ItineraryDialogExpose>()
   const { deleteGuardRef, deleteRecord, inspectDeleteReferences } = useRecordDeleteGuard(
@@ -231,7 +246,7 @@
     () => findExpenseCompany(organizations.value, model.value.expenseDepartmentId)?.organizationName
   )
   const items = computed<FormItem[]>(() => [
-    { key: 'base', label: '基本信息', type: 'divider', span: 24 },
+    { key: 'base', label: '基本信息', type: 'tab', span: 24 },
     { key: 'applicantEmployeeId', label: '申请人', type: 'input' },
     {
       key: 'assignmentId',
@@ -279,7 +294,10 @@
       type: 'input',
       span: 24,
       props: { type: 'textarea', rows: 2, maxlength: 500, showWordLimit: true }
-    }
+    },
+    { key: 'baseContext', label: '', span: 24, labelWidth: 0 },
+    { key: 'travelWorkspaceSection', label: '行程与附件', type: 'tab' },
+    { key: 'travelWorkspace', label: '', span: 24, labelWidth: 0 }
   ])
   const rules = {
     applicantEmployeeId: [{ required: true, message: '请选择申请人', trigger: 'change' }],

@@ -16,8 +16,6 @@
       :rules="form.rules"
       :span="24"
       label-width="112px"
-      :show-reset="false"
-      :show-submit="false"
     />
   </ArtDialog>
 </template>

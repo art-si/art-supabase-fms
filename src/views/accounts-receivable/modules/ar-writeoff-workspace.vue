@@ -25,8 +25,6 @@
           v-model="form"
           :disabled="loading || busy || checking"
           :items="filterItems"
-          :show-submit="false"
-          :show-reset="false"
           :span="6"
           label-position="top"
         />
@@ -127,13 +125,7 @@
           :items="confirmationItems"
           :columns="2"
         />
-        <ArtForm
-          v-model="reasonForm"
-          :items="reasonItems"
-          :show-submit="false"
-          :show-reset="false"
-          label-position="top"
-        />
+        <ArtForm v-model="reasonForm" :items="reasonItems" label-position="top" />
       </ArtDialog>
       <ArtDialog ref="checkDialog" title="单据查验结果" size="lg" :show-footer="false"
         ><ArtTable :data="checkResults" :columns="checkColumns" :pagination="false"
@@ -155,22 +147,10 @@
         />
       </ArtDialog>
       <ArtDialog ref="reverseDialog" title="反核销" size="md" confirm-text="确认反核销"
-        ><ArtForm
-          v-model="reverseForm"
-          :items="reasonItems"
-          :show-submit="false"
-          :show-reset="false"
-          label-position="top"
+        ><ArtForm v-model="reverseForm" :items="reasonItems" label-position="top"
       /></ArtDialog>
       <ArtDialog ref="schemeDialog" title="新增核销方案" size="md" confirm-text="保存核销方案">
-        <ArtForm
-          v-model="schemeForm"
-          :items="schemeItems"
-          :show-submit="false"
-          :show-reset="false"
-          :span="12"
-          label-position="top"
-        />
+        <ArtForm v-model="schemeForm" :items="schemeItems" :span="12" label-position="top" />
       </ArtDialog>
     </div>
   </ArtPermissionGuard>

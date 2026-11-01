@@ -1,5 +1,13 @@
 <template>
-  <ArtDialog ref="dialogRef" size="lg">
+  <ArtDialog
+    ref="dialogRef"
+    @open="
+      () => {
+        activeTab = ''
+      }
+    "
+    size="lg"
+  >
     <section class="reimbursement-dialog__summary art-card-xs" aria-label="本次报销摘要">
       <article>
         <span class="is-primary"><ArtSvgIcon icon="ri:money-cny-circle-line" /></span>
@@ -51,13 +59,12 @@
 
     <ArtForm
       ref="formRef"
+      v-model:active-tab="activeTab"
       v-model="form.data"
       :items="form.items"
       :rules="form.rules"
       :span="isCompact ? 24 : 12"
       :gutter="20"
-      :show-reset="false"
-      :show-submit="false"
     >
       <template #basisUrls>
         <ArtUploadImage
@@ -70,31 +77,31 @@
           multiple
         />
       </template>
-    </ArtForm>
-
-    <ArtSectionCard
-      class="reimbursement-dialog__items"
-      title="费用上报明细"
-      subtitle="原费用单的运输、票据、上报和审核信息将一并关联到报销单。"
-      preserve-content-structure
-    >
-      <template #actions>
-        <div class="reimbursement-dialog__items-total">
-          <span>合计</span>
-          <strong>{{ money(totalAmount) }}</strong>
-        </div>
-      </template>
-      <ArtTable
-        :data="state.expenses"
-        :columns="columns"
-        :pagination="false"
-        :border="false"
-        height="auto"
-        :show-table-header="false"
-        table-layout="auto"
-        max-height="320px"
-      />
-    </ArtSectionCard>
+      <template #expenseSnapshot
+        ><div class="space-y-4"
+          ><ArtSectionCard
+            class="reimbursement-dialog__items"
+            title="费用上报明细"
+            subtitle="原费用单的运输、票据、上报和审核信息将一并关联到报销单。"
+            preserve-content-structure
+          >
+            <template #actions>
+              <div class="reimbursement-dialog__items-total">
+                <span>合计</span>
+                <strong>{{ money(totalAmount) }}</strong>
+              </div>
+            </template>
+            <ArtTable
+              :data="state.expenses"
+              :columns="columns"
+              :pagination="false"
+              :border="false"
+              height="auto"
+              :show-table-header="false"
+              table-layout="auto"
+              max-height="320px"
+            /> </ArtSectionCard></div></template
+    ></ArtForm>
   </ArtDialog>
 </template>
 
@@ -168,6 +175,7 @@
   const { getDictMap, getUserInfo } = storeToRefs(userStore)
   const tenantScopeStore = useTenantScopeStore()
   const dialogRef = ref<ArtDialogExpose<{ expenses: Expense[] }>>()
+  const activeTab = ref('')
   const formRef = ref<FormExpose>()
   const state = reactive<{ expenses: Expense[] }>({ expenses: [] })
   const driverDefaultAccount = ref<WaybillDriverDefaultAccount | null>(null)
@@ -219,7 +227,7 @@
       paymentMethod: [{ required: true, message: '请选择付款方式', trigger: 'change' }]
     },
     items: computed<FormItem[]>(() => [
-      { label: '报销申请', key: 'payeeSection', type: 'divider', span: 24 },
+      { label: '报销申请', key: 'payeeSection', type: 'tab', span: 24 },
       {
         label: '报销单号',
         key: 'reimbursementNo',
@@ -288,7 +296,7 @@
         span: 24,
         props: { maxlength: 200, placeholder: '银行卡号或收款账户，可选' }
       },
-      { label: '说明与依据', key: 'basisSection', type: 'divider', span: 24 },
+      { label: '说明与依据', key: 'basisSection', type: 'tab', span: 24 },
       {
         label: '报销说明',
         key: 'remark',
@@ -301,7 +309,8 @@
           placeholder: '说明报销用途、收款安排或需财务关注的事项'
         }
       },
-      { label: '补充附件', key: 'basisUrls', type: 'input', span: 24 }
+      { label: '补充附件', key: 'basisUrls', type: 'input', span: 24 },
+      { key: 'expenseSnapshot', label: '', span: 24, labelWidth: 0 }
     ])
   })
 

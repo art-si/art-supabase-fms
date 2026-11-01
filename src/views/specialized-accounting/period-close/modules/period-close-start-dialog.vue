@@ -10,19 +10,14 @@
     <ArtForm
       root-class="art-form--mobile-stack"
       ref="formRef"
-      :model-value="form"
-      @update:model-value="replaceReactiveModel(form, $event)"
+      v-model="form"
       :items="items"
       :rules="rules"
       :span="24"
       label-width="104px"
-      :show-reset="false"
-      :show-submit="false"
   /></ArtDialog>
 </template>
 <script setup lang="ts">
-  import { replaceReactiveModel } from '@/utils/form/model'
-  import { toRef } from 'vue'
   import { useAccountingPeriodOptions } from '../../../modules/use-accounting-period-options'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
@@ -39,11 +34,21 @@
   const prerequisiteOverlay = createFinancePrerequisiteOverlay(dialogRef)
   const formRef = ref<{ validate: () => Promise<boolean>; clearValidate: () => void }>()
   const accountSetOptions = ref<Api.Fms.AccountSetOption[]>([])
-  const form = reactive({ accountSetId: '', periodId: '' })
+  const form = ref({ accountSetId: '', periodId: '' })
   const { periodOptions, periodsLoading, periodLoadFailed, loadPeriods, resetPeriods } =
     useAccountingPeriodOptions(
-      toRef(form, 'accountSetId'),
-      toRef(form, 'periodId'),
+      computed({
+        get: () => form.value.accountSetId,
+        set: (value) => {
+          form.value.accountSetId = value
+        }
+      }),
+      computed({
+        get: () => form.value.periodId,
+        set: (value) => {
+          form.value.periodId = value
+        }
+      }),
       computed(() => Boolean(false)),
       ['open', 'closing']
     )
@@ -70,9 +75,9 @@
       props: {
         options: periodOptions.value,
         placeholder: '选择开放或关账中期间',
-        disabled: !form.accountSetId || periodsLoading.value || periodLoadFailed.value,
+        disabled: !form.value.accountSetId || periodsLoading.value || periodLoadFailed.value,
         loading: periodsLoading.value,
-        noDataText: form.accountSetId
+        noDataText: form.value.accountSetId
           ? ACCOUNTING_SELECT_EMPTY_TEXT.openAccountingPeriod
           : ACCOUNTING_SELECT_EMPTY_TEXT.chooseAccountSet
       }
@@ -82,7 +87,7 @@
     try {
       if (periodsLoading.value || periodLoadFailed.value) return false
       if (!(await validateArtFormForSubmit(formRef.value))) return false
-      await runPeriodCloseChecks(form.periodId)
+      await runPeriodCloseChecks(form.value.periodId)
       emit('success')
       return true
     } catch (error) {
@@ -93,8 +98,8 @@
   async function handleOpen() {
     accountSetOptions.value = []
     resetPeriods()
-    form.periodId = ''
-    form.accountSetId = ''
+    form.value.periodId = ''
+    form.value.accountSetId = ''
     await dialogRef.value?.handleOpen(undefined, {
       title: '执行月末关账检查',
       confirmText: '开始检查',
@@ -111,7 +116,7 @@
           })
           if (error) throw error
           accountSetOptions.value = data ?? []
-          form.accountSetId = accountSetOptions.value[0]?.value ?? ''
+          form.value.accountSetId = accountSetOptions.value[0]?.value ?? ''
           await loadPeriods()
         } catch (error) {
           notifyFriendlyError(error, '账套加载失败，请重新打开重试')

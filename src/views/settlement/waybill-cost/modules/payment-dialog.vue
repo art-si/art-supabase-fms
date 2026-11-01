@@ -15,8 +15,6 @@
       :rules="form.rules"
       :span="12"
       :gutter="20"
-      :show-reset="false"
-      :show-submit="false"
     >
       <template #voucherUrls>
         <ArtUploadImage

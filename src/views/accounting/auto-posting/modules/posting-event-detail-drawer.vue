@@ -3,6 +3,11 @@
     header-icon="ri:git-branch-line"
     :loading="loading"
     ref="drawerRef"
+    @open="
+      () => {
+        activeDetailTab = 'overview'
+      }
+    "
     :show-footer="false"
   >
     <template #subtitle>{{ eventSubtitle }}</template>
@@ -17,73 +22,104 @@
         <ElButton type="primary" plain @click="retryLoad">重新加载</ElButton>
       </template>
       <div v-if="detail" class="posting-event-detail">
-        <ArtSectionCard title="处理信息" preserve-content-structure>
-          <ArtDescriptions
-            :data="detail"
-            :items="descriptionItems"
-            :columns="2"
-            label-width="104px"
-          />
-        </ArtSectionCard>
+        <ElTabs
+          v-if="canViewPayload && (payloadItems.length || referenceItems.length)"
+          v-model="activeDetailTab"
+          ><ElTabPane name="overview" label="处理信息"
+            ><div class="space-y-4"
+              ><ArtSectionCard title="处理信息" preserve-content-structure>
+                <ArtDescriptions
+                  :data="detail"
+                  :items="descriptionItems"
+                  :columns="2"
+                  label-width="104px"
+                />
+              </ArtSectionCard>
 
-        <ArtSectionCard
-          v-if="canViewDiagnostics && detail.lastError"
-          class="posting-event-detail__section"
-          title="异常信息"
-          preserve-content-structure
-        >
-          <ElAlert
-            type="error"
-            :closable="false"
-            show-icon
-            :title="friendlyProcessingError"
-            description="核对所属账套的会计期间、制证规则与业务单据，修正后返回事件列表重试。"
-          />
-        </ArtSectionCard>
+              <ArtSectionCard
+                v-if="canViewDiagnostics && detail.lastError"
+                class="posting-event-detail__section"
+                title="异常信息"
+                preserve-content-structure
+              >
+                <ElAlert
+                  type="error"
+                  :closable="false"
+                  show-icon
+                  :title="friendlyProcessingError"
+                  description="核对所属账套的会计期间、制证规则与业务单据，修正后返回事件列表重试。"
+                /> </ArtSectionCard></div
+          ></ElTabPane>
+          <ElTabPane name="payload" label="业务数据"
+            ><div class="space-y-4"
+              ><ArtSectionCard
+                v-if="canViewPayload"
+                class="posting-event-detail__section"
+                title="业务数据"
+                :empty="!payloadItems.length"
+                empty-title="暂无业务载荷"
+                empty-description="业务事件生成载荷后，可在此核对字段。"
+                :empty-visual-size="64"
+                :min-height="148"
+                preserve-content-structure
+              >
+                <ArtDescriptions
+                  :data="detail.payload"
+                  :items="payloadItems"
+                  :columns="1"
+                  label-width="140px"
+                />
+              </ArtSectionCard>
 
-        <ArtSectionCard
-          v-if="canViewPayload"
-          class="posting-event-detail__section"
-          title="业务数据"
-          :empty="!payloadItems.length"
-          empty-title="暂无业务载荷"
-          empty-description="业务事件生成载荷后，可在此核对字段。"
-          :empty-visual-size="64"
-          :min-height="148"
-          preserve-content-structure
-        >
-          <ArtDescriptions
-            :data="detail.payload"
-            :items="payloadItems"
-            :columns="1"
-            label-width="140px"
-          />
-        </ArtSectionCard>
+              <ArtSectionCard
+                v-if="canViewPayload && referenceItems.length"
+                title="关联记录标识"
+                subtitle="用于核对业务关联；来源单号和处理结果见上方。"
+                preserve-content-structure
+              >
+                <template #actions>
+                  <ElButton
+                    plain
+                    :aria-expanded="showReferences"
+                    @click="showReferences = !showReferences"
+                  >
+                    <ArtSvgIcon
+                      :icon="showReferences ? 'ri:arrow-up-s-line' : 'ri:arrow-down-s-line'"
+                    />
+                    {{ showReferences ? '收起标识' : '展开标识' }}
+                  </ElButton>
+                </template>
+                <ArtDescriptions
+                  v-if="showReferences"
+                  :data="detail.payload"
+                  :items="referenceItems"
+                  :columns="1"
+                  label-width="140px"
+                /> </ArtSectionCard></div></ElTabPane></ElTabs
+        ><div v-else class="space-y-4"
+          ><ArtSectionCard title="处理信息" preserve-content-structure>
+            <ArtDescriptions
+              :data="detail"
+              :items="descriptionItems"
+              :columns="2"
+              label-width="104px"
+            />
+          </ArtSectionCard>
 
-        <ArtSectionCard
-          v-if="canViewPayload && referenceItems.length"
-          title="关联记录标识"
-          subtitle="用于核对业务关联；来源单号和处理结果见上方。"
-          preserve-content-structure
-        >
-          <template #actions>
-            <ElButton
-              plain
-              :aria-expanded="showReferences"
-              @click="showReferences = !showReferences"
-            >
-              <ArtSvgIcon :icon="showReferences ? 'ri:arrow-up-s-line' : 'ri:arrow-down-s-line'" />
-              {{ showReferences ? '收起标识' : '展开标识' }}
-            </ElButton>
-          </template>
-          <ArtDescriptions
-            v-if="showReferences"
-            :data="detail.payload"
-            :items="referenceItems"
-            :columns="1"
-            label-width="140px"
-          />
-        </ArtSectionCard>
+          <ArtSectionCard
+            v-if="canViewDiagnostics && detail.lastError"
+            class="posting-event-detail__section"
+            title="异常信息"
+            preserve-content-structure
+          >
+            <ElAlert
+              type="error"
+              :closable="false"
+              show-icon
+              :title="friendlyProcessingError"
+              description="核对所属账套的会计期间、制证规则与业务单据，修正后返回事件列表重试。"
+            /> </ArtSectionCard
+        ></div>
 
         <section v-if="canOpenVoucher" class="posting-event-detail__voucher art-card-xs">
           <div>
@@ -126,6 +162,7 @@
   const emit = defineEmits<{ 'view-voucher': [voucherId: string] }>()
   const userStore = useUserStore()
   const drawerRef = ref<ArtDrawerExpose<Event>>()
+  const activeDetailTab = ref('overview')
   const showReferences = ref(false)
   const { detail, loading, loadError, loadDetail, openDetail, retryLoad } = useDetailRecord<Event>(
     async (id) => {

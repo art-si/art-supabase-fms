@@ -39,8 +39,6 @@
         :rules="form.rules"
         :span="24"
         label-width="108px"
-        :show-reset="false"
-        :show-submit="false"
       />
     </ArtAsyncState>
   </ArtDialog>

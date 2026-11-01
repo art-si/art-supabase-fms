@@ -99,15 +99,7 @@
       :closable="false"
       class="mb-4"
     />
-    <ArtForm
-      ref="form"
-      v-model="model"
-      :items="items"
-      :rules="rules"
-      :show-submit="false"
-      :show-reset="false"
-      label-position="top"
-    />
+    <ArtForm ref="form" v-model="model" :items="items" :rules="rules" label-position="top" />
   </ArtDialog>
   <ArtDialog ref="recordsDialog" title="后台任务生成记录" size="lg" :show-footer="false">
     <ArtTableQuery

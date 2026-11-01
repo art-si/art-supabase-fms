@@ -1,8 +1,17 @@
 <template>
-  <ArtDialog ref="dialogRef" size="lg">
+  <ArtDialog
+    ref="dialogRef"
+    @open="
+      () => {
+        activeTab = ''
+      }
+    "
+    size="lg"
+  >
     <div class="voucher-template-dialog flex flex-col gap-3 min-w-0">
       <ArtForm
         ref="formRef"
+        v-model:active-tab="activeTab"
         root-class="art-form--mobile-stack"
         v-model="form.data"
         :items="form.items"
@@ -10,35 +19,32 @@
         :span="12"
         :gutter="18"
         label-width="96px"
-        :show-reset="false"
-        :show-submit="false"
         scroll-to-error
-      />
+        ><template #templateLines
+          ><VoucherEntryLines
+            ref="lineEditorRef"
+            v-if="canShowEntries"
+            v-model="form.lines"
+            :subjects="context.subjects"
+            :currencies="context.currencies"
+            :auxiliary-items="context.auxiliaryItems"
+            :direction-options="directionOptions"
+            mode="template"
+            allow-zero-amount
+            :readonly="!canEditEntries" />
+          <ElAlert
+            v-else-if="entryAccess === 'masked'"
+            :title="`模板分录已脱敏${detailLineCount ? `，共 ${detailLineCount} 条` : ''}`"
+            description="科目、借贷方向、核算维度和默认金额不会发送到无明文权限的客户端。"
+            type="warning"
+            :closable="false"
+            show-icon /></template
+      ></ArtForm>
 
       <ElAlert
         v-if="narrativeAccess === 'masked'"
         title="默认摘要与模板说明已按字段权限脱敏"
         type="info"
-        :closable="false"
-        show-icon
-      />
-
-      <VoucherEntryLines
-        v-if="canShowEntries"
-        v-model="form.lines"
-        :subjects="context.subjects"
-        :currencies="context.currencies"
-        :auxiliary-items="context.auxiliaryItems"
-        :direction-options="directionOptions"
-        mode="template"
-        allow-zero-amount
-        :readonly="!canEditEntries"
-      />
-      <ElAlert
-        v-else-if="entryAccess === 'masked'"
-        :title="`模板分录已脱敏${detailLineCount ? `，共 ${detailLineCount} 条` : ''}`"
-        description="科目、借贷方向、核算维度和默认金额不会发送到无明文权限的客户端。"
-        type="warning"
         :closable="false"
         show-icon
       />
@@ -108,6 +114,8 @@
   const userStore = useUserStore()
   const { getDictMap } = storeToRefs(userStore)
   const dialogRef = ref<ArtDialogExpose<Template | undefined>>()
+  const activeTab = ref('')
+  const lineEditorRef = ref<InstanceType<typeof VoucherEntryLines>>()
   const formRef = ref<FormExpose>()
   const fieldAccess = ref<Api.Fms.VoucherTemplateFieldAccessMap>({})
   const detailLineCount = ref(0)
@@ -152,7 +160,12 @@
     data: createInitialForm(),
     lines: [createLine(1, 'debit'), createLine(2, 'credit')],
     items: computed<FormItem[]>(() => [
-      { label: '模板信息', key: 'identitySection', type: 'divider', span: 24 },
+      {
+        label: '模板信息',
+        key: 'identitySection',
+        type: canShowEntries.value ? 'tab' : 'divider',
+        span: 24
+      },
       {
         label: '账套',
         key: 'accountSetId',
@@ -212,7 +225,6 @@
             }
           ] as FormItem[])
         : []),
-      { label: '管理设置', key: 'managementSection', type: 'divider', span: 24 },
       {
         label: '启用状态',
         key: 'isEnabled',
@@ -241,7 +253,20 @@
               }
             }
           ] as FormItem[])
-        : [])
+        : []),
+      {
+        key: 'templateLinesSection',
+        label: '模板分录',
+        type: canShowEntries.value ? 'tab' : 'divider',
+        hidden: !canShowEntries.value
+      },
+      {
+        key: 'templateLines',
+        label: '',
+        span: 24,
+        labelWidth: 0,
+        hidden: !canShowEntries.value && entryAccess.value !== 'masked'
+      }
     ]),
     rules: {
       accountSetId: [{ required: true, message: '请选择账套', trigger: 'change' }],
@@ -295,17 +320,15 @@
       }))
   )
 
-  function validateLines(): boolean {
+  async function validateLines(): Promise<boolean> {
     if (!canEditEntries.value) return true
     if (!form.lines.length) {
       ElMessage.warning('凭证模板至少需要一条分录')
       return false
     }
-    const invalidIndex = form.lines.findIndex((line) => {
-      return !line.subjectId || !['debit', 'credit'].includes(line.entryDirection ?? '')
-    })
-    if (invalidIndex >= 0) {
-      ElMessage.warning(`请为第 ${invalidIndex + 1} 条模板分录选择科目并明确借贷方向`)
+    const result = await lineEditorRef.value?.validate()
+    if (result && !result.valid) {
+      if (result.firstError) ElMessage.warning(result.firstError.message)
       return false
     }
     return true
@@ -318,7 +341,11 @@
       notifyFriendlyError(error, '凭证模板校验失败，请重试')
       return false
     }
-    if (!validateLines()) return false
+    if (canEditEntries.value) {
+      activeTab.value = 'templateLinesSection'
+      await nextTick()
+    }
+    if (!(await validateLines())) return false
     try {
       const payload: Api.Fms.SaveVoucherTemplatePayload = {
         id: form.data.id,

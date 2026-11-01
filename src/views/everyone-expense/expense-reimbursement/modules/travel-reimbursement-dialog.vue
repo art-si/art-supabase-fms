@@ -1,16 +1,23 @@
 <template>
-  <ArtDialog ref="dialogRef" size="xl">
+  <ArtDialog
+    ref="dialogRef"
+    @open="
+      () => {
+        activeTab = ''
+      }
+    "
+    size="xl"
+  >
     <div class="flex min-w-0 flex-col gap-4">
       <ArtForm
         ref="formRef"
+        v-model:active-tab="activeTab"
         v-model="model"
         :items="items"
         :rules="rules"
         :span="12"
         :gutter="20"
         label-position="top"
-        :show-reset="false"
-        :show-submit="false"
       >
         <template #applicantEmployeeId>
           <ArtEmployeeSelect
@@ -23,117 +30,124 @@
             @update:model-value="setApplicant"
           />
         </template>
-      </ArtForm>
-      <ElAlert
-        v-if="!model.applicantEmployeeId"
-        class="mx-4"
-        type="warning"
-        :closable="false"
-        title="请关联本人员工档案或选择已委托当前账号填单的报销人。"
-      />
-      <p v-else class="px-4 text-sm text-[var(--art-gray-700)]">
-        申请人公司：{{ applicantCompanyName || '待设置' }} · 费用承担公司：{{
-          expenseCompanyName || '待设置'
-        }}
-      </p>
-      <ElAlert
-        v-if="selectedLoan"
-        class="mx-4 w-auto"
-        :type="selectedLoan.isDemo ? 'warning' : 'info'"
-        :closable="false"
-        :title="`${selectedLoan.loanNo} · 可抵扣 ${formatCurrencyValue(selectedLoan.availableAmount)} · 本次抵扣 ${formatCurrencyValue(model.loanOffsetAmount)} · 应付现金 ${formatCurrencyValue(cashAmount)}${selectedLoan.isDemo ? '（演示借款，后续仅可模拟付款）' : ''}`"
-      />
-
-      <ArtSectionCard
-        class="mx-4 min-w-0"
-        title="费用明细"
-        :subtitle="`报销金额合计：${formatCurrencyValue(totalAmount)}`"
-        :empty="!lines.length"
-        empty-title="尚未添加费用明细"
-        empty-description="新增一条费用项目、发生日期和报销金额后即可保存草稿。"
-        :min-height="185"
-      >
-        <template #actions>
-          <ElButton
-            v-auth="
-              model.id ? 'FinanceExpenseReimbursement:Edit' : 'FinanceExpenseReimbursement:Add'
-            "
-            type="primary"
-            plain
-            :disabled="!model.applicantEmployeeId"
-            @click="addLine"
-          >
-            <ArtSvgIcon icon="ri:add-line" aria-hidden="true" />新增明细
-          </ElButton>
-        </template>
-        <ArtTable
-          v-if="lines.length"
-          :data="lines"
-          :columns="lineColumns"
-          :pagination="false"
-          :show-table-header="false"
-          table-layout="fixed"
-          max-height="260px"
-        />
-      </ArtSectionCard>
-
-      <ArtSectionCard
-        class="mx-4 min-w-0"
-        title="收款信息"
-        :subtitle="`从已授权的收款资料带入账户，已分配收款：${formatCurrencyValue(payeeTotal)}。`"
-        :empty="!payees.length"
-        :empty-title="totalAmount > 0 && cashAmount === 0 ? '无需现金付款' : '尚未添加收款信息'"
-        :empty-description="
-          totalAmount > 0 && cashAmount === 0
-            ? '本单已由借款抵扣，无需填写收款账户。'
-            : '草稿可先保存；提交审批前需补齐与应付金额一致的收款账户。'
-        "
-        :min-height="185"
-      >
-        <template #actions>
-          <strong class="text-sm font-semibold tabular-nums text-[var(--el-color-warning)]">
-            付现金额 {{ formatCurrencyValue(cashAmount) }}
-          </strong>
-          <ElButton
-            v-auth="
-              model.id ? 'FinanceExpenseReimbursement:Edit' : 'FinanceExpenseReimbursement:Add'
-            "
-            type="primary"
-            plain
-            :disabled="!model.applicantEmployeeId"
-            @click="addPayee"
-          >
-            <ArtSvgIcon icon="ri:add-line" aria-hidden="true" />新增收款
-          </ElButton>
-        </template>
-        <ArtTable
-          v-if="payees.length"
-          :data="payees"
-          :columns="payeeColumns"
-          :pagination="false"
-          :show-table-header="false"
-          table-layout="fixed"
-          max-height="260px"
-        />
-      </ArtSectionCard>
-      <ElAlert
-        v-if="payees.length && payeeTotal !== cashAmount"
-        class="mx-4"
-        type="warning"
-        :closable="false"
-        :title="`收款金额与应付现金额相差 ${formatCurrencyValue(Math.abs(cashAmount - payeeTotal))}，请核对后再保存。`"
-      />
-      <section class="px-4">
-        <ArtSectionTitle>附件</ArtSectionTitle>
-        <ArtUploadFile
-          v-model="model.attachmentUrls"
-          multiple
-          :limit="8"
-          :resource-tenant-id="model.tenantId"
-          accept=".pdf,.doc,.docx,.xls,.xlsx,image/*"
-          tip="支持文档和图片，单个文件不超过 20 MB"
-        />
-      </section>
+        <template #baseContext
+          ><div class="space-y-4"
+            ><ElAlert
+              v-if="!model.applicantEmployeeId"
+              class="mx-4"
+              type="warning"
+              :closable="false"
+              title="请关联本人员工档案或选择已委托当前账号填单的报销人。" />
+            <p v-else class="px-4 text-sm text-[var(--art-gray-700)]">
+              申请人公司：{{ applicantCompanyName || '待设置' }} · 费用承担公司：{{
+                expenseCompanyName || '待设置'
+              }}
+            </p>
+            <ElAlert
+              v-if="selectedLoan"
+              class="mx-4 w-auto"
+              :type="selectedLoan.isDemo ? 'warning' : 'info'"
+              :closable="false"
+              :title="`${selectedLoan.loanNo} · 可抵扣 ${formatCurrencyValue(selectedLoan.availableAmount)} · 本次抵扣 ${formatCurrencyValue(model.loanOffsetAmount)} · 应付现金 ${formatCurrencyValue(cashAmount)}${selectedLoan.isDemo ? '（演示借款，后续仅可模拟付款）' : ''}`" /></div
+        ></template>
+        <template #expenseLines
+          ><div class="space-y-4"
+            ><ArtSectionCard
+              class="mx-4 min-w-0"
+              title="费用明细"
+              :subtitle="`报销金额合计：${formatCurrencyValue(totalAmount)}`"
+              :empty="!lines.length"
+              empty-title="尚未添加费用明细"
+              empty-description="新增一条费用项目、发生日期和报销金额后即可保存草稿。"
+              :min-height="185"
+            >
+              <template #actions>
+                <ElButton
+                  v-auth="
+                    model.id
+                      ? 'FinanceExpenseReimbursement:Edit'
+                      : 'FinanceExpenseReimbursement:Add'
+                  "
+                  type="primary"
+                  plain
+                  :disabled="!model.applicantEmployeeId"
+                  @click="addLine"
+                >
+                  <ArtSvgIcon icon="ri:add-line" aria-hidden="true" />新增明细
+                </ElButton>
+              </template>
+              <ArtTable
+                v-if="lines.length"
+                :data="lines"
+                :columns="lineColumns"
+                :pagination="false"
+                :show-table-header="false"
+                table-layout="fixed"
+                max-height="260px"
+              /> </ArtSectionCard></div
+        ></template>
+        <template #paymentWorkspace
+          ><div class="space-y-4"
+            ><ArtSectionCard
+              class="mx-4 min-w-0"
+              title="收款信息"
+              :subtitle="`从已授权的收款资料带入账户，已分配收款：${formatCurrencyValue(payeeTotal)}。`"
+              :empty="!payees.length"
+              :empty-title="
+                totalAmount > 0 && cashAmount === 0 ? '无需现金付款' : '尚未添加收款信息'
+              "
+              :empty-description="
+                totalAmount > 0 && cashAmount === 0
+                  ? '本单已由借款抵扣，无需填写收款账户。'
+                  : '草稿可先保存；提交审批前需补齐与应付金额一致的收款账户。'
+              "
+              :min-height="185"
+            >
+              <template #actions>
+                <strong class="text-sm font-semibold tabular-nums text-[var(--el-color-warning)]">
+                  付现金额 {{ formatCurrencyValue(cashAmount) }}
+                </strong>
+                <ElButton
+                  v-auth="
+                    model.id
+                      ? 'FinanceExpenseReimbursement:Edit'
+                      : 'FinanceExpenseReimbursement:Add'
+                  "
+                  type="primary"
+                  plain
+                  :disabled="!model.applicantEmployeeId"
+                  @click="addPayee"
+                >
+                  <ArtSvgIcon icon="ri:add-line" aria-hidden="true" />新增收款
+                </ElButton>
+              </template>
+              <ArtTable
+                v-if="payees.length"
+                :data="payees"
+                :columns="payeeColumns"
+                :pagination="false"
+                :show-table-header="false"
+                table-layout="fixed"
+                max-height="260px"
+              />
+            </ArtSectionCard>
+            <ElAlert
+              v-if="payees.length && payeeTotal !== cashAmount"
+              class="mx-4"
+              type="warning"
+              :closable="false"
+              :title="`收款金额与应付现金额相差 ${formatCurrencyValue(Math.abs(cashAmount - payeeTotal))}，请核对后再保存。`" />
+            <section class="px-4">
+              <ArtSectionTitle>附件</ArtSectionTitle>
+              <ArtUploadFile
+                v-model="model.attachmentUrls"
+                multiple
+                :limit="8"
+                :resource-tenant-id="model.tenantId"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,image/*"
+                tip="支持文档和图片，单个文件不超过 20 MB"
+              /> </section></div></template
+      ></ArtForm>
     </div>
     <ReimbursementLineDialog ref="lineDialogRef" @save="saveLine" />
     <ExpensePayeeDialog ref="payeeDialogRef" @save="savePayee" />
@@ -233,6 +247,7 @@
   const { hasAuth } = useAuth()
   const captureOperation = useTenantOperationGuard('FinanceExpenseReimbursement:View')
   const session = useArtOverlaySession(() => Boolean(unref(dialogRef.value?.visible)))
+  const activeTab = ref('')
   const formRef = ref<InstanceType<typeof ArtForm>>()
   const lineDialogRef = ref<LineDialogExpose>()
   const payeeDialogRef = ref<PayeeDialogExpose>()
@@ -312,7 +327,7 @@
   )
 
   const items = computed<FormItem[]>(() => [
-    { key: 'base', label: '基本信息', type: 'divider', span: 24 },
+    { key: 'base', label: '基本信息', type: 'tab', span: 24 },
     { key: 'applicantEmployeeId', label: '报销人', type: 'input' },
     {
       key: 'assignmentId',
@@ -415,7 +430,12 @@
       type: 'input',
       span: 24,
       props: { type: 'textarea', rows: 2, maxlength: 500, showWordLimit: true }
-    }
+    },
+    { key: 'baseContext', label: '', span: 24, labelWidth: 0 },
+    { key: 'detailsSection', label: '费用明细', type: 'tab' },
+    { key: 'expenseLines', label: '', span: 24, labelWidth: 0 },
+    { key: 'payeesSection', label: '收款与附件', type: 'tab' },
+    { key: 'paymentWorkspace', label: '', span: 24, labelWidth: 0 }
   ])
   const rules = computed(() => ({
     applicantEmployeeId: [{ required: true, message: '请选择报销人', trigger: 'change' }],

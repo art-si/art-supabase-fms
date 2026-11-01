@@ -1,5 +1,13 @@
 <template>
-  <ArtDialog ref="dialogRef" size="lg">
+  <ArtDialog
+    ref="dialogRef"
+    @open="
+      () => {
+        activeTab = ''
+      }
+    "
+    size="lg"
+  >
     <template #subtitle>
       导入前请核对对账期间和期初、期末余额；对方账号只保存掩码，不保留明文。
     </template>
@@ -7,105 +15,97 @@
       <ArtForm
         root-class="art-form--mobile-stack"
         ref="formRef"
+        v-model:active-tab="activeTab"
         v-model="form.data"
         :items="formItems"
         :rules="form.rules"
         :span="12"
         :gutter="20"
         label-width="112px"
-        :show-reset="false"
-        :show-submit="false"
-      />
+        ><template #bankLines
+          ><div class="space-y-4"
+            ><section class="bank-import-dialog__lines">
+              <div class="bank-import-dialog__lines-header">
+                <div>
+                  <strong>银行流水明细</strong>
+                  <span>支持一笔银行流水匹配多笔资金流水，也支持一笔资金流水分摊匹配。</span>
+                </div>
+                <ElButton type="primary" plain @click="addLine">
+                  <ArtSvgIcon icon="ri:add-line" />
+                  添加流水
+                </ElButton>
+              </div>
+              <ArtTable
+                ref="lineTableRef"
+                :data="form.data.lines"
+                :columns="lineColumns"
+                :pagination="false"
+                table-layout="fixed"
+                max-height="360"
+                ><template #transactionDate="{ row }">
+                  <ElDatePicker
+                    v-model="row.transactionDate"
+                    type="date"
+                    value-format="YYYY-MM-DD"
+                    placeholder="选择日期"
+                    class="!w-full"
+                  />
+                </template>
+                <template #direction="{ row }">
+                  <ElSegmented
+                    v-model="row.direction"
+                    :options="getDictMap.fmsFundLedgerDirection ?? []"
+                    aria-label="银行流水方向"
+                  />
+                </template>
+                <template #amount="{ row }">
+                  <ElInputNumber
+                    v-model="row.amount"
+                    :min="0"
+                    :precision="2"
+                    :controls="false"
+                    class="!w-full"
+                  />
+                </template>
+                <template #counterparty="{ row }">
+                  <div class="grid gap-2">
+                    <ElInput
+                      v-model="row.counterpartyName"
+                      maxlength="120"
+                      placeholder="对方户名"
+                    />
+                    <ElInput
+                      v-model="row.counterpartyAccount"
+                      maxlength="64"
+                      show-password
+                      autocomplete="new-password"
+                      placeholder="保存后仅显示尾号"
+                    />
+                  </div>
+                </template>
+                <template #reference="{ row }">
+                  <div class="grid gap-2">
+                    <ElInput
+                      v-model="row.bankReference"
+                      maxlength="120"
+                      placeholder="用于自动匹配"
+                    />
+                    <ElInput v-model="row.bankMemo" maxlength="300" placeholder="银行交易摘要" />
+                  </div>
+                </template>
+                <template #operation="{ $index }">
+                  <BusinessTableRowActions>
+                    <ArtButtonTable
+                      type="delete"
+                      label="移除待导入流水"
+                      permission=""
+                      :disabled="form.data.lines.length <= 1"
+                      @click="removeLine($index)"
+                    />
+                  </BusinessTableRowActions> </template
+              ></ArtTable> </section></div></template
+      ></ArtForm>
 
-      <section class="bank-import-dialog__lines">
-        <div class="bank-import-dialog__lines-header">
-          <div>
-            <strong>银行流水明细</strong>
-            <span>支持一笔银行流水匹配多笔资金流水，也支持一笔资金流水分摊匹配。</span>
-          </div>
-          <ElButton type="primary" plain @click="addLine">
-            <ArtSvgIcon icon="ri:add-line" />
-            添加流水
-          </ElButton>
-        </div>
-        <ArtTable
-          :pagination="false"
-          height="auto"
-          :border="false"
-          :show-table-header="false"
-          :data="form.data.lines"
-          table-layout="fixed"
-          max-height="360"
-        >
-          <ElTableColumn type="index" label="#" width="48" align="center" />
-          <ElTableColumn label="交易日期" width="145">
-            <template #default="{ row }">
-              <ElDatePicker
-                v-model="row.transactionDate"
-                type="date"
-                value-format="YYYY-MM-DD"
-                placeholder="选择日期"
-                class="!w-full"
-              />
-            </template>
-          </ElTableColumn>
-          <ElTableColumn label="方向" width="130">
-            <template #default="{ row }">
-              <ElSegmented
-                v-model="row.direction"
-                :options="getDictMap.fmsFundLedgerDirection ?? []"
-                aria-label="银行流水方向"
-              />
-            </template>
-          </ElTableColumn>
-          <ElTableColumn label="金额" width="115">
-            <template #default="{ row }">
-              <ElInputNumber
-                v-model="row.amount"
-                :min="0"
-                :precision="2"
-                :controls="false"
-                class="!w-full"
-              />
-            </template>
-          </ElTableColumn>
-          <ElTableColumn label="对方户名 / 账号" min-width="170">
-            <template #default="{ row }">
-              <div class="grid gap-2">
-                <ElInput v-model="row.counterpartyName" maxlength="120" placeholder="对方户名" />
-                <ElInput
-                  v-model="row.counterpartyAccount"
-                  maxlength="64"
-                  show-password
-                  autocomplete="new-password"
-                  placeholder="保存后仅显示尾号"
-                />
-              </div>
-            </template>
-          </ElTableColumn>
-          <ElTableColumn label="银行参考号 / 摘要" min-width="170">
-            <template #default="{ row }">
-              <div class="grid gap-2">
-                <ElInput v-model="row.bankReference" maxlength="120" placeholder="用于自动匹配" />
-                <ElInput v-model="row.bankMemo" maxlength="300" placeholder="银行交易摘要" />
-              </div>
-            </template>
-          </ElTableColumn>
-          <ElTableColumn label="操作" width="64" fixed="right" align="center">
-            <template #default="{ $index }">
-              <BusinessTableRowActions>
-                <ArtButtonTable
-                  type="delete"
-                  label="移除待导入流水"
-                  permission=""
-                  :disabled="form.data.lines.length <= 1"
-                  @click="removeLine($index)"
-                />
-              </BusinessTableRowActions>
-            </template>
-          </ElTableColumn>
-        </ArtTable>
-      </section>
       <ElAlert
         v-if="submitError"
         class="mt-4"
@@ -124,7 +124,8 @@
   import { getFriendlySupabaseErrorMessage } from '@/utils/supabase'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { createFinancePrerequisiteOverlay } from '../../../modules/use-finance-account-set-prerequisite'
-  import ArtTable from '@/components/core/tables/art-table/index.vue'
+  import ArtTable, { type ArtTableExpose } from '@/components/core/tables/art-table/index.vue'
+  import type { ColumnOption } from '@/types'
   import ArtButtonTable from '@/components/core/forms/art-button-table/index.vue'
   import BusinessTableRowActions from '@/components/business/business-table-row-actions/index.vue'
   import { normalizeNullableText } from '@/utils/form/normalize'
@@ -151,7 +152,44 @@
   const { getDictMap } = storeToRefs(userStore)
   const dialogRef = ref<ArtDialogExpose>()
   const prerequisiteOverlay = createFinancePrerequisiteOverlay(dialogRef)
-  const formRef = ref<{ validate: () => Promise<boolean>; clearValidate: () => void }>()
+  const activeTab = ref('')
+  const formRef = ref<InstanceType<typeof ArtForm>>()
+  type ImportLine = FormData['lines'][number]
+  const lineTableRef = ref<ArtTableExpose<ImportLine>>()
+  const lineColumns: ColumnOption<ImportLine>[] = [
+    { type: 'index', label: '#', width: 48 },
+    {
+      prop: 'transactionDate',
+      label: '交易日期',
+      width: 145,
+      useSlot: true,
+      required: true,
+      headerTooltip: '交易日期必须位于上方选择的对账期间内。',
+      rules: {
+        validator: ({ value }) =>
+          typeof value === 'string' &&
+          value >= form.data.statementStartDate &&
+          value <= form.data.statementEndDate,
+        message: ({ rowIndex }) => '第 ' + (rowIndex + 1) + ' 行交易日期必须位于对账期间内'
+      }
+    },
+    { prop: 'direction', label: '方向', width: 130, useSlot: true, required: true },
+    {
+      prop: 'amount',
+      label: '金额',
+      width: 115,
+      useSlot: true,
+      required: true,
+      headerTooltip: '金额必须大于0，最多保留两位小数。',
+      rules: {
+        validator: ({ value }) => Number.isFinite(value) && Number(value) > 0,
+        message: ({ rowIndex }) => '第 ' + (rowIndex + 1) + ' 行流水金额必须大于0'
+      }
+    },
+    { prop: 'counterparty', label: '对方户名 / 账号', minWidth: 180, useSlot: true },
+    { prop: 'reference', label: '银行参考号 / 摘要', minWidth: 180, useSlot: true },
+    { prop: 'operation', label: '操作', width: 64, fixed: 'right', useSlot: true }
+  ]
   const accountSetId = ref('')
   const accountSetOptions = ref<Api.Fms.AccountSetOption[]>([])
   const accountOptions = ref<Api.Fms.FundAccountOption[]>([])
@@ -192,7 +230,7 @@
   })
 
   const formItems = computed<FormItem[]>(() => [
-    { label: '对账范围', key: 'scopeSection', type: 'divider', span: 24 },
+    { label: '对账范围', key: 'scopeSection', type: 'tab', span: 24 },
     {
       label: '所属账套',
       key: '__accountSetId',
@@ -254,7 +292,9 @@
       type: 'textarea',
       span: 24,
       props: { placeholder: '选填' }
-    }
+    },
+    { key: 'bankLinesSection', label: '银行流水', type: 'tab' },
+    { key: 'bankLines', label: '', span: 24, labelWidth: 0 }
   ])
 
   function addLine(): void {
@@ -278,21 +318,18 @@
     )
   }
 
-  function validateLines(): boolean {
+  async function validateLines(): Promise<boolean> {
     if (!form.data.lines.length) {
       ElMessage.warning('请至少添加一笔银行流水')
       return false
     }
-    const invalidIndex = form.data.lines.findIndex(
-      (line) =>
-        !line.transactionDate ||
-        !line.direction ||
-        Number(line.amount) <= 0 ||
-        line.transactionDate < form.data.statementStartDate ||
-        line.transactionDate > form.data.statementEndDate
-    )
-    if (invalidIndex >= 0) {
-      ElMessage.warning(`第 ${invalidIndex + 1} 行的日期、方向或金额不正确`)
+    const result = await lineTableRef.value?.validate({ focus: false })
+    if (result && !result.valid) {
+      await formRef.value?.focusField('bankLines')
+      if (result.firstError) {
+        await lineTableRef.value?.validateField(result.firstError.prop)
+        ElMessage.warning(result.firstError.message)
+      }
       return false
     }
     const inflow = form.data.lines
@@ -315,7 +352,7 @@
     submitError.value = ''
     try {
       if (!(await validateArtFormForSubmit(formRef.value))) return false
-      if (!validateLines()) return false
+      if (!(await validateLines())) return false
       await importBankReconciliation({
         ...form.data,
         importedFileName: normalizeNullableText(form.data.importedFileName),

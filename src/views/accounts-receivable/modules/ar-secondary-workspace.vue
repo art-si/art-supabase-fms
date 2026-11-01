@@ -11,8 +11,7 @@
       </BusinessWorkspaceHeader>
       <ArtTableQuery
         ref="tableRef"
-        :model-value="search"
-        @update:model-value="replaceReactiveModel(search, $event)"
+        v-model="search"
         :api-fn="fetchRows"
         :columns-factory="columnsFactory"
         :search-items="searchItems"
@@ -52,14 +51,13 @@
   </ArtPermissionGuard>
 </template>
 <script setup lang="tsx">
-  import { replaceReactiveModel } from '@/utils/form/model'
   import { createArDeleteMetadata } from './ar-delete-metadata'
   import { getRevenueCostDisplayState, canCreateReceiptRefund } from './receivable-model'
   import { useRouteDocumentDrawer } from '@/hooks/core/useRouteDocumentDrawer'
   import ArPrintSheet, { type ArPrintRecord } from './ar-print-sheet.vue'
   import FinanceVoucherPreview from '@/components/business/finance-voucher-preview/index.vue'
   import type { DataSelectColumn } from '@/components/core/forms/art-data-select/types'
-  import { ref, reactive, computed, watch } from 'vue'
+  import { ref, computed, watch } from 'vue'
   import { useRoute, useRouter } from 'vue-router'
   import { ElMessage } from 'element-plus'
   import { uniq } from 'lodash-es'
@@ -148,7 +146,7 @@
   const voucherDialog = ref<InstanceType<typeof FinanceVoucherPreview>>()
   const voucherResult = ref<ArVoucherResult>()
   const busy = ref(false)
-  const search = reactive({ keyword: '', status: '', businessDateRange: [] })
+  const search = ref({ keyword: '', status: '', businessDateRange: [] })
   const catalog = {
     receipt: {
       View: 'FinanceReceipt:View',

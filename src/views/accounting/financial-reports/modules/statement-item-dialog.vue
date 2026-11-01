@@ -10,13 +10,12 @@
       :span="12"
       :gutter="20"
       label-width="112px"
-      :show-reset="false"
-      :show-submit="false"
     />
   </ArtDialog>
 </template>
 
 <script setup lang="ts">
+  import TreeUtils from '@/utils/tree'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { normalizeNullableText } from '@/utils/form/normalize'
@@ -34,6 +33,7 @@
   type Item = Api.Fms.FinancialStatementItemRecord
   type FormData = Api.Fms.SaveFinancialStatementItemPayload
 
+  const optionTree = new TreeUtils({ idKey: 'value', parentKey: 'parentId' })
   const emit = defineEmits<{ success: [] }>()
   const userStore = useUserStore()
   const { getDictMap } = storeToRefs(userStore)
@@ -98,14 +98,18 @@
     }))
   )
 
-  const parentOptions = computed(() =>
-    context.items
-      .filter((item) => item.id !== form.data.id)
-      .map((item) => ({
-        label: `${'　'.repeat(Math.max(item.itemLevel - 1, 0))}${item.itemCode} ${item.itemName}`,
-        value: item.id
+  const parentOptions = computed(() => {
+    const tree = optionTree.listToTree(
+      context.items.map((item) => ({
+        value: item.id,
+        parentId: item.parentId,
+        label: `${item.itemCode} ${item.itemName}`
       }))
-  )
+    )
+    return form.data.id
+      ? optionTree.removeNodesByCondition(tree, (item) => item.value === form.data.id).tree
+      : tree
+  })
 
   const formItems = computed<FormItem[]>(() => [
     { label: '项目结构', key: 'structureSection', type: 'divider', span: 24 },
@@ -130,10 +134,11 @@
     {
       label: '上级项目',
       key: 'parentId',
-      type: 'select',
+      type: 'treeSelect',
       span: 24,
       props: {
-        options: parentOptions.value,
+        data: parentOptions.value,
+        checkStrictly: true,
         filterable: true,
         clearable: true,
         placeholder: '不选择表示一级项目'

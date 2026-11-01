@@ -1,5 +1,13 @@
 <template>
-  <ArtDialog ref="dialogRef" size="lg">
+  <ArtDialog
+    ref="dialogRef"
+    @open="
+      () => {
+        activeTab = ''
+      }
+    "
+    size="lg"
+  >
     <ArtDescriptions
       v-if="dialog.mode === 'allocate' && dialog.transaction"
       class="mb-4"
@@ -26,25 +34,17 @@
         }
       ]"
     />
-    <CashVoucherOcrPanel
-      v-if="dialog.mode === 'create'"
-      ref="ocrPanelRef"
-      v-model="form.data.voucherUrls"
-      direction="receipt"
-      :resource-tenant-id="tenantScopeStore.effectiveTenantId || ''"
-      @apply="handleApplyOcrResult"
-    />
+
     <ArtForm
       root-class="art-form--mobile-stack"
       ref="formRef"
+      v-model:active-tab="activeTab"
       v-model="form.data"
-      :items="form.items"
+      :items="workspaceItems"
       :rules="form.rules"
       :span="12"
       :gutter="20"
       label-width="104px"
-      :show-reset="false"
-      :show-submit="false"
     >
       <template #customerId>
         <ArtTableSingleSelect
@@ -111,12 +111,12 @@
               </ElButton>
             </div>
             <ArtTable
+              ref="allocationTableRef"
               :data="allocationRows"
               :border="false"
               :columns="allocationColumns"
               :pagination="false"
               height="auto"
-              :show-table-header="false"
               max-height="260px"
             />
           </div>
@@ -130,7 +130,15 @@
           />
         </div>
       </template>
-    </ArtForm>
+      <template #cashEvidence
+        ><CashVoucherOcrPanel
+          v-if="dialog.mode === 'create'"
+          ref="ocrPanelRef"
+          v-model="form.data.voucherUrls"
+          direction="receipt"
+          :resource-tenant-id="tenantScopeStore.effectiveTenantId || ''"
+          @apply="handleApplyOcrResult" /></template
+    ></ArtForm>
   </ArtDialog>
 </template>
 
@@ -139,7 +147,7 @@
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { normalizeNullableNumber, normalizeNullableText } from '@/utils/form/normalize'
   import dayjs from 'dayjs'
-  import { ElInputNumber, type FormRules } from 'element-plus'
+  import { ElInputNumber, ElMessage, type FormRules } from 'element-plus'
   import { round } from 'lodash-es'
   import type { ComputedRef, UnwrapNestedRefs } from 'vue'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
@@ -156,7 +164,7 @@
     DataSelectRecord
   } from '@/components/core/forms/art-data-select/types'
   import ArtSectionTitle from '@/components/core/surfaces/art-section-title/index.vue'
-  import ArtTable from '@/components/core/tables/art-table/index.vue'
+  import ArtTable, { type ArtTableExpose } from '@/components/core/tables/art-table/index.vue'
   import type { ColumnOption } from '@/types'
   import {
     allocateCustomerReceipt,
@@ -193,11 +201,6 @@
     remark: string
   }
 
-  interface FormExpose {
-    validate: () => Promise<boolean>
-    clearValidate: () => void
-  }
-
   interface FormGroup {
     data: ReceiptForm
     items: ComputedRef<FormItem[]>
@@ -224,8 +227,10 @@
   const { getDictMap } = storeToRefs(userStore)
   const tenantScopeStore = useTenantScopeStore()
   const dialogRef = ref<ArtDialogExpose>()
-  const formRef = ref<FormExpose>()
+  const activeTab = ref('')
+  const formRef = ref<InstanceType<typeof ArtForm>>()
   const statementSelectRef = ref<ArtDataSelectExpose>()
+  const allocationTableRef = ref<ArtTableExpose<AllocationRow>>()
   const ocrPanelRef = ref<OcrPanelExpose>()
   const ocrResult = ref<Api.Fms.CashVoucherOcrAnalyzeResponse>()
   const transactionNumber = useDocumentNumberRule('tms.cash_transaction')
@@ -525,6 +530,14 @@
     {
       prop: 'allocationAmount',
       label: '本次核销',
+      headerTooltip: '填0表示暂不核销；单份对账单核销不能超过未结余额。',
+      rules: {
+        validator: ({ value, row }) =>
+          Number.isFinite(value) &&
+          Number(value) >= 0 &&
+          Number(value) <= Number(row.outstandingAmount ?? 0),
+        message: ({ rowIndex }) => '第 ' + (rowIndex + 1) + ' 行核销金额不能超过未结余额'
+      },
       width: 180,
       formatter: (row) => (
         <ElInputNumber
@@ -672,15 +685,6 @@
       ElMessage.warning('核销合计不能超过本次可核销金额')
       return false
     }
-    const invalidRow = allocationRows.value.find(
-      (row) =>
-        (normalizeNullableNumber(row.allocationAmount) ?? 0) >
-        (normalizeNullableNumber(row.outstandingAmount) ?? 0)
-    )
-    if (invalidRow) {
-      ElMessage.warning(`对账单 ${invalidRow.statementNo} 的核销金额超过未结金额`)
-      return false
-    }
     if (dialog.mode === 'allocate' && !buildAllocations().length) {
       ElMessage.warning('请至少填写一条核销金额')
       return false
@@ -688,11 +692,49 @@
     return true
   }
 
+  const workspaceItems = computed<FormItem[]>(() => {
+    const raw = form.items
+    const allocationSlots: FormItem[] = []
+    if (dialog.mode === 'allocate') return [...raw, ...allocationSlots]
+    const statement = raw.find((item) => item.key === 'statementIds')
+    return [
+      { key: 'cashIdentity', label: '收付款信息', type: 'tab' },
+      ...raw.filter(
+        (item) =>
+          !['baseSection', 'allocationSection', 'base', 'allocation', 'statementIds'].includes(
+            item.key
+          )
+      ),
+      ...(statement
+        ? [
+            {
+              key: 'cashAllocation',
+              label: '核销分配',
+              type: allocationRows.value.length ? ('tab' as const) : ('divider' as const)
+            },
+            statement,
+            ...allocationSlots
+          ]
+        : []),
+      { key: 'cashEvidenceSection', label: '凭证与识别', type: 'tab' },
+      { key: 'cashEvidence', label: '', span: 24, labelWidth: 0 }
+    ]
+  })
+
   async function handleSubmit(): Promise<boolean> {
     try {
       if (!(await validateArtFormForSubmit(formRef.value))) return false
     } catch (error) {
       notifyFriendlyError(error, '客户收款校验失败，请重试')
+      return false
+    }
+    const allocationValidation = await allocationTableRef.value?.validate({ focus: false })
+    if (allocationValidation && !allocationValidation.valid) {
+      await formRef.value?.focusField('statementIds')
+      if (allocationValidation.firstError) {
+        await allocationTableRef.value?.validateField(allocationValidation.firstError.prop)
+        ElMessage.warning(allocationValidation.firstError.message)
+      }
       return false
     }
     if (!validateAllocations()) return false

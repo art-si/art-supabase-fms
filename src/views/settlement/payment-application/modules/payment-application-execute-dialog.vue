@@ -22,8 +22,6 @@
       :items="form.items"
       :rules="form.rules"
       label-width="100px"
-      :show-reset="false"
-      :show-submit="false"
     >
       <template #voucherUrls>
         <ArtUploadImage

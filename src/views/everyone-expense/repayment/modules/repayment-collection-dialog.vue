@@ -13,8 +13,6 @@
       :items="items"
       :rules="rules"
       :span="12"
-      :show-reset="false"
-      :show-submit="false"
       label-position="top"
     />
   </ArtDialog>

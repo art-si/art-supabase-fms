@@ -1,178 +1,191 @@
 <template>
-  <ArtDialog ref="dialogRef" size="xl">
+  <ArtDialog
+    ref="dialogRef"
+    @open="
+      () => {
+        activeDocumentTab = 'overview'
+      }
+    "
+    size="xl"
+  >
     <div class="flex min-w-0 flex-col gap-4">
-      <ArtSectionCard v-if="readonly" title="基本信息">
-        <ArtDescriptions
-          :data="model"
-          :items="[
-            { key: 'loanId', label: '关联借款', value: selectedLoan?.loanNo || '—' },
-            { key: 'repaymentDate', label: '还款日期', field: 'repaymentDate' },
-            { key: 'reason', label: '还款事由', field: 'reason' },
-            { key: 'payerName', label: '付款人', field: 'payerName' },
-            { key: 'payerBank', label: '付款银行', field: 'payerBank' },
-            { key: 'bankAccount', label: '付款银行账号', field: 'bankAccount' },
-            { key: 'remark', label: '备注', field: 'remark' }
-          ]"
-        />
-      </ArtSectionCard>
-      <ArtForm
-        v-else
-        ref="formRef"
-        v-model="model"
-        :items="formItems"
-        :rules="rules"
-        :span="12"
-        :gutter="20"
-        label-position="top"
-        :show-reset="false"
-        :show-submit="false"
-      >
-        <template #loanId>
-          <ElSelect
-            v-model="model.loanId"
-            class="w-full"
-            filterable
-            :disabled="readonly || Boolean(model.id)"
-            placeholder="选择已付款借款单"
-            @change="selectLoan"
-          >
-            <ElOption
-              v-for="loan in loanOptions"
-              :key="loan.id"
-              :value="loan.id"
-              :label="`${loan.loanNo} · ${loan.applicantName} · 可还 ${formatCurrencyValue(loan.availableAmount ?? loan.remainingBalance ?? 0)}`"
+      <ElTabs v-model="activeDocumentTab"
+        ><ElTabPane name="overview" label="还款资料"
+          ><div class="space-y-4"
+            ><ArtSectionCard v-if="readonly" title="基本信息">
+              <ArtDescriptions
+                :data="model"
+                :items="[
+                  { key: 'loanId', label: '关联借款', value: selectedLoan?.loanNo || '—' },
+                  { key: 'repaymentDate', label: '还款日期', field: 'repaymentDate' },
+                  { key: 'reason', label: '还款事由', field: 'reason' },
+                  { key: 'payerName', label: '付款人', field: 'payerName' },
+                  { key: 'payerBank', label: '付款银行', field: 'payerBank' },
+                  { key: 'bankAccount', label: '付款银行账号', field: 'bankAccount' },
+                  { key: 'remark', label: '备注', field: 'remark' }
+                ]"
+              />
+            </ArtSectionCard>
+            <ArtForm
+              v-else
+              ref="formRef"
+              v-model="model"
+              :items="formItems"
+              :rules="rules"
+              :span="12"
+              :gutter="20"
+              label-position="top"
+            >
+              <template #loanId>
+                <ElSelect
+                  v-model="model.loanId"
+                  class="w-full"
+                  filterable
+                  :disabled="readonly || Boolean(model.id)"
+                  placeholder="选择已付款借款单"
+                  @change="selectLoan"
+                >
+                  <ElOption
+                    v-for="loan in loanOptions"
+                    :key="loan.id"
+                    :value="loan.id"
+                    :label="`${loan.loanNo} · ${loan.applicantName} · 可还 ${formatCurrencyValue(loan.availableAmount ?? loan.remainingBalance ?? 0)}`"
+                  />
+                </ElSelect>
+              </template>
+            </ArtForm>
+            <ElAlert
+              v-if="!loanOptions.length && !readonly"
+              class="mx-4 w-auto"
+              type="info"
+              :closable="false"
+              title="暂无可关联的已付款借款单。借款审批并实际付款后，才可登记还款。"
             />
-          </ElSelect>
-        </template>
-      </ArtForm>
-      <ElAlert
-        v-if="!loanOptions.length && !readonly"
-        class="mx-4 w-auto"
-        type="info"
-        :closable="false"
-        title="暂无可关联的已付款借款单。借款审批并实际付款后，才可登记还款。"
-      />
-      <ElAlert
-        v-if="selectedLoan?.isDemo"
-        class="mx-4 w-auto"
-        type="warning"
-        :closable="false"
-        title="此借款为演示付款，后续还款与收款同样只作流程验证。"
-      />
-      <div
-        v-if="selectedLoan"
-        class="mx-4 flex items-center gap-3 rounded-lg border border-[var(--el-border-color-light)] px-4 py-3"
-      >
-        <img
-          v-if="selectedLoan.applicantAvatarUrl"
-          :src="selectedLoan.applicantAvatarUrl"
-          :alt="`${selectedLoan.applicantName}头像`"
-          width="40"
-          height="40"
-          class="size-10 shrink-0 rounded-full object-cover"
-        />
-        <div
-          v-else
-          class="flex size-10 shrink-0 items-center justify-center rounded-full bg-[var(--el-fill-color-light)] text-sm font-medium text-[var(--art-gray-700)]"
+            <ElAlert
+              v-if="selectedLoan?.isDemo"
+              class="mx-4 w-auto"
+              type="warning"
+              :closable="false"
+              title="此借款为演示付款，后续还款与收款同样只作流程验证。"
+            />
+            <div
+              v-if="selectedLoan"
+              class="mx-4 flex items-center gap-3 rounded-lg border border-[var(--el-border-color-light)] px-4 py-3"
+            >
+              <img
+                v-if="selectedLoan.applicantAvatarUrl"
+                :src="selectedLoan.applicantAvatarUrl"
+                :alt="`${selectedLoan.applicantName}头像`"
+                width="40"
+                height="40"
+                class="size-10 shrink-0 rounded-full object-cover"
+              />
+              <div
+                v-else
+                class="flex size-10 shrink-0 items-center justify-center rounded-full bg-[var(--el-fill-color-light)] text-sm font-medium text-[var(--art-gray-700)]"
+              >
+                {{ selectedLoan.applicantName.slice(0, 1) }}
+              </div>
+              <div
+                class="grid min-w-0 flex-1 gap-x-6 gap-y-1 text-xs text-[var(--art-gray-700)] sm:grid-cols-2 xl:grid-cols-4"
+              >
+                <span
+                  >还款人
+                  <strong class="font-medium text-[var(--art-gray-900)]">{{
+                    selectedLoan.applicantName
+                  }}</strong></span
+                >
+                <span
+                  >职位
+                  <strong class="font-medium text-[var(--art-gray-900)]">{{
+                    selectedLoan.positionName || '—'
+                  }}</strong></span
+                >
+                <span
+                  >申请人公司
+                  <strong class="font-medium text-[var(--art-gray-900)]">{{
+                    selectedLoan.applicantCompanyName
+                  }}</strong></span
+                >
+                <span
+                  >费用承担部门
+                  <strong class="font-medium text-[var(--art-gray-900)]">{{
+                    selectedLoan.expenseDepartmentName
+                  }}</strong></span
+                >
+                <span
+                  >费用承担公司
+                  <strong class="font-medium text-[var(--art-gray-900)]">{{
+                    selectedLoan.expenseCompanyName
+                  }}</strong></span
+                >
+              </div>
+            </div></div
+          ></ElTabPane
         >
-          {{ selectedLoan.applicantName.slice(0, 1) }}
-        </div>
-        <div
-          class="grid min-w-0 flex-1 gap-x-6 gap-y-1 text-xs text-[var(--art-gray-700)] sm:grid-cols-2 xl:grid-cols-4"
-        >
-          <span
-            >还款人
-            <strong class="font-medium text-[var(--art-gray-900)]">{{
-              selectedLoan.applicantName
-            }}</strong></span
-          >
-          <span
-            >职位
-            <strong class="font-medium text-[var(--art-gray-900)]">{{
-              selectedLoan.positionName || '—'
-            }}</strong></span
-          >
-          <span
-            >申请人公司
-            <strong class="font-medium text-[var(--art-gray-900)]">{{
-              selectedLoan.applicantCompanyName
-            }}</strong></span
-          >
-          <span
-            >费用承担部门
-            <strong class="font-medium text-[var(--art-gray-900)]">{{
-              selectedLoan.expenseDepartmentName
-            }}</strong></span
-          >
-          <span
-            >费用承担公司
-            <strong class="font-medium text-[var(--art-gray-900)]">{{
-              selectedLoan.expenseCompanyName
-            }}</strong></span
-          >
-        </div>
-      </div>
-      <ArtSectionCard
-        class="mx-4 min-w-0"
-        title="还款明细"
-        subtitle="从关联借款带入费用项目、借款事项和币种，录入本次还款金额。"
-        :empty="!lines.length"
-        empty-title="尚未添加还款明细"
-        empty-description="选择已付款借款单后，添加需归还的借款明细。"
-        :min-height="185"
-      >
-        <template #actions>
-          <strong class="text-sm font-semibold tabular-nums text-[var(--el-color-warning)]">
-            还款合计 {{ formatCurrencyValue(totalAmount) }}
-          </strong>
-          <ElButton
-            v-if="!readonly"
-            type="primary"
-            plain
-            :disabled="!selectedLoan"
-            @click="openLine()"
-          >
-            <ArtSvgIcon icon="ri:add-line" aria-hidden="true" />新增明细
-          </ElButton>
-        </template>
-        <ArtTable
-          v-if="lines.length"
-          :data="lines"
-          :columns="lineColumns"
-          :pagination="false"
-          :show-table-header="false"
-          table-layout="fixed"
-          max-height="280px"
-        />
-      </ArtSectionCard>
-      <ArtSectionCard
-        v-if="readonly && receipts.length"
-        class="mx-4 min-w-0"
-        title="收款流水"
-        subtitle="已登记的收款记录。"
-        :min-height="140"
-      >
-        <ArtTable
-          :data="receipts"
-          :columns="receiptColumns"
-          :pagination="false"
-          :show-table-header="false"
-          table-layout="fixed"
-          max-height="220px"
-        />
-      </ArtSectionCard>
-      <section class="px-4">
-        <ArtSectionTitle>附件</ArtSectionTitle>
-        <ArtUploadFile
-          v-model="model.attachmentUrls"
-          multiple
-          :disabled="readonly"
-          :limit="8"
-          :resource-tenant-id="model.tenantId"
-          accept=".pdf,.doc,.docx,.xls,.xlsx,image/*"
-          tip="支持文档和图片，单个文件不超过 20 MB"
-        />
-      </section>
+        <ElTabPane name="lines" label="明细与凭证"
+          ><div class="space-y-4"
+            ><ArtSectionCard
+              class="mx-4 min-w-0"
+              title="还款明细"
+              subtitle="从关联借款带入费用项目、借款事项和币种，录入本次还款金额。"
+              :empty="!lines.length"
+              empty-title="尚未添加还款明细"
+              empty-description="选择已付款借款单后，添加需归还的借款明细。"
+              :min-height="185"
+            >
+              <template #actions>
+                <strong class="text-sm font-semibold tabular-nums text-[var(--el-color-warning)]">
+                  还款合计 {{ formatCurrencyValue(totalAmount) }}
+                </strong>
+                <ElButton
+                  v-if="!readonly"
+                  type="primary"
+                  plain
+                  :disabled="!selectedLoan"
+                  @click="openLine()"
+                >
+                  <ArtSvgIcon icon="ri:add-line" aria-hidden="true" />新增明细
+                </ElButton>
+              </template>
+              <ArtTable
+                v-if="lines.length"
+                :data="lines"
+                :columns="lineColumns"
+                :pagination="false"
+                :show-table-header="false"
+                table-layout="fixed"
+                max-height="280px"
+              />
+            </ArtSectionCard>
+            <ArtSectionCard
+              v-if="readonly && receipts.length"
+              class="mx-4 min-w-0"
+              title="收款流水"
+              subtitle="已登记的收款记录。"
+              :min-height="140"
+            >
+              <ArtTable
+                :data="receipts"
+                :columns="receiptColumns"
+                :pagination="false"
+                :show-table-header="false"
+                table-layout="fixed"
+                max-height="220px"
+              />
+            </ArtSectionCard>
+            <section class="px-4">
+              <ArtSectionTitle>附件</ArtSectionTitle>
+              <ArtUploadFile
+                v-model="model.attachmentUrls"
+                multiple
+                :disabled="readonly"
+                :limit="8"
+                :resource-tenant-id="model.tenantId"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,image/*"
+                tip="支持文档和图片，单个文件不超过 20 MB"
+              /> </section></div></ElTabPane
+      ></ElTabs>
     </div>
     <ArtDialog ref="lineDialogRef" size="md">
       <ArtForm
@@ -181,8 +194,6 @@
         :items="lineFormItems"
         :rules="lineRules"
         :span="12"
-        :show-reset="false"
-        :show-submit="false"
         label-position="top"
       >
         <template #loanItemId>
@@ -220,6 +231,7 @@
   import { useArtOverlaySession } from '@/hooks/core/useArtOverlay'
   import { createTenantScopeReadGuard } from '@/utils/tenant-scope-context'
   import { useTenantScopeFormPolicy } from '@/hooks/core/useTenantScopeFormPolicy'
+  import { focusFirstInvalidFormField } from '@/utils/form/validation'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { formatCurrencyValue } from '@/utils/ui'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
@@ -256,6 +268,7 @@
   }
   const emit = defineEmits<{ success: [] }>()
   const { defaultWriteTenantId } = useTenantScopeFormPolicy()
+  const activeDocumentTab = ref('overview')
   const dialogRef = ref<ArtDialogExpose<OpenData>>()
   const { hasAuth } = useAuth()
   const captureOperation = useTenantOperationGuard('FinanceRepayment:View')
@@ -602,7 +615,13 @@
             return false
           }
           try {
-            if (!(await validateArtFormForSubmit(formRef.value))) return false
+            if (!(await validateArtFormForSubmit(formRef.value))) {
+              activeDocumentTab.value = 'overview'
+              await nextTick()
+              const root = formRef.value?.$el
+              if (root instanceof HTMLElement) focusFirstInvalidFormField(shallowRef(root))
+              return false
+            }
             if (!isCurrent()) return false
             if (!lines.value.length) {
               notifyFriendlyError(new Error('缺少明细'), '请添加至少一条还款明细')

@@ -9,19 +9,14 @@
     </ElAlert>
     <ArtForm
       ref="formRef"
-      :model-value="form"
-      @update:model-value="replaceReactiveModel(form, $event)"
+      v-model="form"
       :items="items"
       :rules="rules"
       :span="24"
       label-width="106px"
-      :show-reset="false"
-      :show-submit="false"
   /></ArtDialog>
 </template>
 <script setup lang="ts">
-  import { replaceReactiveModel } from '@/utils/form/model'
-  import { toRef } from 'vue'
   import { useAccountingPeriodOptions } from '../../../modules/use-accounting-period-options'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
@@ -40,7 +35,7 @@
   const formRef = ref<{ validate: () => Promise<boolean>; clearValidate: () => void }>()
   const accountSetOptions = ref<Api.Fms.AccountSetOption[]>([])
   const fieldAccess = ref<Api.Fms.PayrollFieldAccessMap>({})
-  const form = reactive<Api.Fms.SavePayrollRunPayload & { accountSetId: string }>({
+  const form = ref<Api.Fms.SavePayrollRunPayload & { accountSetId: string }>({
     accountSetId: '',
     accountingPeriodId: '',
     salaryExpenseSubjectId: null,
@@ -50,13 +45,23 @@
     remark: null
   })
   const canEditReferences = computed(
-    () => !form.id || canEditField(fieldAccess.value, 'payrollReferences')
+    () => !form.value.id || canEditField(fieldAccess.value, 'payrollReferences')
   )
   const { periodOptions, periodsLoading, periodLoadFailed, loadPeriods, resetPeriods } =
     useAccountingPeriodOptions(
-      toRef(form, 'accountSetId'),
-      toRef(form, 'accountingPeriodId'),
-      computed(() => Boolean(form.id))
+      computed({
+        get: () => form.value.accountSetId,
+        set: (value) => {
+          form.value.accountSetId = value
+        }
+      }),
+      computed({
+        get: () => form.value.accountingPeriodId,
+        set: (value) => {
+          form.value.accountingPeriodId = value
+        }
+      }),
+      computed(() => Boolean(form.value.id))
     )
   const rules: FormRules = {
     accountSetId: [{ required: true, message: '请选择账套', trigger: 'change' }],
@@ -71,7 +76,7 @@
         options: accountSetOptions.value,
         filterable: true,
         onChange: loadPeriods,
-        disabled: Boolean(form.id),
+        disabled: Boolean(form.value.id),
         noDataText: ACCOUNTING_SELECT_EMPTY_TEXT.accountSet
       }
     },
@@ -82,10 +87,13 @@
       props: {
         options: periodOptions.value,
         disabled:
-          Boolean(form.id) || !form.accountSetId || periodsLoading.value || periodLoadFailed.value,
+          Boolean(form.value.id) ||
+          !form.value.accountSetId ||
+          periodsLoading.value ||
+          periodLoadFailed.value,
         loading: periodsLoading.value,
         placeholder: '选择开放期间',
-        noDataText: form.accountSetId
+        noDataText: form.value.accountSetId
           ? ACCOUNTING_SELECT_EMPTY_TEXT.openAccountingPeriod
           : ACCOUNTING_SELECT_EMPTY_TEXT.chooseAccountSet
       }
@@ -102,17 +110,17 @@
       if (periodsLoading.value || periodLoadFailed.value) return false
       if (!(await validateArtFormForSubmit(formRef.value))) return false
       const result = await savePayrollRun({
-        id: form.id,
-        accountingPeriodId: form.accountingPeriodId,
+        id: form.value.id,
+        accountingPeriodId: form.value.accountingPeriodId,
         ...(canEditReferences.value
           ? {
-              salaryExpenseSubjectId: form.salaryExpenseSubjectId || null,
-              salaryPayableSubjectId: form.salaryPayableSubjectId || null,
-              taxPayableSubjectId: form.taxPayableSubjectId || null,
-              socialSecurityPayableSubjectId: form.socialSecurityPayableSubjectId || null
+              salaryExpenseSubjectId: form.value.salaryExpenseSubjectId || null,
+              salaryPayableSubjectId: form.value.salaryPayableSubjectId || null,
+              taxPayableSubjectId: form.value.taxPayableSubjectId || null,
+              socialSecurityPayableSubjectId: form.value.socialSecurityPayableSubjectId || null
             }
           : {}),
-        remark: form.remark
+        remark: form.value.remark
       })
       if (result.error) throw result.error
       emit('success')
@@ -126,7 +134,7 @@
     resetPeriods()
     accountSetOptions.value = []
     fieldAccess.value = {}
-    form.id = undefined
+    form.value.id = undefined
     const prepare = async () => {
       const { data: accountSets, error } = await fetchAccountSetOptions({
         status: 'active',
@@ -147,7 +155,7 @@
         throw new Error('所选账套已不可用，请刷新列表后重试')
       }
       fieldAccess.value = record?.fieldAccess ?? {}
-      Object.assign(form, {
+      Object.assign(form.value, {
         id: record?.id,
         accountSetId:
           record?.accountSetId ?? accountSetId ?? accountSetOptions.value[0]?.value ?? '',

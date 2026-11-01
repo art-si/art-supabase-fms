@@ -14,8 +14,6 @@
       :items="form.items"
       :rules="form.rules"
       label-width="96px"
-      :show-reset="false"
-      :show-submit="false"
     />
   </ArtDialog>
 </template>

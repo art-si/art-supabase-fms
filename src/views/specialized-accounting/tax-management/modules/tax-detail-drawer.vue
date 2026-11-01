@@ -1,5 +1,15 @@
 <template>
-  <ArtDrawer header-icon="ri:bill-line" :loading="loading" ref="drawerRef" :show-footer="false">
+  <ArtDrawer
+    header-icon="ri:bill-line"
+    :loading="loading"
+    ref="drawerRef"
+    @open="
+      () => {
+        activeDetailTab = 'overview'
+      }
+    "
+    :show-footer="false"
+  >
     <template #subtitle>
       <div class="flex flex-wrap items-center gap-1">
         <ArtDictDisplay dict-code="fmsTaxType" :value="period?.taxType" display="text" />
@@ -16,145 +26,173 @@
       @retry="reloadDetail"
     >
       <div v-if="period" class="tax-detail">
-        <ArtSectionCard title="期间信息" preserve-content-structure>
-          <ArtDescriptions
-            :data="period"
-            :items="descriptionItems"
-            :columns="2"
-            label-width="104px"
-          />
-        </ArtSectionCard>
-
-        <ArtSectionCard v-if="filingItems.length" title="申报及缴纳" preserve-content-structure>
-          <ArtDescriptions :data="period" :items="filingItems" :columns="2" label-width="104px" />
-        </ArtSectionCard>
-
-        <ArtSectionCard
-          title="税务台账明细"
-          subtitle="销项、进项与调整项目"
-          :loading="linesLoading"
-          :error="linesError"
-          @retry="reload"
-          :empty="!lines.length"
-          empty-title="暂无税务台账明细"
-          empty-description="新增明细后可在此核对计税金额、税率与税额。"
-          :empty-visual-size="72"
-          :min-height="188"
-          preserve-content-structure
-        >
-          <template v-if="editable && !linesLoading && !linesError" #actions>
-            <ElButton
-              v-auth="'FinanceTaxManagement:Calculate'"
-              type="primary"
-              @click="dialogRef?.handleOpen(period)"
-            >
-              新增明细
-            </ElButton>
-          </template>
-          <ArtTable
-            v-if="!isCompact"
-            class="h-auto!"
-            height="auto"
-            :pagination="false"
-            :border="false"
-            :show-table-header="false"
-            :data="lines"
-            row-key="id"
-          >
-            <ElTableColumn prop="occurredOn" label="日期" width="112" />
-            <ElTableColumn v-if="canViewSources" label="来源 / 单号" min-width="190">
-              <template #default="{ row }">
-                <div class="tax-detail__source">
-                  <strong :title="row.sourceNo || '--'">{{ row.sourceNo || '--' }}</strong>
-                  <small>{{ sourceTypeLabel(row.sourceType) }}</small>
-                </div>
-              </template>
-            </ElTableColumn>
-            <ElTableColumn label="方向" width="86">
-              <template #default="{ row }">
-                <ArtDictDisplay
-                  dict-code="fmsTaxLedgerDirection"
-                  :value="row.direction"
-                  display="tag"
+        <ElTabs v-model="activeDetailTab"
+          ><ElTabPane name="overview" label="期间与申报"
+            ><div class="space-y-4"
+              ><ArtSectionCard title="期间信息" preserve-content-structure>
+                <ArtDescriptions
+                  :data="period"
+                  :items="descriptionItems"
+                  :columns="2"
+                  label-width="104px"
                 />
-              </template>
-            </ElTableColumn>
-            <ElTableColumn v-if="canViewAmounts" label="计税金额" min-width="108" align="right">
-              <template #default="{ row }">{{ formatProtectedAmount(row.taxableAmount) }}</template>
-            </ElTableColumn>
-            <ElTableColumn v-if="canViewAmounts" label="税率" width="82" align="right">
-              <template #default="{ row }">{{ formatProtectedRate(row.taxRate) }}</template>
-            </ElTableColumn>
-            <ElTableColumn v-if="canViewAmounts" label="税额" min-width="108" align="right">
-              <template #default="{ row }">{{ formatProtectedAmount(row.taxAmount) }}</template>
-            </ElTableColumn>
-            <ElTableColumn v-if="editable" label="操作" width="104" fixed="right">
-              <template #default="{ row }">
-                <BusinessTableRowActions>
-                  <ArtButtonTable
-                    type="edit"
-                    label="编辑税务明细"
-                    permission="FinanceTaxManagement:Calculate"
-                    @click="editLine(row)"
-                  />
-                  <ArtButtonTable
-                    type="delete"
-                    label="删除税务明细"
-                    permission="FinanceTaxManagement:Calculate"
-                    @click="remove(row)"
-                  />
-                </BusinessTableRowActions>
-              </template>
-            </ElTableColumn>
-          </ArtTable>
-          <div v-else-if="lines.length" class="tax-detail__mobile-list">
-            <article v-for="line in lines" :key="line.id" class="tax-detail__mobile-item">
-              <div class="tax-detail__mobile-heading">
-                <div class="tax-detail__mobile-identity">
-                  <strong>{{ canViewSources ? line.sourceNo || '税务明细' : '税务明细' }}</strong>
-                  <small
-                    >{{ line.occurredOn
-                    }}<template v-if="canViewSources">
-                      · {{ sourceTypeLabel(line.sourceType) }}</template
-                    ></small
+              </ArtSectionCard>
+
+              <ArtSectionCard
+                v-if="filingItems.length"
+                title="申报及缴纳"
+                preserve-content-structure
+              >
+                <ArtDescriptions
+                  :data="period"
+                  :items="filingItems"
+                  :columns="2"
+                  label-width="104px"
+                /> </ArtSectionCard></div
+          ></ElTabPane>
+          <ElTabPane name="lines" label="税务台账"
+            ><div class="space-y-4"
+              ><ArtSectionCard
+                title="税务台账明细"
+                subtitle="销项、进项与调整项目"
+                :loading="linesLoading"
+                :error="linesError"
+                @retry="reload"
+                :empty="!lines.length"
+                empty-title="暂无税务台账明细"
+                empty-description="新增明细后可在此核对计税金额、税率与税额。"
+                :empty-visual-size="72"
+                :min-height="188"
+                preserve-content-structure
+              >
+                <template v-if="editable && !linesLoading && !linesError" #actions>
+                  <ElButton
+                    v-auth="'FinanceTaxManagement:Calculate'"
+                    type="primary"
+                    @click="dialogRef?.handleOpen(period)"
                   >
+                    新增明细
+                  </ElButton>
+                </template>
+                <ArtTable
+                  v-if="!isCompact"
+                  class="h-auto!"
+                  height="auto"
+                  :pagination="false"
+                  :border="false"
+                  :show-table-header="false"
+                  :data="lines"
+                  row-key="id"
+                >
+                  <ElTableColumn prop="occurredOn" label="日期" width="112" />
+                  <ElTableColumn v-if="canViewSources" label="来源 / 单号" min-width="190">
+                    <template #default="{ row }">
+                      <div class="tax-detail__source">
+                        <strong :title="row.sourceNo || '--'">{{ row.sourceNo || '--' }}</strong>
+                        <small>{{ sourceTypeLabel(row.sourceType) }}</small>
+                      </div>
+                    </template>
+                  </ElTableColumn>
+                  <ElTableColumn label="方向" width="86">
+                    <template #default="{ row }">
+                      <ArtDictDisplay
+                        dict-code="fmsTaxLedgerDirection"
+                        :value="row.direction"
+                        display="tag"
+                      />
+                    </template>
+                  </ElTableColumn>
+                  <ElTableColumn
+                    v-if="canViewAmounts"
+                    label="计税金额"
+                    min-width="108"
+                    align="right"
+                  >
+                    <template #default="{ row }">{{
+                      formatProtectedAmount(row.taxableAmount)
+                    }}</template>
+                  </ElTableColumn>
+                  <ElTableColumn v-if="canViewAmounts" label="税率" width="82" align="right">
+                    <template #default="{ row }">{{ formatProtectedRate(row.taxRate) }}</template>
+                  </ElTableColumn>
+                  <ElTableColumn v-if="canViewAmounts" label="税额" min-width="108" align="right">
+                    <template #default="{ row }">{{
+                      formatProtectedAmount(row.taxAmount)
+                    }}</template>
+                  </ElTableColumn>
+                  <ElTableColumn v-if="editable" label="操作" width="104" fixed="right">
+                    <template #default="{ row }">
+                      <BusinessTableRowActions>
+                        <ArtButtonTable
+                          type="edit"
+                          label="编辑税务明细"
+                          permission="FinanceTaxManagement:Calculate"
+                          @click="editLine(row)"
+                        />
+                        <ArtButtonTable
+                          type="delete"
+                          label="删除税务明细"
+                          permission="FinanceTaxManagement:Calculate"
+                          @click="remove(row)"
+                        />
+                      </BusinessTableRowActions>
+                    </template>
+                  </ElTableColumn>
+                </ArtTable>
+                <div v-else-if="lines.length" class="tax-detail__mobile-list">
+                  <article v-for="line in lines" :key="line.id" class="tax-detail__mobile-item">
+                    <div class="tax-detail__mobile-heading">
+                      <div class="tax-detail__mobile-identity">
+                        <strong>{{
+                          canViewSources ? line.sourceNo || '税务明细' : '税务明细'
+                        }}</strong>
+                        <small
+                          >{{ line.occurredOn
+                          }}<template v-if="canViewSources">
+                            · {{ sourceTypeLabel(line.sourceType) }}</template
+                          ></small
+                        >
+                      </div>
+                      <BusinessTableRowActions v-if="editable">
+                        <ArtButtonTable
+                          type="edit"
+                          label="编辑税务明细"
+                          permission="FinanceTaxManagement:Calculate"
+                          @click="editLine(line)"
+                        />
+                        <ArtButtonTable
+                          type="delete"
+                          label="删除税务明细"
+                          permission="FinanceTaxManagement:Calculate"
+                          @click="remove(line)"
+                        />
+                      </BusinessTableRowActions>
+                    </div>
+                    <div class="tax-detail__mobile-direction">
+                      <ArtDictDisplay
+                        dict-code="fmsTaxLedgerDirection"
+                        :value="line.direction"
+                        display="tag"
+                      />
+                    </div>
+                    <dl v-if="canViewAmounts" class="tax-detail__mobile-amounts">
+                      <div
+                        ><dt>计税金额</dt
+                        ><dd>{{ formatProtectedAmount(line.taxableAmount) }}</dd></div
+                      >
+                      <div
+                        ><dt>税率</dt><dd>{{ formatProtectedRate(line.taxRate) }}</dd></div
+                      >
+                      <div
+                        ><dt>税额</dt><dd>{{ formatProtectedAmount(line.taxAmount) }}</dd></div
+                      >
+                    </dl>
+                  </article>
                 </div>
-                <BusinessTableRowActions v-if="editable">
-                  <ArtButtonTable
-                    type="edit"
-                    label="编辑税务明细"
-                    permission="FinanceTaxManagement:Calculate"
-                    @click="editLine(line)"
-                  />
-                  <ArtButtonTable
-                    type="delete"
-                    label="删除税务明细"
-                    permission="FinanceTaxManagement:Calculate"
-                    @click="remove(line)"
-                  />
-                </BusinessTableRowActions>
-              </div>
-              <div class="tax-detail__mobile-direction">
-                <ArtDictDisplay
-                  dict-code="fmsTaxLedgerDirection"
-                  :value="line.direction"
-                  display="tag"
-                />
-              </div>
-              <dl v-if="canViewAmounts" class="tax-detail__mobile-amounts">
-                <div
-                  ><dt>计税金额</dt><dd>{{ formatProtectedAmount(line.taxableAmount) }}</dd></div
-                >
-                <div
-                  ><dt>税率</dt><dd>{{ formatProtectedRate(line.taxRate) }}</dd></div
-                >
-                <div
-                  ><dt>税额</dt><dd>{{ formatProtectedAmount(line.taxAmount) }}</dd></div
-                >
-              </dl>
-            </article>
-          </div>
-        </ArtSectionCard>
+              </ArtSectionCard></div
+            ></ElTabPane
+          ></ElTabs
+        >
         <TaxLedgerDialog ref="dialogRef" @success="handleLinesChanged" />
         <MasterDataDeleteGuard ref="deleteGuardRef" />
       </div>
@@ -194,6 +232,7 @@
     '税务明细'
   )
   const drawerRef = ref<ArtDrawerExpose<Api.Fms.TaxPeriodRecord>>()
+  const activeDetailTab = ref('overview')
   const dialogRef = ref<{
     handleOpen: (
       period: Api.Fms.TaxPeriodRecord,

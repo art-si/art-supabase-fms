@@ -11,8 +11,7 @@
       </BusinessWorkspaceHeader>
       <ArtTableQuery
         ref="tableRef"
-        :model-value="search"
-        @update:model-value="replaceReactiveModel(search, $event)"
+        v-model="search"
         :api-fn="loadReport"
         :search-items="searchItems"
         :columns-factory="columns"
@@ -47,7 +46,7 @@
 </template>
 
 <script setup lang="ts">
-  import { computed, reactive, ref, watch } from 'vue'
+  import { computed, ref, watch } from 'vue'
   import dayjs from 'dayjs'
   import { escape, get } from 'lodash-es'
   import {
@@ -60,7 +59,6 @@
   import { useRouteOperationGuard } from '@/hooks/core/useRouteTableContext'
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import { printHtmlDocument } from '@/utils/file/print-document'
-  import { replaceReactiveModel } from '@/utils/form/model'
   import { formatSensitiveCurrencyValue as money } from '@/utils/ui/format'
   import ArtTableQuery from '@/components/core/tables/art-table-query/index.vue'
   import BusinessWorkspaceHeader from '@/components/business/business-workspace-header/index.vue'
@@ -74,7 +72,7 @@
   const printing = ref(false)
   const captureRoute = useRouteOperationGuard()
   const tenantScope = useTenantScopeStore()
-  const search = reactive<PayableReportQuery>({
+  const search = ref<PayableReportQuery>({
     current: 1,
     size: 20,
     mode: 'detail',
@@ -114,7 +112,7 @@
       key: 'kind',
       label: '单据类别',
       type: 'select',
-      props: { options: kinds, clearable: true, disabled: search.mode === 'aging' }
+      props: { options: kinds, clearable: true, disabled: search.value.mode === 'aging' }
     },
     {
       key: 'partyType',
@@ -161,7 +159,7 @@
   async function loadReport(query: Partial<PayableReportQuery>) {
     const version = ++queryVersion
     const isCurrentRoute = captureRoute()
-    const params = { ...search, ...query, action: 'view' as const }
+    const params = { ...search.value, ...query, action: 'view' as const }
     if (params.mode === 'aging') params.kind = 'financial'
     const result = await fetchPayableReport(params)
     if (version === queryVersion && isCurrentRoute()) appliedQuery.value = params

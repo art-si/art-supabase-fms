@@ -3,6 +3,11 @@
     header-icon="ri:shield-check-line"
     :loading="loading"
     ref="drawerRef"
+    @open="
+      () => {
+        activeDetailTab = 'overview'
+      }
+    "
     :show-footer="false"
   >
     <ArtAsyncState
@@ -13,91 +18,111 @@
       @retry="retryLoad"
     >
       <div v-if="run" class="close-detail">
-        <ArtSectionCard title="关账概览" preserve-content-structure>
-          <ArtDescriptions :data="run" :items="descriptionItems" :columns="2" label-width="104px" />
-        </ArtSectionCard>
-        <ArtSectionCard
-          title="关账检查结果"
-          :empty="!checks.length"
-          empty-title="暂无关账检查结果"
-          empty-description="执行关账检查后，结果和阻断原因会显示在这里。"
-          :empty-visual-size="72"
-          :min-height="188"
-          preserve-content-structure
+        <ElTabs v-model="activeDetailTab"
+          ><ElTabPane name="overview" label="关账概览"
+            ><div class="space-y-4"
+              ><ArtSectionCard title="关账概览" preserve-content-structure>
+                <ArtDescriptions
+                  :data="run"
+                  :items="descriptionItems"
+                  :columns="2"
+                  label-width="104px"
+                /> </ArtSectionCard></div
+          ></ElTabPane>
+          <ElTabPane name="checks" label="检查结果"
+            ><div class="space-y-4"
+              ><ArtSectionCard
+                title="关账检查结果"
+                :empty="!checks.length"
+                empty-title="暂无关账检查结果"
+                empty-description="执行关账检查后，结果和阻断原因会显示在这里。"
+                :empty-visual-size="72"
+                :min-height="188"
+                preserve-content-structure
+              >
+                <ArtTable
+                  v-if="!isNarrow"
+                  :pagination="false"
+                  :border="false"
+                  :data="checks"
+                  row-key="id"
+                >
+                  <ElTableColumn prop="checkName" label="检查项目" min-width="170" />
+                  <ElTableColumn v-if="canViewDiagnostics" label="结果" width="100">
+                    <template #default="{ row }">
+                      <span v-if="row.status === '***'">***</span>
+                      <ArtDictDisplay
+                        v-else
+                        dict-code="fmsPeriodCloseCheckStatus"
+                        :value="row.status"
+                        display="tag"
+                      />
+                    </template>
+                  </ElTableColumn>
+                  <ElTableColumn v-if="canViewDiagnostics" label="问题数" width="90" align="right">
+                    <template #default="{ row }">{{
+                      formatSensitiveCountValue(row.issueCount)
+                    }}</template>
+                  </ElTableColumn>
+                  <ElTableColumn
+                    v-if="canViewDiagnostics"
+                    prop="summary"
+                    label="检查结论"
+                    min-width="280"
+                  >
+                    <template #default="{ row }">
+                      <span class="whitespace-normal break-words">{{ row.summary || '—' }}</span>
+                    </template>
+                  </ElTableColumn>
+                  <ElTableColumn v-if="canViewDiagnostics" label="控制级别" width="110">
+                    <template #default="{ row }">
+                      <span v-if="row.isBlocking === '***'">***</span>
+                      <ElTag
+                        v-else
+                        :type="row.status === 'blocked' ? 'danger' : 'info'"
+                        effect="plain"
+                      >
+                        {{ row.isBlocking ? '强制校验' : '提示校验' }}
+                      </ElTag>
+                    </template>
+                  </ElTableColumn>
+                </ArtTable>
+                <div v-else class="close-detail__checks">
+                  <article v-for="check in checks" :key="check.id" class="close-detail__check">
+                    <header>
+                      <strong>{{ check.checkName }}</strong>
+                      <ArtDictDisplay
+                        v-if="canViewDiagnostics && check.status !== '***'"
+                        dict-code="fmsPeriodCloseCheckStatus"
+                        :value="check.status"
+                        display="tag"
+                      />
+                      <span v-else-if="canViewDiagnostics">***</span>
+                    </header>
+                    <template v-if="canViewDiagnostics">
+                      <p>{{ check.summary || '暂无检查结论' }}</p>
+                      <footer>
+                        <span>问题数 {{ formatSensitiveCountValue(check.issueCount) }}</span>
+                        <ElTag
+                          :type="check.status === 'blocked' ? 'danger' : 'info'"
+                          effect="plain"
+                        >
+                          {{
+                            check.isBlocking === '***'
+                              ? '***'
+                              : check.isBlocking
+                                ? '强制校验'
+                                : '提示校验'
+                          }}
+                        </ElTag>
+                      </footer>
+                    </template>
+                  </article>
+                </div>
+              </ArtSectionCard></div
+            ></ElTabPane
+          ></ElTabs
         >
-          <ArtTable
-            v-if="!isNarrow"
-            :pagination="false"
-            :border="false"
-            :data="checks"
-            row-key="id"
-          >
-            <ElTableColumn prop="checkName" label="检查项目" min-width="170" />
-            <ElTableColumn v-if="canViewDiagnostics" label="结果" width="100">
-              <template #default="{ row }">
-                <span v-if="row.status === '***'">***</span>
-                <ArtDictDisplay
-                  v-else
-                  dict-code="fmsPeriodCloseCheckStatus"
-                  :value="row.status"
-                  display="tag"
-                />
-              </template>
-            </ElTableColumn>
-            <ElTableColumn v-if="canViewDiagnostics" label="问题数" width="90" align="right">
-              <template #default="{ row }">{{
-                formatSensitiveCountValue(row.issueCount)
-              }}</template>
-            </ElTableColumn>
-            <ElTableColumn
-              v-if="canViewDiagnostics"
-              prop="summary"
-              label="检查结论"
-              min-width="280"
-            >
-              <template #default="{ row }">
-                <span class="whitespace-normal break-words">{{ row.summary || '—' }}</span>
-              </template>
-            </ElTableColumn>
-            <ElTableColumn v-if="canViewDiagnostics" label="控制级别" width="110">
-              <template #default="{ row }">
-                <span v-if="row.isBlocking === '***'">***</span>
-                <ElTag v-else :type="row.status === 'blocked' ? 'danger' : 'info'" effect="plain">
-                  {{ row.isBlocking ? '强制校验' : '提示校验' }}
-                </ElTag>
-              </template>
-            </ElTableColumn>
-          </ArtTable>
-          <div v-else class="close-detail__checks">
-            <article v-for="check in checks" :key="check.id" class="close-detail__check">
-              <header>
-                <strong>{{ check.checkName }}</strong>
-                <ArtDictDisplay
-                  v-if="canViewDiagnostics && check.status !== '***'"
-                  dict-code="fmsPeriodCloseCheckStatus"
-                  :value="check.status"
-                  display="tag"
-                />
-                <span v-else-if="canViewDiagnostics">***</span>
-              </header>
-              <template v-if="canViewDiagnostics">
-                <p>{{ check.summary || '暂无检查结论' }}</p>
-                <footer>
-                  <span>问题数 {{ formatSensitiveCountValue(check.issueCount) }}</span>
-                  <ElTag :type="check.status === 'blocked' ? 'danger' : 'info'" effect="plain">
-                    {{
-                      check.isBlocking === '***'
-                        ? '***'
-                        : check.isBlocking
-                          ? '强制校验'
-                          : '提示校验'
-                    }}
-                  </ElTag>
-                </footer>
-              </template>
-            </article>
-          </div>
-        </ArtSectionCard>
       </div>
     </ArtAsyncState>
   </ArtDrawer>
@@ -119,6 +144,7 @@
   import { canViewField } from '@/utils/field-permission'
   defineOptions({ name: 'FinancePeriodCloseDetailDrawer' })
   const drawerRef = ref<ArtDrawerExpose>()
+  const activeDetailTab = ref('overview')
   const userStore = useUserStore()
   const isNarrow = useMediaQuery('(max-width: 640px)')
   const { detail, loading, loadError, loadDetail, openDetail, retryLoad } = useDetailRecord<{

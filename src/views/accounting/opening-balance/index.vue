@@ -360,6 +360,7 @@
     balances: [] as OpeningBalance[],
     fieldAccess: {} as Api.Fms.OpeningBalanceFieldAccessMap,
     leafSubjects: [] as Api.Fms.SubjectRecord[],
+    subjects: [] as Api.Fms.SubjectRecord[],
     currencies: [] as Api.Fms.CurrencyRecord[],
     auxiliaryTypes: [] as Api.Fms.AuxiliaryTypeRecord[],
     auxiliaryItems: [] as Api.Fms.AuxiliaryItemRecord[]
@@ -711,6 +712,7 @@
       if (!scope.fiscalYears.includes(scope.fiscalYear)) scope.fiscalYear = scope.fiscalYears[0]
 
       const subjects = subjectResult.data ?? []
+      workspace.subjects = subjects
       const parentIds = new Set(subjects.map((item) => item.parentId).filter(Boolean))
       workspace.leafSubjects = subjects.filter((item) => item.isEnabled && !parentIds.has(item.id))
       workspace.currencies = currencyResult.data ?? []
@@ -750,7 +752,7 @@
       currentAccountSet.value!,
       scope.fiscalYear,
       {
-        subjects: workspace.leafSubjects,
+        subjects: workspace.subjects,
         currencies: workspace.currencies,
         auxiliaryTypes: workspace.auxiliaryTypes,
         auxiliaryItems: workspace.auxiliaryItems

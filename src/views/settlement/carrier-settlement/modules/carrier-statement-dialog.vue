@@ -3,15 +3,12 @@
     <ArtForm
       root-class="art-form--mobile-stack"
       ref="formRef"
-      :model-value="form"
-      @update:model-value="replaceReactiveModel(form, $event)"
+      v-model="form"
       :items="formItems"
       :rules="formRules"
       :span="12"
       :gutter="20"
       label-width="104px"
-      :show-reset="false"
-      :show-submit="false"
     >
       <template #carrierId>
         <ArtTableSingleSelect
@@ -71,7 +68,6 @@
 </template>
 
 <script setup lang="ts">
-  import { replaceReactiveModel } from '@/utils/form/model'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { normalizeNullableText } from '@/utils/form/normalize'
@@ -133,9 +129,9 @@
     costIds: [],
     remark: ''
   })
-  const form = reactive<StatementForm>(createInitialForm())
+  const form = ref<StatementForm>(createInitialForm())
   const canSelectCost = computed(() =>
-    Boolean(form.carrierId && form.periodRange[0] && form.periodRange[1])
+    Boolean(form.value.carrierId && form.value.periodRange[0] && form.value.periodRange[1])
   )
   const amountAccess = computed(() => getFieldAccess(fieldAccess.value, 'statementAmounts'))
   const allocatedFreightAccess = computed(() =>
@@ -281,9 +277,9 @@
       fieldAccess: access,
       total
     } = await fetchCarrierStatementEligibleCosts({
-      carrierId: form.carrierId,
-      periodStart: form.periodRange[0],
-      periodEnd: form.periodRange[1],
+      carrierId: form.value.carrierId,
+      periodStart: form.value.periodRange[0],
+      periodEnd: form.value.periodRange[1],
       keyword: params.keyword,
       from,
       to
@@ -298,13 +294,13 @@
     }
   }
   function handleCriteriaChange() {
-    form.costIds = []
+    form.value.costIds = []
     selectedCosts.value = []
     fieldAccess.value = {}
     void costSelectRef.value?.reload()
   }
   async function resetForm() {
-    Object.assign(form, createInitialForm())
+    Object.assign(form.value, createInitialForm())
     selectedCarriers.value = []
     selectedCosts.value = []
     fieldAccess.value = {}
@@ -320,12 +316,12 @@
     }
     try {
       await createCarrierStatement({
-        statementNo: normalizeNullableText(form.statementNo),
-        carrierId: form.carrierId,
-        periodStart: form.periodRange[0],
-        periodEnd: form.periodRange[1],
-        costIds: [...form.costIds],
-        remark: normalizeNullableText(form.remark)
+        statementNo: normalizeNullableText(form.value.statementNo),
+        carrierId: form.value.carrierId,
+        periodStart: form.value.periodRange[0],
+        periodEnd: form.value.periodRange[1],
+        costIds: [...form.value.costIds],
+        remark: normalizeNullableText(form.value.remark)
       })
       emit('success')
       return true

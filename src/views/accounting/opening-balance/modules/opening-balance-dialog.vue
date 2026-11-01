@@ -13,13 +13,12 @@
       :span="12"
       :gutter="20"
       label-width="118px"
-      :show-reset="false"
-      :show-submit="false"
     />
   </ArtDialog>
 </template>
 
 <script setup lang="ts">
+  import TreeUtils from '@/utils/tree'
   import { normalizeNullableNumber } from '@/utils/form/normalize'
   import { useAuth } from '@/hooks/core/useAuth'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
@@ -54,6 +53,7 @@
     auxiliaryItems: Api.Fms.AuxiliaryItemRecord[]
   }
 
+  const optionTree = new TreeUtils({ idKey: 'value', parentKey: 'parentId' })
   const emit = defineEmits<{ success: [] }>()
   const { hasAuth } = useAuth()
   const dialogRef = ref<ArtDialogExpose>()
@@ -98,10 +98,15 @@
     context.subjects.find((item) => item.id === form.data.subjectId)
   )
   const subjectOptions = computed(() =>
-    context.subjects.map((item) => ({
-      label: `${item.subjectCode} ${item.subjectName}`,
-      value: item.id
-    }))
+    optionTree.listToTree(
+      context.subjects.map((item) => ({
+        label: `${item.subjectCode} ${item.subjectName}`,
+        value: item.id,
+        parentId: item.parentId,
+        disabled:
+          !item.isEnabled || context.subjects.some((candidate) => candidate.parentId === item.id)
+      }))
+    )
   )
   const currencyOptions = computed(() =>
     context.currencies
@@ -139,12 +144,13 @@
     {
       label: '会计科目',
       key: 'subjectId',
-      type: 'select',
+      type: 'treeSelect',
       span: 24,
       props: {
         disabled: Boolean(form.data.id),
         filterable: true,
-        options: subjectOptions.value,
+        data: subjectOptions.value,
+        checkStrictly: true,
         placeholder: '搜索科目编码或名称',
         onChange: handleSubjectChange
       }

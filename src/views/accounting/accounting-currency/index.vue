@@ -56,7 +56,6 @@
 
     <div class="accounting-currency-page__workspace" :class="{ 'is-focused': focusMode }">
       <ArtSectionCard
-        :show-scrollbar="false"
         title="核算币种"
         subtitle="本位币不可停用，外币可独立启停"
         class="accounting-workspace-fill-section"
@@ -81,52 +80,50 @@
             @click="openCurrencyDialog()"
           />
         </template>
-        <div class="accounting-currency-page__currency-list-wrap">
-          <div class="accounting-currency-page__currency-grid">
-            <div
-              v-for="item in workspace.currencies"
-              :key="item.id"
-              class="accounting-currency-page__currency-card"
-              :class="{ 'is-active': item.id === workspace.selectedCurrencyId }"
+        <div class="accounting-currency-page__currency-grid">
+          <div
+            v-for="item in workspace.currencies"
+            :key="item.id"
+            class="accounting-currency-page__currency-card"
+            :class="{ 'is-active': item.id === workspace.selectedCurrencyId }"
+          >
+            <button
+              type="button"
+              class="accounting-currency-page__currency-select"
+              :aria-label="`选择${item.currencyName}`"
+              :aria-pressed="item.id === workspace.selectedCurrencyId"
+              @click="workspace.selectedCurrencyId = item.id"
             >
-              <button
-                type="button"
-                class="accounting-currency-page__currency-select"
-                :aria-label="`选择${item.currencyName}`"
-                :aria-pressed="item.id === workspace.selectedCurrencyId"
-                @click="workspace.selectedCurrencyId = item.id"
-              >
-                <span class="accounting-currency-page__symbol">{{
-                  item.symbol || item.currencyCode
-                }}</span>
-                <span class="accounting-currency-page__currency-name">
-                  <span class="accounting-currency-page__currency-title">
-                    <strong>{{ item.currencyName }}</strong>
-                    <span
-                      v-if="item.id === workspace.selectedCurrencyId"
-                      class="accounting-currency-page__selected-badge"
-                    >
-                      <ArtSvgIcon icon="ri:check-line" />当前
-                    </span>
-                  </span>
-                  <span class="accounting-currency-page__currency-meta">
-                    <small>{{ item.currencyCode }} · {{ item.decimalPlaces }} 位小数</small>
-                    <ElTag v-if="item.isBase" type="primary" size="small" effect="plain">
-                      本位币
-                    </ElTag>
-                    <ElTag :type="item.isEnabled ? 'success' : 'info'" size="small" effect="plain">
-                      {{ item.isEnabled ? '启用' : '停用' }}
-                    </ElTag>
+              <span class="accounting-currency-page__symbol">{{
+                item.symbol || item.currencyCode
+              }}</span>
+              <span class="accounting-currency-page__currency-name">
+                <span class="accounting-currency-page__currency-title">
+                  <strong>{{ item.currencyName }}</strong>
+                  <span
+                    v-if="item.id === workspace.selectedCurrencyId"
+                    class="accounting-currency-page__selected-badge"
+                  >
+                    <ArtSvgIcon icon="ri:check-line" />当前
                   </span>
                 </span>
-              </button>
-              <ArtButtonMore
-                trigger="click"
-                class="accounting-currency-page__currency-more"
-                :list="getCurrencyActions(item)"
-                @click="handleCurrencyAction($event, item)"
-              />
-            </div>
+                <span class="accounting-currency-page__currency-meta">
+                  <small>{{ item.currencyCode }} · {{ item.decimalPlaces }} 位小数</small>
+                  <ElTag v-if="item.isBase" type="primary" size="small" effect="plain">
+                    本位币
+                  </ElTag>
+                  <ElTag :type="item.isEnabled ? 'success' : 'info'" size="small" effect="plain">
+                    {{ item.isEnabled ? '启用' : '停用' }}
+                  </ElTag>
+                </span>
+              </span>
+            </button>
+            <ArtButtonMore
+              trigger="click"
+              class="accounting-currency-page__currency-more"
+              :list="getCurrencyActions(item)"
+              @click="handleCurrencyAction($event, item)"
+            />
           </div>
         </div>
       </ArtSectionCard>
@@ -641,13 +638,6 @@
     &__currency-grid {
       display: grid;
       gap: 8px;
-      padding-right: 4px;
-    }
-
-    &__currency-list-wrap {
-      flex: 0 0 auto;
-      min-width: 0;
-      min-height: 0;
     }
 
     &__currency-card {
@@ -824,7 +814,7 @@
 
   @media only screen and (width <= 1050px) {
     .accounting-currency-page__workspace {
-      grid-template-rows: none;
+      grid-template-rows: 360px minmax(360px, auto);
       grid-template-columns: 1fr;
 
       > .accounting-workspace-fill-section {
