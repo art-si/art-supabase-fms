@@ -39,98 +39,20 @@
           v-if="rows.length && isNarrow"
           ref="mobileFormRef"
           v-model="mobileFormModel"
-          custom-layout
+          :items="mobileItems"
+          :span="12"
+          :gutter="16"
           root-class="statement-rule-dialog__mobile-form"
         >
-          <div class="statement-rule-dialog__mobile-list">
-            <article
-              v-for="(row, index) in rows"
-              :key="row.rowKey"
-              class="statement-rule-dialog__mobile-item"
-            >
-              <div class="statement-rule-dialog__mobile-heading">
-                <strong>第 {{ index + 1 }} 条规则</strong>
-                <ArtButtonTable
-                  v-if="editable"
-                  type="delete"
-                  label="删除规则"
-                  permission=""
-                  @click="removeRule(index)"
-                />
-              </div>
-              <ElFormItem
-                :label="isFormula ? '来源项目' : '会计科目'"
-                :prop="`rows.${index}.sourceId`"
-                :rules="editable ? sourceRules : []"
-              >
-                <ElTreeSelect
-                  v-if="editable"
-                  v-model="row.sourceId"
-                  :aria-label="`第 ${index + 1} 条${isFormula ? '来源项目' : '会计科目'}`"
-                  filterable
-                  class="w-full!"
-                  :placeholder="isFormula ? '请选择来源项目' : '请选择会计科目'"
-                  :data="sourceOptions"
-                  check-strictly
-                />
-                <span v-else>{{ sourceLabel(row.sourceId) }}</span>
-              </ElFormItem>
-              <ElFormItem
-                v-if="!isFormula"
-                label="取数方向"
-                :prop="`rows.${index}.mappingDirection`"
-                :rules="editable ? directionRules : []"
-              >
-                <ElSelect
-                  v-if="editable"
-                  v-model="row.mappingDirection"
-                  :aria-label="`第 ${index + 1} 条取数方向`"
-                  class="w-full!"
-                >
-                  <ElOption
-                    v-for="option in directionOptions"
-                    :key="String(option.value)"
-                    :label="option.label"
-                    :value="option.value"
-                  />
-                </ElSelect>
-                <span v-else>
-                  {{
-                    directionOptions.find((option) => option.value === row.mappingDirection)
-                      ?.label || '未设置'
-                  }}
-                </span>
-              </ElFormItem>
-              <ElFormItem
-                label="系数"
-                :prop="`rows.${index}.factor`"
-                :rules="editable ? factorRules : []"
-              >
-                <ElInputNumber
-                  v-if="editable"
-                  v-model="row.factor"
-                  :aria-label="`第 ${index + 1} 条系数`"
-                  :min="-1000"
-                  :max="1000"
-                  :precision="4"
-                  :step="1"
-                  controls-position="right"
-                  class="w-full!"
-                />
-                <span v-else>{{ row.factor }}</span>
-              </ElFormItem>
-              <ElFormItem v-if="!isFormula" label="备注">
-                <ElInput
-                  v-if="editable"
-                  v-model="row.remark"
-                  :aria-label="`第 ${index + 1} 条备注`"
-                  maxlength="200"
-                  placeholder="可选"
-                />
-                <span v-else>{{ row.remark || '--' }}</span>
-              </ElFormItem>
-            </article>
-          </div>
+          <template v-for="(row, index) in rows" :key="row.rowKey" #[`rule-${row.rowKey}Actions`]>
+            <ArtButtonTable
+              v-if="editable"
+              type="delete"
+              label="删除规则"
+              permission=""
+              @click="removeRule(index)"
+            />
+          </template>
         </ArtForm>
 
         <ArtEmptyState
@@ -157,7 +79,6 @@
   import { normalizeNullableText } from '@/utils/form/normalize'
   import {
     ElButton,
-    ElFormItem,
     ElInput,
     ElInputNumber,
     ElMessage,
@@ -168,7 +89,7 @@
   } from 'element-plus'
   import { storeToRefs } from 'pinia'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
-  import ArtForm from '@/components/core/forms/art-form/index.vue'
+  import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
   import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'
   import ArtAsyncState from '@/components/core/feedback/art-async-state/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
@@ -190,10 +111,6 @@
   const formulasLoading = ref(false)
   const formulasError = ref('')
   let formulaRequestId = 0
-  watch(
-    () => formulasLoading.value || Boolean(formulasError.value),
-    (confirmDisabled) => dialogRef.value?.setOptions({ confirmDisabled })
-  )
 
   interface RuleRow {
     rowKey: string
@@ -219,9 +136,20 @@
     }
   })
   const ruleTableRef = ref<ArtTableExpose>()
-  const mobileFormRef = ref<{ validate: () => Promise<boolean>; clearValidate: () => void }>()
+  const mobileFormRef = ref<{
+    validate: () => Promise<boolean>
+    clearValidate: () => void
+    readyToSubmit: boolean
+  }>()
   const editable = ref(false)
   const isNarrow = useMediaQuery('(max-width: 840px)')
+  watch(
+    () =>
+      formulasLoading.value ||
+      Boolean(formulasError.value) ||
+      (isNarrow.value && rows.value.length > 0 && !mobileFormRef.value?.readyToSubmit),
+    (confirmDisabled) => dialogRef.value?.setOptions({ confirmDisabled })
+  )
 
   const sourceRules: FormItemRule[] = [
     { required: true, message: '请选择取数来源', trigger: 'change' }
@@ -262,6 +190,74 @@
             disabled: !subject.isEnabled
           }))
     )
+  )
+
+  const mobileItems = computed<FormItem[]>(() =>
+    rows.value.flatMap((row, index): FormItem[] => [
+      {
+        key: `rule-${row.rowKey}`,
+        label: `第 ${index + 1} 条规则`,
+        type: 'divider',
+        span: 24,
+        props: { collapsible: false }
+      },
+      {
+        key: `rows.${index}.sourceId`,
+        label: isFormula.value ? '来源项目' : '会计科目',
+        type: editable.value ? 'treeSelect' : 'text',
+        options: sourceOptions.value,
+        props: editable.value
+          ? {
+              'aria-label': `第 ${index + 1} 条${isFormula.value ? '来源项目' : '会计科目'}`,
+              filterable: true,
+              placeholder: isFormula.value ? '请选择来源项目' : '请选择会计科目',
+              checkStrictly: true
+            }
+          : { formatter: () => sourceLabel(row.sourceId) },
+        formItemProps: { rules: editable.value ? sourceRules : [] }
+      },
+      {
+        key: `rows.${index}.mappingDirection`,
+        label: '取数方向',
+        hidden: isFormula.value,
+        type: editable.value ? 'select' : 'text',
+        options: directionOptions.value,
+        props: editable.value
+          ? { 'aria-label': `第 ${index + 1} 条取数方向` }
+          : {
+              formatter: () =>
+                directionOptions.value.find((option) => option.value === row.mappingDirection)
+                  ?.label || '未设置'
+            },
+        formItemProps: { rules: editable.value ? directionRules : [] }
+      },
+      {
+        key: `rows.${index}.factor`,
+        label: '系数',
+        type: editable.value ? 'number' : 'text',
+        props: editable.value
+          ? {
+              'aria-label': `第 ${index + 1} 条系数`,
+              min: -1000,
+              max: 1000,
+              precision: 4,
+              step: 1,
+              controlsPosition: 'right',
+              class: 'w-full!'
+            }
+          : {},
+        formItemProps: { rules: editable.value ? factorRules : [] }
+      },
+      {
+        key: `rows.${index}.remark`,
+        label: '备注',
+        hidden: isFormula.value,
+        type: editable.value ? 'input' : 'text',
+        props: editable.value
+          ? { 'aria-label': `第 ${index + 1} 条备注`, maxlength: 200, placeholder: '可选' }
+          : { emptyText: '--' }
+      }
+    ])
   )
 
   const ruleHint = computed(() =>
@@ -600,48 +596,9 @@
         align-items: stretch;
       }
 
-      &__mobile-list {
-        display: grid;
-        gap: var(--art-space-3);
-      }
-
       :deep(.statement-rule-dialog__mobile-form) {
         padding: 0;
       }
-
-      &__mobile-item {
-        min-width: 0;
-        padding: var(--art-space-3);
-        border: 1px solid var(--el-border-color-lighter);
-        border-radius: var(--el-border-radius-base);
-
-        :deep(.el-form-item:last-child) {
-          margin-bottom: 0;
-        }
-      }
-
-      &__mobile-heading {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin-bottom: var(--art-space-3);
-
-        strong {
-          color: var(--el-text-color-primary);
-        }
-      }
-    }
-  }
-
-  @media (640px < width <= 840px) {
-    .statement-rule-dialog__mobile-item {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      column-gap: var(--art-space-4);
-    }
-
-    .statement-rule-dialog__mobile-heading {
-      grid-column: 1 / -1;
     }
   }
 </style>

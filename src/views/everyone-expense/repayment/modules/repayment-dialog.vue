@@ -36,23 +36,6 @@
               :gutter="20"
               label-position="top"
             >
-              <template #loanId>
-                <ElSelect
-                  v-model="model.loanId"
-                  class="w-full"
-                  filterable
-                  :disabled="readonly || Boolean(model.id)"
-                  placeholder="选择已付款借款单"
-                  @change="selectLoan"
-                >
-                  <ElOption
-                    v-for="loan in loanOptions"
-                    :key="loan.id"
-                    :value="loan.id"
-                    :label="`${loan.loanNo} · ${loan.applicantName} · 可还 ${formatCurrencyValue(loan.availableAmount ?? loan.remainingBalance ?? 0)}`"
-                  />
-                </ElSelect>
-              </template>
             </ArtForm>
             <ElAlert
               v-if="!loanOptions.length && !readonly"
@@ -196,21 +179,6 @@
         :span="12"
         label-position="top"
       >
-        <template #loanItemId>
-          <ElSelect
-            v-model="lineModel.loanItemId"
-            class="w-full"
-            filterable
-            placeholder="选择借款明细"
-          >
-            <ElOption
-              v-for="item in selectedLoan?.items ?? []"
-              :key="item.id"
-              :value="item.id"
-              :label="`${expenseName(item)} · ${formatCurrencyValue(item.amount)}`"
-            />
-          </ElSelect>
-        </template>
       </ArtForm>
     </ArtDialog>
     <MasterDataDeleteGuard ref="lineGuardRef" />
@@ -307,9 +275,24 @@
   const totalAmount = computed(() =>
     lines.value.reduce((sum, line) => sum + Number(line.amount), 0)
   )
-  const formItems: FormItem[] = [
+  const formItems = computed<FormItem[]>(() => [
     { key: 'base', label: '基本信息', type: 'divider', span: 24 },
-    { key: 'loanId', label: '关联借款', type: 'input' },
+    {
+      options: loanOptions.value.map((loan) => ({
+        value: loan.id,
+        label: `${loan.loanNo} · ${loan.applicantName} · 可还 ${formatCurrencyValue(loan.availableAmount ?? loan.remainingBalance ?? 0)}`
+      })),
+      props: {
+        class: 'w-full',
+        filterable: true,
+        disabled: readonly.value || Boolean(model.value.id),
+        placeholder: '选择已付款借款单',
+        onChange: selectLoan
+      },
+      key: 'loanId',
+      label: '关联借款',
+      type: 'select'
+    },
     {
       key: 'repaymentDate',
       label: '还款日期',
@@ -327,14 +310,23 @@
       span: 24,
       props: { type: 'textarea', rows: 2, maxlength: 500, showWordLimit: true }
     }
-  ]
+  ])
   const rules = {
     loanId: [{ required: true, message: '请选择关联借款', trigger: 'change' }],
     repaymentDate: [{ required: true, message: '请选择还款日期', trigger: 'change' }],
     reason: [{ required: true, message: '请填写还款事由', trigger: 'blur' }]
   }
-  const lineFormItems: FormItem[] = [
-    { key: 'loanItemId', label: '关联借款明细', type: 'input' },
+  const lineFormItems = computed<FormItem[]>(() => [
+    {
+      options: (selectedLoan.value?.items ?? []).map((item) => ({
+        value: item.id,
+        label: `${expenseName(item)} · ${formatCurrencyValue(item.amount)}`
+      })),
+      props: { class: 'w-full', filterable: true, placeholder: '选择借款明细' },
+      key: 'loanItemId',
+      label: '关联借款明细',
+      type: 'select'
+    },
     {
       key: 'amount',
       label: '还款金额（元）',
@@ -348,7 +340,7 @@
       span: 24,
       props: { type: 'textarea', rows: 2, maxlength: 500 }
     }
-  ]
+  ])
   const lineRules = {
     loanItemId: [{ required: true, message: '请选择借款明细', trigger: 'change' }],
     amount: [

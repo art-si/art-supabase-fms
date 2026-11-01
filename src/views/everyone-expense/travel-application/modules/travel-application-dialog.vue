@@ -21,17 +21,6 @@
         :gutter="20"
         label-position="top"
       >
-        <template #applicantEmployeeId>
-          <ArtEmployeeSelect
-            :model-value="model.applicantEmployeeId || undefined"
-            v-model:selected-data="selectedApplicant"
-            :tenant-id="model.tenantId"
-            :api-fn="fetchTravelApplicantSelector"
-            :disabled="readOnly"
-            placeholder="选择申请人"
-            @update:model-value="setApplicant"
-          />
-        </template>
         <template #baseContext
           ><div class="space-y-4"
             ><ElAlert
@@ -158,7 +147,6 @@
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
-  import ArtEmployeeSelect from '@/components/business/art-employee-select/index.vue'
   import ArtSectionTitle from '@/components/core/surfaces/art-section-title/index.vue'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
@@ -247,7 +235,23 @@
   )
   const items = computed<FormItem[]>(() => [
     { key: 'base', label: '基本信息', type: 'tab', span: 24 },
-    { key: 'applicantEmployeeId', label: '申请人', type: 'input' },
+    {
+      props: {
+        modelValue: model.value.applicantEmployeeId || undefined,
+        selectedData: selectedApplicant.value,
+        'onUpdate:selectedData': ($event: typeof selectedApplicant.value) => {
+          selectedApplicant.value = $event
+        },
+        tenantId: model.value.tenantId,
+        apiFn: fetchTravelApplicantSelector,
+        disabled: readOnly.value,
+        placeholder: '选择申请人',
+        'onUpdate:modelValue': setApplicant
+      },
+      key: 'applicantEmployeeId',
+      label: '申请人',
+      type: 'employeeSelect'
+    },
     {
       key: 'assignmentId',
       label: '职位',

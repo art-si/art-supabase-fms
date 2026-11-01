@@ -66,17 +66,6 @@
       :span="isCompact ? 24 : 12"
       :gutter="20"
     >
-      <template #basisUrls>
-        <ArtUploadImage
-          v-model="form.data.basisUrls"
-          title="上传附件"
-          :size="96"
-          :limit="5"
-          :resource-tenant-id="attachmentTenantId"
-          :disabled="!attachmentTenantId"
-          multiple
-        />
-      </template>
       <template #expenseSnapshot
         ><div class="space-y-4"
           ><ArtSectionCard
@@ -119,7 +108,6 @@
   import ArtDictDisplay from '@/components/core/base/art-dict-display/index.vue'
   import ArtSvgIcon from '@/components/core/base/art-svg-icon/index.vue'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
-  import ArtUploadImage from '@/components/core/forms/art-upload-image/index.vue'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import ArtTable from '@/components/core/tables/art-table/index.vue'
   import type { ColumnOption } from '@/types'
@@ -309,7 +297,20 @@
           placeholder: '说明报销用途、收款安排或需财务关注的事项'
         }
       },
-      { label: '补充附件', key: 'basisUrls', type: 'input', span: 24 },
+      {
+        props: {
+          title: '上传附件',
+          size: 96,
+          limit: 5,
+          resourceTenantId: attachmentTenantId.value,
+          disabled: !attachmentTenantId.value,
+          multiple: true
+        },
+        label: '补充附件',
+        key: 'basisUrls',
+        type: 'uploadImage',
+        span: 24
+      },
       { key: 'expenseSnapshot', label: '', span: 24, labelWidth: 0 }
     ])
   })

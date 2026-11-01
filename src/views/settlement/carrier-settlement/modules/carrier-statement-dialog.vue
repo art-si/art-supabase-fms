@@ -10,52 +10,6 @@
       :gutter="20"
       label-width="104px"
     >
-      <template #carrierId>
-        <ArtTableSingleSelect
-          v-model="form.carrierId"
-          v-model:selected-data="selectedCarriers"
-          :api-fn="fetchCarrierSelectorData"
-          :columns="carrierColumns"
-          title="选择对账承运商"
-          subtitle="应付对账单按承运商归集已审核费用"
-          row-key="id"
-          label-key="companyName"
-          description-key="carrierCode"
-          placeholder="请选择承运商"
-          search-placeholder="承运商名称、编码或联系人"
-          empty-text="暂无可选承运商"
-          empty-description="当前租户没有匹配的启用承运商，请先维护承运商主数据。"
-          dialog-width="lg"
-          @change="handleCriteriaChange"
-        >
-          <template #empty><FinanceDataSourceEmptyActions source="carrier" /></template>
-        </ArtTableSingleSelect>
-      </template>
-      <template #costIds>
-        <ArtTableMultipleSelect
-          ref="costSelectRef"
-          v-model="form.costIds"
-          v-model:selected-data="selectedCosts"
-          :api-fn="fetchCostSelectorData"
-          :columns="costColumns"
-          title="选择待对账费用"
-          subtitle="应付以已审核费用为准；执行运费分摊仅作金额对照，同一运单的多笔费用会重复显示该参考值"
-          row-key="id"
-          label-key="waybillNo"
-          description-key="routeLabel"
-          placeholder="请选择待对账费用"
-          search-placeholder="运单号、收款方或运输线路"
-          dialog-width="xl"
-          show-pagination
-          show-selected-panel
-          :page-size="10"
-          :disabled="!canSelectCost"
-          empty-text="暂无待对账费用"
-          empty-description="请先在运单成本中完成费用录入和审核；已进入有效对账单的费用不会重复显示。"
-        >
-          <template #empty><FinanceDataSourceEmptyActions source="waybill-cost" /></template>
-        </ArtTableMultipleSelect>
-      </template>
     </ArtForm>
     <ElAlert
       class="mt-4"
@@ -76,8 +30,6 @@
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
-  import ArtTableMultipleSelect from '@/components/core/forms/art-data-select/table-multiple.vue'
-  import ArtTableSingleSelect from '@/components/core/forms/art-data-select/table-single.vue'
   import FinanceDataSourceEmptyActions from '../../../components/finance-data-source-empty-actions.vue'
   import type {
     ArtDataSelectExpose,
@@ -233,7 +185,36 @@
       props: { maxlength: 50, ...statementNumber.inputProps(false, '请输入承运商对账单号') },
       description: statementNumber.description.value
     },
-    { label: '对账承运商', key: 'carrierId', type: 'input', span: 12 },
+    {
+      slots: { empty: () => h(FinanceDataSourceEmptyActions, { source: 'carrier' }) },
+      props: {
+        mode: 'table',
+        multiple: false,
+        showSelectedPanel: false,
+        showPagination: Boolean(fetchCarrierSelectorData),
+        selectedData: selectedCarriers.value,
+        'onUpdate:selectedData': ($event: typeof selectedCarriers.value) => {
+          selectedCarriers.value = $event
+        },
+        apiFn: fetchCarrierSelectorData,
+        columns: carrierColumns,
+        title: '选择对账承运商',
+        subtitle: '应付对账单按承运商归集已审核费用',
+        rowKey: 'id',
+        labelKey: 'companyName',
+        descriptionKey: 'carrierCode',
+        placeholder: '请选择承运商',
+        searchPlaceholder: '承运商名称、编码或联系人',
+        emptyText: '暂无可选承运商',
+        emptyDescription: '当前租户没有匹配的启用承运商，请先维护承运商主数据。',
+        dialogWidth: 'lg',
+        onChange: handleCriteriaChange
+      },
+      label: '对账承运商',
+      key: 'carrierId',
+      type: 'dataSelect',
+      span: 12
+    },
     {
       label: '对账账期',
       key: 'periodRange',
@@ -249,7 +230,42 @@
         onChange: handleCriteriaChange
       }
     },
-    { label: '待对账费用', key: 'costIds', type: 'input', span: 24 },
+    {
+      slots: { empty: () => h(FinanceDataSourceEmptyActions, { source: 'waybill-cost' }) },
+      props: {
+        mode: 'table',
+        multiple: true,
+
+        ref: (instance: typeof costSelectRef.value | null) => {
+          costSelectRef.value = instance || undefined
+        },
+        selectedData: selectedCosts.value,
+        'onUpdate:selectedData': ($event: typeof selectedCosts.value) => {
+          selectedCosts.value = $event
+        },
+        apiFn: fetchCostSelectorData,
+        columns: costColumns.value,
+        title: '选择待对账费用',
+        subtitle:
+          '应付以已审核费用为准；执行运费分摊仅作金额对照，同一运单的多笔费用会重复显示该参考值',
+        rowKey: 'id',
+        labelKey: 'waybillNo',
+        descriptionKey: 'routeLabel',
+        placeholder: '请选择待对账费用',
+        searchPlaceholder: '运单号、收款方或运输线路',
+        dialogWidth: 'xl',
+        showPagination: true,
+        showSelectedPanel: true,
+        pageSize: 10,
+        disabled: !canSelectCost.value,
+        emptyText: '暂无待对账费用',
+        emptyDescription: '请先在运单成本中完成费用录入和审核；已进入有效对账单的费用不会重复显示。'
+      },
+      label: '待对账费用',
+      key: 'costIds',
+      type: 'dataSelect',
+      span: 24
+    },
     {
       label: '对账备注',
       key: 'remark',

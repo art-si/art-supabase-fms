@@ -19,23 +19,6 @@
       :gutter="18"
       label-width="100px"
     >
-      <template #employeeId>
-        <span
-          v-if="currentLine"
-          :title="employeeSnapshotLabel"
-          class="break-words text-sm leading-6"
-          >{{ employeeSnapshotLabel }}</span
-        >
-        <ArtEmployeeSelect
-          v-else
-          v-model="form.employeeId"
-          :tenant-id="runTenantId"
-          :api-fn="fetchEmployees"
-          :display-fields="[]"
-          subtitle="选择本薪资批次所属租户的员工"
-          search-placeholder="搜索姓名或工号"
-        />
-      </template>
       <template #earningItems
         ><PayrollItemsEditor ref="earningEditorRef" v-model="earningRows"
       /></template>
@@ -58,7 +41,7 @@
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
-  import ArtEmployeeSelect from '@/components/business/art-employee-select/index.vue'
+
   import type {
     EmployeeIntegrationItem,
     EmployeeSelectorContractParams
@@ -130,7 +113,16 @@
     {
       label: '员工',
       key: 'employeeId',
-      type: 'input',
+      type: currentLine.value ? 'text' : 'employeeSelect',
+      props: currentLine.value
+        ? { formatter: () => employeeSnapshotLabel.value, title: employeeSnapshotLabel.value }
+        : {
+            tenantId: runTenantId.value,
+            apiFn: fetchEmployees,
+            displayFields: [],
+            subtitle: '选择本薪资批次所属租户的员工',
+            searchPlaceholder: '搜索姓名或工号'
+          },
       span: 24
     },
     {

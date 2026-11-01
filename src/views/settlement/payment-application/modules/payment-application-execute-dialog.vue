@@ -23,17 +23,6 @@
       :rules="form.rules"
       label-width="100px"
     >
-      <template #voucherUrls>
-        <ArtUploadImage
-          v-model="form.data.voucherUrls"
-          title="付款凭证"
-          :size="84"
-          :limit="5"
-          :resource-tenant-id="attachmentTenantId"
-          :disabled="!attachmentTenantId"
-          multiple
-        />
-      </template>
     </ArtForm>
   </ArtDialog>
 </template>
@@ -48,7 +37,6 @@
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
-  import ArtUploadImage from '@/components/core/forms/art-upload-image/index.vue'
   import { executeCarrierPaymentApplication, fetchFundAccountOptions } from '@fms/api'
   import {
     isReadableFieldAccess,
@@ -174,7 +162,20 @@
         }
       },
       { label: '付款凭证', key: 'voucher', type: 'divider', span: 24 },
-      { label: '凭证附件', key: 'voucherUrls', type: 'input', span: 24 }
+      {
+        props: {
+          title: '付款凭证',
+          size: 84,
+          limit: 5,
+          resourceTenantId: attachmentTenantId.value,
+          disabled: !attachmentTenantId.value,
+          multiple: true
+        },
+        label: '凭证附件',
+        key: 'voucherUrls',
+        type: 'uploadImage',
+        span: 24
+      }
     ])
   })
 

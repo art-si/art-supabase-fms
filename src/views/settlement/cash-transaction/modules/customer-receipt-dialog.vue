@@ -46,31 +46,6 @@
       :gutter="20"
       label-width="104px"
     >
-      <template #customerId>
-        <ArtTableSingleSelect
-          v-model="form.data.customerId"
-          v-model:selected-data="selection.customers"
-          :api-fn="fetchCustomerSelectorData"
-          :columns="customerColumns"
-          title="选择收款客户"
-          subtitle="收款客户必须与待核销客户对账单一致"
-          row-key="id"
-          label-key="customerName"
-          description-key="customerCode"
-          placeholder="请选择收款客户"
-          search-placeholder="客户名称、编码、联系人或电话"
-          empty-text="暂无可选客户"
-          empty-description="当前租户没有匹配的启用客户，请先维护客户主数据。"
-          dialog-width="lg"
-          show-pagination
-          :page-size="10"
-          :disabled="dialog.mode === 'allocate'"
-          @change="handleCustomerChange"
-        >
-          <template #empty><FinanceDataSourceEmptyActions source="customer" /></template>
-        </ArtTableSingleSelect>
-      </template>
-
       <template #statementIds>
         <div class="receipt-allocation">
           <ArtTableMultipleSelect
@@ -155,7 +130,6 @@
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
   import ArtTableMultipleSelect from '@/components/core/forms/art-data-select/table-multiple.vue'
-  import ArtTableSingleSelect from '@/components/core/forms/art-data-select/table-single.vue'
   import FinanceDataSourceEmptyActions from '../../../components/finance-data-source-empty-actions.vue'
   import type {
     ArtDataSelectExpose,
@@ -315,7 +289,39 @@
           },
           description: dialog.mode === 'create' ? transactionNumber.description.value : undefined
         },
-        { label: '收款客户', key: 'customerId', type: 'input', span: 12 },
+        {
+          slots: { empty: () => h(FinanceDataSourceEmptyActions, { source: 'customer' }) },
+          props: {
+            mode: 'table',
+            multiple: false,
+            showSelectedPanel: false,
+
+            selectedData: selection.customers,
+            'onUpdate:selectedData': ($event: typeof selection.customers) => {
+              selection.customers = $event
+            },
+            apiFn: fetchCustomerSelectorData,
+            columns: customerColumns,
+            title: '选择收款客户',
+            subtitle: '收款客户必须与待核销客户对账单一致',
+            rowKey: 'id',
+            labelKey: 'customerName',
+            descriptionKey: 'customerCode',
+            placeholder: '请选择收款客户',
+            searchPlaceholder: '客户名称、编码、联系人或电话',
+            emptyText: '暂无可选客户',
+            emptyDescription: '当前租户没有匹配的启用客户，请先维护客户主数据。',
+            dialogWidth: 'lg',
+            showPagination: true,
+            pageSize: 10,
+            disabled: dialog.mode === 'allocate',
+            onChange: handleCustomerChange
+          },
+          label: '收款客户',
+          key: 'customerId',
+          type: 'dataSelect',
+          span: 12
+        },
         {
           label: '收款日期',
           key: 'transactionDate',

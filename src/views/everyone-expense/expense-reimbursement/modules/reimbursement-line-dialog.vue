@@ -9,15 +9,6 @@
       :gutter="20"
       label-position="top"
     >
-      <template #reimburseeEmployeeId>
-        <ArtEmployeeSelect
-          :model-value="model.reimburseeEmployeeId || undefined"
-          :tenant-id="tenantId"
-          :api-fn="fetchReimbursementApplicantSelector"
-          placeholder="选择报销人"
-          @update:model-value="model.reimburseeEmployeeId = $event || null"
-        />
-      </template>
     </ArtForm>
     <p class="px-4 text-sm text-[var(--art-gray-700)]">
       不含税金额：<strong class="tabular-nums text-[var(--art-gray-900)]">{{
@@ -32,7 +23,6 @@
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
-  import ArtEmployeeSelect from '@/components/business/art-employee-select/index.vue'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { normalizeNullableText } from '@/utils/form/normalize'
   import { formatCurrencyValue } from '@/utils/ui'
@@ -131,7 +121,22 @@
       props: { maxlength: 100, clearable: true }
     },
     ...(multipleReimbursees.value
-      ? [{ key: 'reimburseeEmployeeId', label: '报销人', type: 'input' as const }]
+      ? [
+          {
+            props: {
+              modelValue: model.value.reimburseeEmployeeId || undefined,
+              tenantId: tenantId.value,
+              apiFn: fetchReimbursementApplicantSelector,
+              placeholder: '选择报销人',
+              'onUpdate:modelValue': ($event: typeof model.value.reimburseeEmployeeId) => {
+                model.value.reimburseeEmployeeId = $event || null
+              }
+            },
+            key: 'reimburseeEmployeeId',
+            label: '报销人',
+            type: 'employeeSelect'
+          }
+        ]
       : []),
     {
       key: 'remark',

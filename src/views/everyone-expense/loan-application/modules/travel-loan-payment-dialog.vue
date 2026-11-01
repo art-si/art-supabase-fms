@@ -31,16 +31,6 @@
       :gutter="20"
       label-position="top"
     >
-      <template #voucherUrls>
-        <ArtUploadImage
-          v-model="model.voucherUrls"
-          :resource-tenant-id="loan?.tenantId || ''"
-          title="付款凭证"
-          :size="80"
-          :limit="5"
-          multiple
-        />
-      </template>
     </ArtForm>
     <ElAlert
       v-if="!eligibleAccounts.length"
@@ -58,7 +48,6 @@
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
-  import ArtUploadImage from '@/components/core/forms/art-upload-image/index.vue'
   import ArtEntitySummary from '@/components/core/surfaces/art-entity-summary/index.vue'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
@@ -182,7 +171,19 @@
       span: 24,
       props: { type: 'textarea', rows: 2, maxlength: 500 }
     },
-    { key: 'voucherUrls', label: '付款凭证', type: 'input', span: 24 }
+    {
+      props: {
+        resourceTenantId: loan.value?.tenantId || '',
+        title: '付款凭证',
+        size: 80,
+        limit: 5,
+        multiple: true
+      },
+      key: 'voucherUrls',
+      label: '付款凭证',
+      type: 'uploadImage',
+      span: 24
+    }
   ])
   const rules = {
     loanPayeeId: [{ required: true, message: '请选择收款明细', trigger: 'change' }],

@@ -63,7 +63,7 @@
           >
         </div>
       </ArtSectionCard>
-      <div class="mt-4 grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-2">
+      <div class="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-2">
         <ArtSectionCard
           :title="primaryTitle"
           :loading="loading"

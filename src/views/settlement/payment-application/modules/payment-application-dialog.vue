@@ -18,68 +18,6 @@
       :gutter="20"
       label-width="108px"
     >
-      <template #carrierId>
-        <ArtTableSingleSelect
-          v-model="form.data.carrierId"
-          v-model:selected-data="selection.carriers"
-          :api-fn="fetchCarrierSelectorData"
-          :columns="carrierColumns"
-          title="选择付款承运商"
-          subtitle="付款申请与应付对账单必须属于同一承运商"
-          row-key="id"
-          label-key="companyName"
-          description-key="carrierCode"
-          placeholder="请选择承运商"
-          search-placeholder="承运商名称、编码或联系人"
-          empty-text="暂无可选承运商"
-          empty-description="当前租户没有匹配的启用承运商，请先维护承运商主数据。"
-          dialog-width="lg"
-          :disabled="!canEditApplicationField('applicationAmounts')"
-          @change="handleCarrierChange"
-        >
-          <template #empty><FinanceDataSourceEmptyActions source="carrier" /></template>
-        </ArtTableSingleSelect>
-      </template>
-
-      <template #statementIds>
-        <ArtTableMultipleSelect
-          ref="statementSelectRef"
-          v-model="form.data.statementIds"
-          v-model:selected-data="selection.statements"
-          :api-fn="fetchStatementSelectorData"
-          :columns="statementSelectorColumns"
-          title="选择待付款承运商对账单"
-          subtitle="可申请余额已扣除其他审批中和已批准待付款申请"
-          row-key="id"
-          label-key="statementNo"
-          description-key="periodLabel"
-          placeholder="请选择一份或多份对账单"
-          search-placeholder="对账单号或承运商名称"
-          dialog-width="xl"
-          show-pagination
-          show-selected-panel
-          :page-size="10"
-          :disabled="!form.data.carrierId || !canEditApplicationField('applicationAmounts')"
-          @change="handleStatementChange"
-          empty-text="暂无待付款对账单"
-          empty-description="请先生成并确认承运商对账单；无可申请余额的对账单不会显示。"
-        >
-          <template #empty><FinanceDataSourceEmptyActions source="carrier-statement" /></template>
-        </ArtTableMultipleSelect>
-      </template>
-
-      <template #basisUrls>
-        <ArtUploadImage
-          v-if="getFieldAccess(fieldAccess, 'basisEvidence') !== 'masked'"
-          v-model="form.data.basisUrls"
-          title="付款依据"
-          :size="84"
-          :limit="5"
-          :readonly="!canEditApplicationField('basisEvidence')"
-          multiple
-        />
-        <ElAlert v-else type="info" :closable="false" show-icon title="付款依据内容已脱敏" />
-      </template>
       <template #allocationWorkspace
         ><div class="space-y-4"
           ><ArtSectionCard
@@ -140,8 +78,6 @@
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
-  import ArtTableMultipleSelect from '@/components/core/forms/art-data-select/table-multiple.vue'
-  import ArtTableSingleSelect from '@/components/core/forms/art-data-select/table-single.vue'
   import FinanceDataSourceEmptyActions from '../../../components/finance-data-source-empty-actions.vue'
   import type {
     ArtDataSelectExpose,
@@ -150,7 +86,7 @@
     DataSelectRecord
   } from '@/components/core/forms/art-data-select/types'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
-  import ArtUploadImage from '@/components/core/forms/art-upload-image/index.vue'
+
   import ArtTable, { type ArtTableExpose } from '@/components/core/tables/art-table/index.vue'
   import type { ColumnOption } from '@/types'
   import {
@@ -268,7 +204,7 @@
       ],
       paymentMethod: [{ required: true, message: '请选择付款方式', trigger: 'change' }]
     },
-    items: computed<FormItem[]>(() => [
+    items: computed<FormItem[]>((): FormItem[] => [
       {
         label: '申请信息',
         key: 'base',
@@ -286,7 +222,37 @@
         },
         description: formData.id ? undefined : applicationNumber.description.value
       },
-      { label: '付款承运商', key: 'carrierId', type: 'input', span: isCompact.value ? 24 : 12 },
+      {
+        slots: { empty: () => h(FinanceDataSourceEmptyActions, { source: 'carrier' }) },
+        props: {
+          mode: 'table',
+          multiple: false,
+          showSelectedPanel: false,
+          showPagination: Boolean(fetchCarrierSelectorData),
+          selectedData: selection.carriers,
+          'onUpdate:selectedData': ($event: typeof selection.carriers) => {
+            selection.carriers = $event
+          },
+          apiFn: fetchCarrierSelectorData,
+          columns: carrierColumns,
+          title: '选择付款承运商',
+          subtitle: '付款申请与应付对账单必须属于同一承运商',
+          rowKey: 'id',
+          labelKey: 'companyName',
+          descriptionKey: 'carrierCode',
+          placeholder: '请选择承运商',
+          searchPlaceholder: '承运商名称、编码或联系人',
+          emptyText: '暂无可选承运商',
+          emptyDescription: '当前租户没有匹配的启用承运商，请先维护承运商主数据。',
+          dialogWidth: 'lg',
+          disabled: !canEditApplicationField('applicationAmounts'),
+          onChange: handleCarrierChange
+        },
+        label: '付款承运商',
+        key: 'carrierId',
+        type: 'dataSelect',
+        span: isCompact.value ? 24 : 12
+      },
       {
         label: '计划付款日期',
         key: 'plannedPaymentDate',
@@ -337,13 +303,68 @@
       ...(canViewApplicationField('basisEvidence')
         ? [
             { label: '付款依据', key: 'evidence', type: 'divider' as const, span: 24 },
-            { label: '依据附件', key: 'basisUrls', type: 'input' as const, span: 24 }
+            {
+              label: '依据附件',
+              key: 'basisUrls',
+              span: 24,
+              type:
+                getFieldAccess(fieldAccess.value, 'basisEvidence') === 'masked'
+                  ? ('text' as const)
+                  : ('uploadImage' as const),
+              props:
+                getFieldAccess(fieldAccess.value, 'basisEvidence') === 'masked'
+                  ? { formatter: () => '付款依据内容已脱敏' }
+                  : {
+                      title: '付款依据',
+                      size: 84,
+                      limit: 5,
+                      readonly: !canEditApplicationField('basisEvidence'),
+                      multiple: true
+                    }
+            }
           ]
         : []),
       ...(canViewApplicationField('applicationAmounts')
         ? [
             { label: '应付核销', key: 'allocation', type: 'divider' as const, span: 24 },
-            { label: '承运商对账单', key: 'statementIds', type: 'input' as const, span: 24 }
+            {
+              slots: {
+                empty: () => h(FinanceDataSourceEmptyActions, { source: 'carrier-statement' })
+              },
+              props: {
+                mode: 'table',
+                multiple: true,
+
+                ref: (instance: typeof statementSelectRef.value | null) => {
+                  statementSelectRef.value = instance || undefined
+                },
+                selectedData: selection.statements,
+                'onUpdate:selectedData': ($event: typeof selection.statements) => {
+                  selection.statements = $event
+                },
+                apiFn: fetchStatementSelectorData,
+                columns: statementSelectorColumns,
+                title: '选择待付款承运商对账单',
+                subtitle: '可申请余额已扣除其他审批中和已批准待付款申请',
+                rowKey: 'id',
+                labelKey: 'statementNo',
+                descriptionKey: 'periodLabel',
+                placeholder: '请选择一份或多份对账单',
+                searchPlaceholder: '对账单号或承运商名称',
+                dialogWidth: 'xl',
+                showPagination: true,
+                showSelectedPanel: true,
+                pageSize: 10,
+                disabled: !form.data.carrierId || !canEditApplicationField('applicationAmounts'),
+                onChange: handleStatementChange,
+                emptyText: '暂无待付款对账单',
+                emptyDescription: '请先生成并确认承运商对账单；无可申请余额的对账单不会显示。'
+              },
+              label: '承运商对账单',
+              key: 'statementIds',
+              type: 'dataSelect',
+              span: 24
+            }
           ]
         : []),
       {

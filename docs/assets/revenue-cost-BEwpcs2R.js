@@ -1,1 +1,0 @@
-import{na as e,qi as t,xa as n}from"./sys-CEgHebcX.js";import{t as r}from"./ar-secondary-workspace-BiaJCC-S.js";var i=e({name:`FinanceRevenueCost`,__name:`index`,setup(e){return(e,i)=>(n(),t(r,{kind:`revenue`}))}});export{i as default};

@@ -1,1 +1,0 @@
-import{na as e,qi as t,xa as n}from"./sys-CEgHebcX.js";import{t as r}from"./receivable-workspace-DbOZxAw3.js";var i=e({name:`FinanceEstimatedReceivable`,__name:`index`,setup(e){return(e,i)=>(n(),t(r,{kind:`estimate`}))}});export{i as default};

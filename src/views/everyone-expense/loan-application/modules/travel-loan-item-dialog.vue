@@ -9,15 +9,6 @@
       :gutter="20"
       label-position="top"
     >
-      <template #borrowerEmployeeId>
-        <ArtEmployeeSelect
-          :model-value="model.borrowerEmployeeId || undefined"
-          :tenant-id="tenantId"
-          :api-fn="fetchLoanApplicantSelector"
-          placeholder="选择借款人"
-          @update:model-value="model.borrowerEmployeeId = $event || ''"
-        />
-      </template>
     </ArtForm>
   </ArtDialog>
 </template>
@@ -26,7 +17,6 @@
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
-  import ArtEmployeeSelect from '@/components/business/art-employee-select/index.vue'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import {
     fetchExpenseItemTree,
@@ -78,7 +68,22 @@
       props: { filterable: true, clearable: true, placeholder: '选填关联项目' }
     },
     ...(multipleTravelers.value
-      ? [{ key: 'borrowerEmployeeId', label: '借款人', type: 'input' as const }]
+      ? [
+          {
+            props: {
+              modelValue: model.value.borrowerEmployeeId || undefined,
+              tenantId: tenantId.value,
+              apiFn: fetchLoanApplicantSelector,
+              placeholder: '选择借款人',
+              'onUpdate:modelValue': ($event: typeof model.value.borrowerEmployeeId) => {
+                model.value.borrowerEmployeeId = $event || ''
+              }
+            },
+            key: 'borrowerEmployeeId',
+            label: '借款人',
+            type: 'employeeSelect'
+          }
+        ]
       : []),
     {
       key: 'amount',

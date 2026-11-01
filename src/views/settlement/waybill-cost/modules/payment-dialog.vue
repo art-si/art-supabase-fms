@@ -16,16 +16,6 @@
       :span="12"
       :gutter="20"
     >
-      <template #voucherUrls>
-        <ArtUploadImage
-          v-model="form.data.voucherUrls"
-          :resource-tenant-id="state.reimbursement?.tenantId || ''"
-          title="付款凭证"
-          :size="82"
-          :limit="5"
-          multiple
-        />
-      </template>
     </ArtForm>
   </ArtDialog>
 </template>
@@ -41,7 +31,6 @@
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
-  import ArtUploadImage from '@/components/core/forms/art-upload-image/index.vue'
   import { executeExpenseReimbursement, fetchFundAccountOptions } from '@fms/api'
   import { formatCurrencyValue } from '@/utils/ui'
   import { isReadableFieldAccess, getFieldAccess, isMaskedValue } from '@/utils/field-permission'
@@ -189,7 +178,19 @@
         span: 24,
         props: { rows: 3, maxlength: 500, showWordLimit: true }
       },
-      { label: '付款凭证', key: 'voucherUrls', type: 'input', span: 24 }
+      {
+        props: {
+          resourceTenantId: state.reimbursement?.tenantId || '',
+          title: '付款凭证',
+          size: 82,
+          limit: 5,
+          multiple: true
+        },
+        label: '付款凭证',
+        key: 'voucherUrls',
+        type: 'uploadImage',
+        span: 24
+      }
     ])
   })
 

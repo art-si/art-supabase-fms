@@ -9,40 +9,6 @@
       :gutter="20"
       label-position="top"
     >
-      <template #departureRegionPath>
-        <ElCascader
-          v-model="model.departureRegionPath"
-          class="w-full"
-          :options="regionOptions"
-          :props="regionProps"
-          filterable
-          clearable
-          placeholder="选择省 / 市 / 区"
-          popper-class="travel-region-popper"
-          aria-label="出发地"
-        />
-      </template>
-      <template #destinationRegionPath>
-        <ElCascader
-          v-model="model.destinationRegionPath"
-          class="w-full"
-          :options="regionOptions"
-          :props="regionProps"
-          filterable
-          clearable
-          placeholder="选择省 / 市 / 区"
-          popper-class="travel-region-popper"
-          aria-label="目的地"
-        />
-      </template>
-      <template #travelerEmployeeIds>
-        <ArtEmployeeSelect
-          v-model:model-values="model.travelerEmployeeIds"
-          :tenant-id="tenantId"
-          multiple
-          placeholder="选择出差人"
-        />
-      </template>
     </ArtForm>
   </ArtDialog>
 </template>
@@ -57,7 +23,6 @@
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
-  import ArtEmployeeSelect from '@/components/business/art-employee-select/index.vue'
   import {
     fetchExpenseItemTree,
     fetchExpenseProjectOptions,
@@ -104,8 +69,36 @@
   })
   const model = ref<FormModel>(initial())
   const items = computed<FormItem[]>(() => [
-    { key: 'departureRegionPath', label: '出发地', type: 'input' },
-    { key: 'destinationRegionPath', label: '目的地', type: 'input' },
+    {
+      props: {
+        class: 'w-full',
+        options: regionOptions.value,
+        props: regionProps,
+        filterable: true,
+        clearable: true,
+        placeholder: '选择省 / 市 / 区',
+        popperClass: 'travel-region-popper',
+        ariaLabel: '出发地'
+      },
+      key: 'departureRegionPath',
+      label: '出发地',
+      type: 'cascader'
+    },
+    {
+      props: {
+        class: 'w-full',
+        options: regionOptions.value,
+        props: regionProps,
+        filterable: true,
+        clearable: true,
+        placeholder: '选择省 / 市 / 区',
+        popperClass: 'travel-region-popper',
+        ariaLabel: '目的地'
+      },
+      key: 'destinationRegionPath',
+      label: '目的地',
+      type: 'cascader'
+    },
     {
       key: 'travelDates',
       label: '行程期间',
@@ -124,7 +117,22 @@
       props: { multiple: true, collapseTags: true, options: transportOptions }
     },
     ...(multipleTravelers.value
-      ? [{ key: 'travelerEmployeeIds', label: '出差人', type: 'input' as const }]
+      ? [
+          {
+            props: {
+              modelValues: model.value.travelerEmployeeIds,
+              'onUpdate:modelValues': ($event: typeof model.value.travelerEmployeeIds) => {
+                model.value.travelerEmployeeIds = $event
+              },
+              tenantId: tenantId.value,
+              multiple: true,
+              placeholder: '选择出差人'
+            },
+            key: 'travelerEmployeeIds',
+            label: '出差人',
+            type: 'employeeSelect'
+          }
+        ]
       : []),
     {
       key: 'expenseItemId',

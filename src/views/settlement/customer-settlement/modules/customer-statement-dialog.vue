@@ -10,55 +10,6 @@
       :gutter="20"
       label-width="104px"
     >
-      <template #customerId>
-        <ArtTableSingleSelect
-          v-model="form.customerId"
-          v-model:selected-data="selectedCustomers"
-          :api-fn="fetchCustomerSelectorData"
-          :columns="customerColumns"
-          title="选择对账客户"
-          subtitle="客户对账单按发货客户归集应收运费"
-          row-key="id"
-          label-key="customerName"
-          description-key="customerCode"
-          placeholder="请选择客户"
-          search-placeholder="客户名称、编码、联系人或电话"
-          empty-text="暂无可选客户"
-          empty-description="当前租户没有匹配的启用客户，请先维护客户主数据。"
-          dialog-width="lg"
-          show-pagination
-          :page-size="10"
-          @change="handleCriteriaChange"
-        >
-          <template #empty><FinanceDataSourceEmptyActions source="customer" /></template>
-        </ArtTableSingleSelect>
-      </template>
-
-      <template #orderIds>
-        <ArtTableMultipleSelect
-          ref="waybillSelectRef"
-          v-model="form.orderIds"
-          v-model:selected-data="selectedWaybills"
-          :api-fn="fetchWaybillSelectorData"
-          :columns="waybillColumns"
-          title="选择待对账原始运输单"
-          subtitle="每张原始单仅对账一次；拆单须全部签收，合单按客户原始单分别计费"
-          row-key="orderId"
-          label-key="orderNo"
-          description-key="routeLabel"
-          placeholder="请选择待对账原始单"
-          search-placeholder="原始单号、执行运单号或运输线路"
-          dialog-width="xl"
-          show-pagination
-          show-selected-panel
-          :page-size="10"
-          :disabled="!canSelectWaybill"
-          empty-text="暂无待对账原始单"
-          empty-description="原始单全部签收后才可对账；已进入有效对账单的原始单不会重复显示。"
-        >
-          <template #empty><FinanceDataSourceEmptyActions source="waybill" /></template>
-        </ArtTableMultipleSelect>
-      </template>
     </ArtForm>
 
     <ElAlert
@@ -80,8 +31,6 @@
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
-  import ArtTableMultipleSelect from '@/components/core/forms/art-data-select/table-multiple.vue'
-  import ArtTableSingleSelect from '@/components/core/forms/art-data-select/table-single.vue'
   import FinanceDataSourceEmptyActions from '../../../components/finance-data-source-empty-actions.vue'
   import type {
     ArtDataSelectExpose,
@@ -245,7 +194,38 @@
       props: { maxlength: 50, ...statementNumber.inputProps(false, '请输入客户对账单号') },
       description: statementNumber.description.value
     },
-    { label: '对账客户', key: 'customerId', type: 'input', span: 12 },
+    {
+      slots: { empty: () => h(FinanceDataSourceEmptyActions, { source: 'customer' }) },
+      props: {
+        mode: 'table',
+        multiple: false,
+        showSelectedPanel: false,
+
+        selectedData: selectedCustomers.value,
+        'onUpdate:selectedData': ($event: typeof selectedCustomers.value) => {
+          selectedCustomers.value = $event
+        },
+        apiFn: fetchCustomerSelectorData,
+        columns: customerColumns,
+        title: '选择对账客户',
+        subtitle: '客户对账单按发货客户归集应收运费',
+        rowKey: 'id',
+        labelKey: 'customerName',
+        descriptionKey: 'customerCode',
+        placeholder: '请选择客户',
+        searchPlaceholder: '客户名称、编码、联系人或电话',
+        emptyText: '暂无可选客户',
+        emptyDescription: '当前租户没有匹配的启用客户，请先维护客户主数据。',
+        dialogWidth: 'lg',
+        showPagination: true,
+        pageSize: 10,
+        onChange: handleCriteriaChange
+      },
+      label: '对账客户',
+      key: 'customerId',
+      type: 'dataSelect',
+      span: 12
+    },
     {
       label: '对账账期',
       key: 'periodRange',
@@ -261,7 +241,41 @@
         onChange: handleCriteriaChange
       }
     },
-    { label: '待对账原始单', key: 'orderIds', type: 'input', span: 24 },
+    {
+      slots: { empty: () => h(FinanceDataSourceEmptyActions, { source: 'waybill' }) },
+      props: {
+        mode: 'table',
+        multiple: true,
+
+        ref: (instance: typeof waybillSelectRef.value | null) => {
+          waybillSelectRef.value = instance || undefined
+        },
+        selectedData: selectedWaybills.value,
+        'onUpdate:selectedData': ($event: typeof selectedWaybills.value) => {
+          selectedWaybills.value = $event
+        },
+        apiFn: fetchWaybillSelectorData,
+        columns: waybillColumns.value,
+        title: '选择待对账原始运输单',
+        subtitle: '每张原始单仅对账一次；拆单须全部签收，合单按客户原始单分别计费',
+        rowKey: 'orderId',
+        labelKey: 'orderNo',
+        descriptionKey: 'routeLabel',
+        placeholder: '请选择待对账原始单',
+        searchPlaceholder: '原始单号、执行运单号或运输线路',
+        dialogWidth: 'xl',
+        showPagination: true,
+        showSelectedPanel: true,
+        pageSize: 10,
+        disabled: !canSelectWaybill.value,
+        emptyText: '暂无待对账原始单',
+        emptyDescription: '原始单全部签收后才可对账；已进入有效对账单的原始单不会重复显示。'
+      },
+      label: '待对账原始单',
+      key: 'orderIds',
+      type: 'dataSelect',
+      span: 24
+    },
     {
       label: '对账备注',
       key: 'remark',

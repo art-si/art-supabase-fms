@@ -9,25 +9,6 @@
       :gutter="20"
       label-position="top"
     >
-      <template #employeeId>
-        <ArtEmployeeSelect
-          :model-value="model.employeeId ?? undefined"
-          @update:model-value="model.employeeId = $event ?? null"
-          v-model:selected-data="selectedEmployee"
-          :tenant-id="model.tenantId"
-          placeholder="选择收款员工"
-          @change="handleEmployeeChange"
-        />
-      </template>
-      <template #userEmployeeId>
-        <ArtEmployeeSelect
-          :model-value="model.userEmployeeId ?? undefined"
-          @update:model-value="model.userEmployeeId = $event ?? null"
-          v-model:selected-data="selectedUser"
-          :tenant-id="model.tenantId"
-          placeholder="选择授权使用人"
-        />
-      </template>
     </ArtForm>
   </ArtDialog>
 </template>
@@ -45,7 +26,6 @@
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
-  import ArtEmployeeSelect from '@/components/business/art-employee-select/index.vue'
   import type { EmployeeIntegrationItem } from '@/api/integration/employees'
   import { fetchEnabledOrganizationTree } from '@/api/system-manage'
   import { savePayeeInformation, type PayeeInformation, type PayeeInformationInput } from '@fms/api'
@@ -105,7 +85,26 @@
       props: { activeText: '职员', inactiveText: '非职员' }
     },
     ...(model.value.isEmployee
-      ? [{ key: 'employeeId', label: '收款人', type: 'input' as const }]
+      ? [
+          {
+            props: {
+              modelValue: model.value.employeeId ?? undefined,
+              'onUpdate:modelValue': ($event: typeof model.value.employeeId) => {
+                model.value.employeeId = $event ?? null
+              },
+              selectedData: selectedEmployee.value,
+              'onUpdate:selectedData': ($event: typeof selectedEmployee.value) => {
+                selectedEmployee.value = $event
+              },
+              tenantId: model.value.tenantId,
+              placeholder: '选择收款员工',
+              onChange: handleEmployeeChange
+            },
+            key: 'employeeId',
+            label: '收款人',
+            type: 'employeeSelect'
+          }
+        ]
       : [
           {
             key: 'payeeName',
@@ -168,7 +167,25 @@
     },
     { key: 'authorizedUse', label: '授权使用', type: 'switch' },
     ...(model.value.authorizedUse
-      ? [{ key: 'userEmployeeId', label: '使用人', type: 'input' as const }]
+      ? [
+          {
+            props: {
+              modelValue: model.value.userEmployeeId ?? undefined,
+              'onUpdate:modelValue': ($event: typeof model.value.userEmployeeId) => {
+                model.value.userEmployeeId = $event ?? null
+              },
+              selectedData: selectedUser.value,
+              'onUpdate:selectedData': ($event: typeof selectedUser.value) => {
+                selectedUser.value = $event
+              },
+              tenantId: model.value.tenantId,
+              placeholder: '选择授权使用人'
+            },
+            key: 'userEmployeeId',
+            label: '使用人',
+            type: 'employeeSelect'
+          }
+        ]
       : []),
     { key: 'isDefault', label: '默认收款信息', type: 'switch' },
     {

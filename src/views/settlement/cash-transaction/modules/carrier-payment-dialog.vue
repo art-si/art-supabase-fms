@@ -27,54 +27,6 @@
       :gutter="20"
       label-width="100px"
     >
-      <template #carrierId>
-        <ArtTableSingleSelect
-          v-model="form.carrierId"
-          v-model:selected-data="selection.carriers"
-          :api-fn="fetchCarrierSelectorData"
-          :columns="carrierColumns"
-          title="选择付款承运商"
-          subtitle="付款和应付对账单必须属于同一承运商"
-          row-key="id"
-          label-key="companyName"
-          description-key="carrierCode"
-          placeholder="请选择承运商"
-          search-placeholder="承运商名称、编码或联系人"
-          empty-text="暂无可选承运商"
-          empty-description="当前租户没有匹配的启用承运商，请先维护承运商主数据。"
-          dialog-width="lg"
-          :disabled="dialog.mode === 'allocate'"
-          @change="handleCarrierChange"
-        >
-          <template #empty><FinanceDataSourceEmptyActions source="carrier" /></template>
-        </ArtTableSingleSelect>
-      </template>
-      <template #statementIds>
-        <ArtTableMultipleSelect
-          ref="statementSelectRef"
-          v-model="form.statementIds"
-          v-model:selected-data="selection.statements"
-          :api-fn="fetchStatementSelectorData"
-          :columns="statementSelectorColumns"
-          title="选择待核销承运商对账单"
-          subtitle="仅显示该承运商已确认、且仍有未付金额的对账单"
-          row-key="id"
-          label-key="statementNo"
-          description-key="periodLabel"
-          placeholder="可选择一份或多份对账单"
-          search-placeholder="对账单号或承运商名称"
-          dialog-width="xl"
-          show-pagination
-          show-selected-panel
-          :page-size="10"
-          :disabled="!form.carrierId"
-          @change="handleStatementChange"
-          empty-text="暂无待核销承运商对账单"
-          empty-description="请先生成并确认承运商对账单；已付清或无未付金额的对账单不会显示。"
-        >
-          <template #empty><FinanceDataSourceEmptyActions source="carrier-statement" /></template>
-        </ArtTableMultipleSelect>
-      </template>
       <template #cashEvidence
         ><CashVoucherOcrPanel
           v-if="dialog.mode === 'create'"
@@ -130,8 +82,6 @@
   import type { ArtDescriptionItem } from '@/components/core/base/art-descriptions/types'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
-  import ArtTableMultipleSelect from '@/components/core/forms/art-data-select/table-multiple.vue'
-  import ArtTableSingleSelect from '@/components/core/forms/art-data-select/table-single.vue'
   import FinanceDataSourceEmptyActions from '../../../components/finance-data-source-empty-actions.vue'
   import type {
     ArtDataSelectExpose,
@@ -379,7 +329,46 @@
   }
   const formItems = computed<FormItem[]>(() =>
     dialog.mode === 'allocate'
-      ? [{ label: '承运商对账单', key: 'statementIds', type: 'input', span: 24 }]
+      ? [
+          {
+            slots: {
+              empty: () => h(FinanceDataSourceEmptyActions, { source: 'carrier-statement' })
+            },
+            props: {
+              mode: 'table',
+              multiple: true,
+
+              ref: (instance: typeof statementSelectRef.value | null) => {
+                statementSelectRef.value = instance || undefined
+              },
+              selectedData: selection.statements,
+              'onUpdate:selectedData': ($event: typeof selection.statements) => {
+                selection.statements = $event
+              },
+              apiFn: fetchStatementSelectorData,
+              columns: statementSelectorColumns,
+              title: '选择待核销承运商对账单',
+              subtitle: '仅显示该承运商已确认、且仍有未付金额的对账单',
+              rowKey: 'id',
+              labelKey: 'statementNo',
+              descriptionKey: 'periodLabel',
+              placeholder: '可选择一份或多份对账单',
+              searchPlaceholder: '对账单号或承运商名称',
+              dialogWidth: 'xl',
+              showPagination: true,
+              showSelectedPanel: true,
+              pageSize: 10,
+              disabled: !form.value.carrierId,
+              onChange: handleStatementChange,
+              emptyText: '暂无待核销承运商对账单',
+              emptyDescription: '请先生成并确认承运商对账单；已付清或无未付金额的对账单不会显示。'
+            },
+            label: '承运商对账单',
+            key: 'statementIds',
+            type: 'dataSelect',
+            span: 24
+          }
+        ]
       : [
           { label: '付款信息', key: 'base', type: 'divider', span: 24 },
           {
@@ -393,7 +382,37 @@
             },
             description: transactionNumber.description.value
           },
-          { label: '付款承运商', key: 'carrierId', type: 'input', span: 12 },
+          {
+            slots: { empty: () => h(FinanceDataSourceEmptyActions, { source: 'carrier' }) },
+            props: {
+              mode: 'table',
+              multiple: false,
+              showSelectedPanel: false,
+              showPagination: Boolean(fetchCarrierSelectorData),
+              selectedData: selection.carriers,
+              'onUpdate:selectedData': ($event: typeof selection.carriers) => {
+                selection.carriers = $event
+              },
+              apiFn: fetchCarrierSelectorData,
+              columns: carrierColumns,
+              title: '选择付款承运商',
+              subtitle: '付款和应付对账单必须属于同一承运商',
+              rowKey: 'id',
+              labelKey: 'companyName',
+              descriptionKey: 'carrierCode',
+              placeholder: '请选择承运商',
+              searchPlaceholder: '承运商名称、编码或联系人',
+              emptyText: '暂无可选承运商',
+              emptyDescription: '当前租户没有匹配的启用承运商，请先维护承运商主数据。',
+              dialogWidth: 'lg',
+              disabled: false,
+              onChange: handleCarrierChange
+            },
+            label: '付款承运商',
+            key: 'carrierId',
+            type: 'dataSelect',
+            span: 12
+          },
           {
             label: '付款日期',
             key: 'transactionDate',
@@ -453,7 +472,44 @@
             props: { maxlength: 500, placeholder: '选填' }
           },
           { label: '核销信息', key: 'allocation', type: 'divider', span: 24 },
-          { label: '承运商对账单', key: 'statementIds', type: 'input', span: 24 }
+          {
+            slots: {
+              empty: () => h(FinanceDataSourceEmptyActions, { source: 'carrier-statement' })
+            },
+            props: {
+              mode: 'table',
+              multiple: true,
+
+              ref: (instance: typeof statementSelectRef.value | null) => {
+                statementSelectRef.value = instance || undefined
+              },
+              selectedData: selection.statements,
+              'onUpdate:selectedData': ($event: typeof selection.statements) => {
+                selection.statements = $event
+              },
+              apiFn: fetchStatementSelectorData,
+              columns: statementSelectorColumns,
+              title: '选择待核销承运商对账单',
+              subtitle: '仅显示该承运商已确认、且仍有未付金额的对账单',
+              rowKey: 'id',
+              labelKey: 'statementNo',
+              descriptionKey: 'periodLabel',
+              placeholder: '可选择一份或多份对账单',
+              searchPlaceholder: '对账单号或承运商名称',
+              dialogWidth: 'xl',
+              showPagination: true,
+              showSelectedPanel: true,
+              pageSize: 10,
+              disabled: !form.value.carrierId,
+              onChange: handleStatementChange,
+              emptyText: '暂无待核销承运商对账单',
+              emptyDescription: '请先生成并确认承运商对账单；已付清或无未付金额的对账单不会显示。'
+            },
+            label: '承运商对账单',
+            key: 'statementIds',
+            type: 'dataSelect',
+            span: 24
+          }
         ]
   )
 

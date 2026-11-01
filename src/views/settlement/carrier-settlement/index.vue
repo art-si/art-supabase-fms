@@ -26,7 +26,6 @@
 
     <ElAlert
       v-if="linkedDocumentError"
-      class="mb-4!"
       type="error"
       title="关联承运商对账单暂未打开"
       :closable="false"

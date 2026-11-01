@@ -28,29 +28,6 @@
       :gutter="20"
       label-width="104px"
     >
-      <template #waybillId>
-        <ArtTableSingleSelect
-          v-model="form.data.waybillId"
-          v-model:selected-data="selection.waybills"
-          :api-fn="fetchWaybillSelectorData"
-          :columns="waybillColumns"
-          title="选择关联运单"
-          subtitle="支持按运单号、订单号、车牌号或司机检索，选中后自动带出司机和车辆"
-          row-key="id"
-          label-key="waybillNo"
-          description-key="summary"
-          placeholder="请选择运单或输入车牌号检索"
-          search-placeholder="运单号、订单号、车牌号、司机"
-          empty-text="暂无可关联运单"
-          empty-description="请先创建并推进运单业务，当前筛选范围内没有可关联的运单。"
-          dialog-width="xl"
-          show-pagination
-          :page-size="10"
-        >
-          <template #empty><FinanceDataSourceEmptyActions source="waybill" /></template>
-        </ArtTableSingleSelect>
-      </template>
-
       <template #maintenanceRecordId>
         <MaintenanceSourceSelector
           :key="form.data.waybillId"
@@ -146,7 +123,6 @@
     ArtAddressPickerExpose
   } from '@/components/core/forms/art-address-picker/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
-  import ArtTableSingleSelect from '@/components/core/forms/art-data-select/table-single.vue'
   import FinanceDataSourceEmptyActions from '../../../components/finance-data-source-empty-actions.vue'
   import type {
     DataSelectColumn,
@@ -412,7 +388,36 @@
         },
         description: formData.id ? undefined : expenseNumber.description.value
       },
-      { label: '运单/车牌', key: 'waybillId', type: 'input' },
+      {
+        slots: { empty: () => h(FinanceDataSourceEmptyActions, { source: 'waybill' }) },
+        props: {
+          mode: 'table',
+          multiple: false,
+          showSelectedPanel: false,
+
+          selectedData: selection.waybills,
+          'onUpdate:selectedData': ($event: typeof selection.waybills) => {
+            selection.waybills = $event
+          },
+          apiFn: fetchWaybillSelectorData,
+          columns: waybillColumns,
+          title: '选择关联运单',
+          subtitle: '支持按运单号、订单号、车牌号或司机检索，选中后自动带出司机和车辆',
+          rowKey: 'id',
+          labelKey: 'waybillNo',
+          descriptionKey: 'summary',
+          placeholder: '请选择运单或输入车牌号检索',
+          searchPlaceholder: '运单号、订单号、车牌号、司机',
+          emptyText: '暂无可关联运单',
+          emptyDescription: '请先创建并推进运单业务，当前筛选范围内没有可关联的运单。',
+          dialogWidth: 'xl',
+          showPagination: true,
+          pageSize: 10
+        },
+        label: '运单/车牌',
+        key: 'waybillId',
+        type: 'dataSelect'
+      },
       {
         label: '费用归属',
         key: 'legId',

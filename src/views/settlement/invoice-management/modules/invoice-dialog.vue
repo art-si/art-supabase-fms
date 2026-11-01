@@ -97,37 +97,6 @@
         </div>
       </template>
 
-      <template #statementIds>
-        <ArtTableMultipleSelect
-          ref="statementSelectRef"
-          v-model="form.data.statementIds"
-          v-model:selected-data="selection.statements"
-          :api-fn="fetchStatementSelectorData"
-          :columns="statementColumns"
-          title="选择关联对账单"
-          subtitle="仅显示当前往来单位已确认、部分结算或已结清的对账单"
-          row-key="statementId"
-          label-key="statementNo"
-          description-key="periodLabel"
-          placeholder="可选择一个或多个对账单"
-          search-placeholder="对账单号或往来单位"
-          dialog-width="xl"
-          show-pagination
-          show-selected-panel
-          :page-size="10"
-          :disabled="!form.data.counterpartyId || !canEditInvoiceField('invoiceAmounts')"
-          empty-text="暂无可关联对账单"
-          empty-description="请先生成并确认对应往来单位的对账单，再返回关联发票。"
-        >
-          <template #empty>
-            <FinanceDataSourceEmptyActions
-              :source="
-                form.data.direction === 'output' ? 'customer-statement' : 'carrier-statement'
-              "
-            />
-          </template>
-        </ArtTableMultipleSelect>
-      </template>
       <template #invoiceLinks
         ><ArtSectionCard
           v-if="selection.statements.length && canViewInvoiceField('invoiceAmounts')"
@@ -237,7 +206,6 @@
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
-  import ArtTableMultipleSelect from '@/components/core/forms/art-data-select/table-multiple.vue'
   import ArtTableSingleSelect from '@/components/core/forms/art-data-select/table-single.vue'
   import FinanceDataSourceEmptyActions from '../../../components/finance-data-source-empty-actions.vue'
   import type {
@@ -522,7 +490,49 @@
             ...(!sourceReceivableId.value
               ? [
                   { label: '对账关联', key: 'linkSection', type: 'divider' as const, span: 24 },
-                  { label: '关联对账单', key: 'statementIds', type: 'input' as const, span: 24 }
+                  {
+                    slots: {
+                      empty: () =>
+                        h(FinanceDataSourceEmptyActions, {
+                          source:
+                            form.data.direction === 'output'
+                              ? 'customer-statement'
+                              : 'carrier-statement'
+                        })
+                    },
+                    props: {
+                      mode: 'table',
+                      multiple: true,
+
+                      ref: (instance: typeof statementSelectRef.value | null) => {
+                        statementSelectRef.value = instance || undefined
+                      },
+                      selectedData: selection.statements,
+                      'onUpdate:selectedData': ($event: typeof selection.statements) => {
+                        selection.statements = $event
+                      },
+                      apiFn: fetchStatementSelectorData,
+                      columns: statementColumns,
+                      title: '选择关联对账单',
+                      subtitle: '仅显示当前往来单位已确认、部分结算或已结清的对账单',
+                      rowKey: 'statementId',
+                      labelKey: 'statementNo',
+                      descriptionKey: 'periodLabel',
+                      placeholder: '可选择一个或多个对账单',
+                      searchPlaceholder: '对账单号或往来单位',
+                      dialogWidth: 'xl',
+                      showPagination: true,
+                      showSelectedPanel: true,
+                      pageSize: 10,
+                      disabled: !form.data.counterpartyId || !canEditInvoiceField('invoiceAmounts'),
+                      emptyText: '暂无可关联对账单',
+                      emptyDescription: '请先生成并确认对应往来单位的对账单，再返回关联发票。'
+                    },
+                    label: '关联对账单',
+                    key: 'statementIds',
+                    type: 'dataSelect',
+                    span: 24
+                  }
                 ]
               : [])
           ]

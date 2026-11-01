@@ -6,18 +6,7 @@
       :closable="false"
       class="mb-4"
     />
-    <ArtTableSingleSelect
-      :model-value="estimate?.id"
-      :selected-data="estimate ? [estimate] : []"
-      :api-fn="estimates"
-      :columns="estimateColumns"
-      row-key="id"
-      label-key="documentNo"
-      title="选择暂估应收"
-      placeholder="选择已审核暂估应收"
-      @confirm="(_key, selected) => selectEstimate(selected)"
-      @clear="selectEstimate([])"
-    />
+    <ArtForm v-model="selectionForm" :items="selectionItems" :span="24" label-position="top" />
     <ArtTable
       ref="lineTable"
       class="mt-4"
@@ -41,7 +30,7 @@
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtTable, { type ArtTableExpose } from '@/components/core/tables/art-table/index.vue'
-  import ArtTableSingleSelect from '@/components/core/forms/art-data-select/table-single.vue'
+  import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
   import type { DataSelectFetchParams } from '@/components/core/forms/art-data-select/types'
   import type { ColumnOption } from '@/types'
   defineOptions({ name: 'ArMatchDialog' })
@@ -50,6 +39,30 @@
   const lineTable = ref<ArtTableExpose>()
   const document = ref<ReceivableDocument>()
   const estimate = ref<ReceivableDocument>()
+  const selectionForm = ref({ estimateId: undefined as string | undefined })
+  const selectionItems = computed<FormItem[]>(() => [
+    {
+      key: 'estimateId',
+      label: '暂估应收',
+      type: 'dataSelect',
+      props: {
+        mode: 'table',
+        multiple: false,
+        showSelectedPanel: false,
+        showPagination: true,
+        modelValue: estimate.value?.id,
+        selectedData: estimate.value ? [estimate.value] : [],
+        apiFn: estimates,
+        columns: estimateColumns,
+        rowKey: 'id',
+        labelKey: 'documentNo',
+        title: '选择暂估应收',
+        placeholder: '选择已审核暂估应收',
+        onConfirm: (_key: unknown, selected: ReceivableDocument[]) => selectEstimate(selected),
+        onClear: () => selectEstimate([])
+      }
+    }
+  ])
   interface MatchRow {
     financialLineId: string
     estimatedLineId: string
