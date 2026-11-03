@@ -12,4 +12,4 @@ const statuses: Record<string, { label: string; type: TagProps['type'] }> = {
 }
 
 export const getWaybillStatusPresentation = (status: string) =>
-  statuses[status] ?? { label: status || '未知状态', type: 'info' as const }
+  statuses[status] ?? { label: '未知状态', type: 'info' as const }

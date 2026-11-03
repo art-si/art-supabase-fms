@@ -1,0 +1,1 @@
+import{vo as e}from"./sys-_5NO3G5z.js";function t(t,n){return t==null||e(t,n)}export{t};

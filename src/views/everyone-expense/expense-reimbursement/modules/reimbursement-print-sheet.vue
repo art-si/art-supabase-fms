@@ -118,7 +118,7 @@
     paid: '已付款',
     cancelled: '已作废'
   }
-  const statusLabel = (status: string): string => statusLabels[status] ?? status
+  const statusLabel = (status: string): string => statusLabels[status] ?? '未知状态'
   const money = (value: Api.Fms.SensitiveNumber | undefined): string =>
     typeof value === 'number' ? formatCurrencyValue(value) : value === '***' ? '***' : '—'
 

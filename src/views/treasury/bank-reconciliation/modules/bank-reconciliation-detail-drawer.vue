@@ -1,13 +1,15 @@
 <template>
   <ArtDrawer
     header-icon="ri:bank-line"
-    :loading="loading"
+    :loading="loading || actionBusy"
+    loading-text="正在处理银行对账，请稍候…"
     ref="drawerRef"
     @open="
       () => {
         activeDetailTab = 'overview'
       }
     "
+    @close="invalidateDetailContext"
     :show-footer="false"
   >
     <ArtAsyncState
@@ -32,6 +34,7 @@
             <ElButton
               v-auth="'FinanceBankReconciliation:AutoMatch'"
               :loading="autoMatching"
+              :disabled="actionBusy"
               @click="handleAutoMatch"
             >
               <ArtSvgIcon icon="ri:magic-line" />
@@ -40,6 +43,7 @@
             <ElButton
               v-auth="'FinanceBankReconciliation:Complete'"
               type="success"
+              :disabled="actionBusy"
               @click="handleComplete"
             >
               <ArtSvgIcon icon="ri:checkbox-circle-line" />
@@ -49,6 +53,7 @@
               v-auth="'FinanceBankReconciliation:Void'"
               type="danger"
               plain
+              :disabled="actionBusy"
               @click="handleVoid"
               >作废批次</ElButton
             >
@@ -201,6 +206,7 @@
                         type="delete"
                         permission="FinanceBankReconciliation:Unmatch"
                         label="撤销匹配"
+                        :disabled="actionBusy"
                         @click="handleUnmatch(match)"
                       />
                     </div>
@@ -236,6 +242,7 @@
 
 <script setup lang="tsx">
   import { useMediaQuery } from '@vueuse/core'
+  import { ElMessage } from 'element-plus'
   import ArtDictDisplay from '@/components/core/base/art-dict-display/index.vue'
   import type { ColumnOption } from '@/types'
   import ArtButtonTable from '@/components/core/forms/art-button-table/index.vue'
@@ -256,7 +263,10 @@
     unmatchBankStatementLine
   } from '@fms/api'
   import { notifyFriendlyError, useArtFeedback } from '@/hooks/core/useArtFeedback'
+  import { useArtOverlaySession } from '@/hooks/core/useArtOverlay'
   import { useAuth } from '@/hooks/core/useAuth'
+  import { useTenantOperationGuard } from '@/hooks/core/useTenantOperationGuard'
+  import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import { useUserStore } from '@/store/modules/user'
   import { formatSensitiveCurrencyValue } from '@/utils/ui'
   import { formatWithDayjs } from '@/utils/time'
@@ -278,7 +288,15 @@
   const { confirmAction, promptReason } = useArtFeedback()
   const { hasAuth } = useAuth()
   const userStore = useUserStore()
+  const tenantScopeStore = useTenantScopeStore()
+  const route = useRoute()
+  const captureOperation = useTenantOperationGuard()
   const drawerRef = ref<ArtDrawerExpose<Batch>>()
+  const {
+    version: drawerSession,
+    invalidate: invalidateDrawerSession,
+    isCurrent: isDrawerSessionCurrent
+  } = useArtOverlaySession(() => Boolean(unref(drawerRef.value?.visible)))
   const activeDetailTab = ref('overview')
   const matchDialogRef = ref<MatchDialogExpose>()
   const detail = shallowRef<Batch>()
@@ -290,8 +308,81 @@
   const loadError = shallowRef<Error | null>(null)
   const matchesLoading = ref(false)
   const matchesError = shallowRef<Error | null>(null)
+  const autoMatching = ref(false)
+  const actionBusy = ref(false)
+  const quietFeedback = { showMessage: false, showErrorMessage: false } as const
+  let active = true
   let detailRequestVersion = 0
   let matchRequestVersion = 0
+
+  function invalidateDetailContext(): void {
+    invalidateDrawerSession()
+    detailRequestVersion += 1
+    matchRequestVersion += 1
+    activeBatchId.value = ''
+    detail.value = undefined
+    lines.value = []
+    selectedLine.value = undefined
+    matches.value = []
+    loadError.value = null
+    matchesError.value = null
+    loading.value = false
+    matchesLoading.value = false
+    autoMatching.value = false
+    actionBusy.value = false
+  }
+
+  function captureBatchContext(batchId: string): () => boolean {
+    const operationCurrent = captureOperation()
+    const session = drawerSession.value
+    return () =>
+      active &&
+      operationCurrent() &&
+      isDrawerSessionCurrent(session) &&
+      activeBatchId.value === batchId
+  }
+
+  function captureBatchAction(permission: string) {
+    const batch = detail.value
+    if (!batch || actionBusy.value || !canAdjustMatches.value || !hasAuth(permission)) return
+    const { id, tenantId, version, status } = batch
+    const readVersion = detailRequestVersion
+    const contextCurrent = captureBatchContext(id)
+    const isContextCurrent = () =>
+      contextCurrent() &&
+      detailRequestVersion === readVersion &&
+      hasAuth(permission) &&
+      detail.value?.id === id &&
+      detail.value?.tenantId === tenantId
+    return {
+      id,
+      tenantId,
+      version,
+      sessionCurrent: contextCurrent,
+      isContextCurrent,
+      canDispatch: () =>
+        isContextCurrent() &&
+        detail.value?.version === version &&
+        detail.value?.status === status &&
+        ['draft', 'reconciling'].includes(status)
+    }
+  }
+
+  watch(
+    () =>
+      [
+        route.fullPath,
+        tenantScopeStore.effectiveTenantId,
+        tenantScopeStore.revision,
+        userStore.getUserInfo.userId
+      ] as const,
+    () => {
+      if (!unref(drawerRef.value?.visible)) return
+      invalidateDetailContext()
+      void drawerRef.value?.handleClose(true)
+    },
+    { flush: 'sync' }
+  )
   const canViewDetailField = (field: Api.Fms.BankReconciliationFieldKey): boolean =>
     canViewField(detail.value?.fieldAccess, field)
   const canUsePlainAmounts = computed(() =>
@@ -351,6 +442,7 @@
               type="edit"
               permission="FinanceBankReconciliation:Match"
               label="手工匹配"
+              disabled={actionBusy.value}
               onClick={() => void matchDialogRef.value?.handleOpen(row)}
             />
           ) : null}
@@ -359,6 +451,7 @@
               type="delete"
               permission="FinanceBankReconciliation:Ignore"
               label="忽略流水"
+              disabled={actionBusy.value}
               onClick={() => void handleIgnore(row)}
             />
           ) : null}
@@ -482,6 +575,7 @@
                 type="delete"
                 permission="FinanceBankReconciliation:Unmatch"
                 label="撤销匹配"
+                disabled={actionBusy.value}
                 onClick={() => void handleUnmatch(row)}
               />
             )
@@ -494,7 +588,8 @@
     const batchId = activeBatchId.value
     if (!batchId) return
     const version = ++detailRequestVersion
-    matchRequestVersion += 1
+    const contextCurrent = captureBatchContext(batchId)
+    ++matchRequestVersion
     loading.value = true
     loadError.value = null
     matchesLoading.value = false
@@ -510,26 +605,19 @@
         fetchBankReconciliationDetail(batchId, { showErrorMessage: false }),
         fetchBankStatementLines(batchId, { showErrorMessage: false })
       ])
+      if (!contextCurrent() || version !== detailRequestVersion) return
       if (batchResult.error) throw batchResult.error
       if (lineResult.error) throw lineResult.error
       const nextLines = lineResult.data ?? []
       const nextSelectedLine =
         nextLines.find((item) => item.id === selectedLine.value?.id) ?? nextLines[0]
-      let nextMatches: Match[] = []
-      if (batchResult.data && nextSelectedLine) {
-        const matchResult = await fetchBankStatementMatches(nextSelectedLine.id, {
-          showErrorMessage: false
-        })
-        if (matchResult.error) throw matchResult.error
-        nextMatches = matchResult.data ?? []
-      }
-      if (version !== detailRequestVersion) return
       detail.value = batchResult.data ?? undefined
       lines.value = batchResult.data ? nextLines : []
       selectedLine.value = batchResult.data ? nextSelectedLine : undefined
-      matches.value = batchResult.data ? nextMatches : []
+      matches.value = []
+      if (batchResult.data && nextSelectedLine) void loadMatches(nextSelectedLine)
     } catch (cause) {
-      if (version !== detailRequestVersion) return
+      if (!contextCurrent() || version !== detailRequestVersion) return
       detail.value = undefined
       lines.value = []
       selectedLine.value = undefined
@@ -538,25 +626,35 @@
         cause
       })
     } finally {
-      if (version === detailRequestVersion) loading.value = false
+      if (contextCurrent() && version === detailRequestVersion) loading.value = false
     }
   }
 
   async function loadMatches(row: Line): Promise<void> {
+    const batch = detail.value
+    const batchId = activeBatchId.value
+    const lineId = row.id
+    const currentLine = lines.value.find(
+      (item) => item.id === lineId && item.batchId === batchId && item.tenantId === batch?.tenantId
+    )
+    if (!batch || !currentLine || row.batchId !== batchId || row.tenantId !== batch.tenantId) return
     const version = ++matchRequestVersion
-    selectedLine.value = row
+    const contextCurrent = captureBatchContext(batchId)
+    selectedLine.value = currentLine
     matches.value = []
     matchesLoading.value = true
     matchesError.value = null
     try {
-      const result = await fetchBankStatementMatches(row.id, { showErrorMessage: false })
+      const result = await fetchBankStatementMatches(lineId, { showErrorMessage: false })
       if (result.error) throw result.error
-      if (version === matchRequestVersion) matches.value = result.data ?? []
+      if (contextCurrent() && version === matchRequestVersion && selectedLine.value?.id === lineId)
+        matches.value = result.data ?? []
     } catch (cause) {
-      if (version !== matchRequestVersion) return
+      if (!contextCurrent() || version !== matchRequestVersion || selectedLine.value?.id !== lineId)
+        return
       matchesError.value = new Error('匹配记录加载失败，请重试。', { cause })
     } finally {
-      if (version === matchRequestVersion) matchesLoading.value = false
+      if (contextCurrent() && version === matchRequestVersion) matchesLoading.value = false
     }
   }
 
@@ -568,42 +666,67 @@
     void loadDetail()
   }
 
-  const autoMatching = ref(false)
   async function handleAutoMatch(): Promise<void> {
-    if (!detail.value || autoMatching.value) return
+    const action = captureBatchAction('FinanceBankReconciliation:AutoMatch')
+    if (!action) return
+    actionBusy.value = true
     autoMatching.value = true
     try {
-      await autoMatchBankReconciliation(detail.value.id)
-      await loadDetail()
+      if (!action.canDispatch()) return
+      await autoMatchBankReconciliation(action.id, 3, quietFeedback)
+      if (!action.isContextCurrent()) return
+      ElMessage.success('自动匹配已完成')
       emit('changed')
+      await loadDetail()
     } catch (error) {
-      notifyFriendlyError(error, '自动匹配失败，请刷新银行流水后重试。')
+      if (action.isContextCurrent())
+        notifyFriendlyError(error, '自动匹配失败，请刷新银行流水后重试。')
     } finally {
-      autoMatching.value = false
+      if (action.sessionCurrent()) {
+        autoMatching.value = false
+        actionBusy.value = false
+      }
     }
   }
 
   async function handleComplete(): Promise<void> {
-    if (!detail.value) return
+    const action = captureBatchAction('FinanceBankReconciliation:Complete')
+    if (!action) return
+    actionBusy.value = true
     try {
       await confirmAction(
         '完成后批次与匹配关系将锁定，请确认所有未匹配项已处理且期末余额差为 0。',
         '完成银行对账',
         { type: 'success', confirmButtonText: '确认完成' }
       )
-      const { data } = await transitionBankReconciliation(detail.value.id, 'complete', {
-        version: detail.value.version
-      })
+      if (!action.canDispatch()) {
+        if (action.sessionCurrent()) ElMessage.warning('对账状态或权限已变化，请刷新后重试。')
+        return
+      }
+      const { data } = await transitionBankReconciliation(
+        action.id,
+        'complete',
+        { version: action.version },
+        quietFeedback
+      )
+      if (!action.isContextCurrent()) return
       if (data) detail.value = { ...detail.value, ...data, status: 'reconciled' }
+      ElMessage.success('银行对账状态已更新')
       emit('changed')
+      await loadDetail()
     } catch (error) {
       if (error === 'cancel' || error === 'close') return
-      notifyFriendlyError(error, '完成对账失败，请刷新批次并检查未匹配项和余额差。')
+      if (action.isContextCurrent())
+        notifyFriendlyError(error, '完成对账失败，请刷新批次并检查未匹配项和余额差。')
+    } finally {
+      if (action.sessionCurrent()) actionBusy.value = false
     }
   }
 
   async function handleVoid(): Promise<void> {
-    if (!detail.value) return
+    const action = captureBatchAction('FinanceBankReconciliation:Void')
+    if (!action) return
+    actionBusy.value = true
     try {
       const reason = await promptReason(
         '作废将撤销本批次全部匹配关系，但保留导入记录供审计。',
@@ -613,20 +736,48 @@
           placeholder: '说明作废原因及后续处理安排'
         }
       )
-      const { data } = await transitionBankReconciliation(detail.value.id, 'void', {
-        reason,
-        version: detail.value.version
-      })
+      if (!action.canDispatch()) {
+        if (action.sessionCurrent()) ElMessage.warning('对账状态或权限已变化，请刷新后重试。')
+        return
+      }
+      const { data } = await transitionBankReconciliation(
+        action.id,
+        'void',
+        { reason, version: action.version },
+        quietFeedback
+      )
+      if (!action.isContextCurrent()) return
       if (data) detail.value = { ...detail.value, ...data, status: 'voided' }
-      await loadDetail()
+      ElMessage.success('银行对账状态已更新')
       emit('changed')
+      await loadDetail()
     } catch (error) {
       if (error === 'cancel' || error === 'close') return
-      notifyFriendlyError(error, '作废对账批次失败，请刷新批次状态后重试。')
+      if (action.isContextCurrent())
+        notifyFriendlyError(error, '作废对账批次失败，请刷新批次状态后重试。')
+    } finally {
+      if (action.sessionCurrent()) actionBusy.value = false
     }
   }
 
   async function handleIgnore(row: Line): Promise<void> {
+    const action = captureBatchAction('FinanceBankReconciliation:Ignore')
+    if (!action || row.status !== 'unmatched') return
+    const lineId = row.id
+    const lineBatchId = row.batchId
+    const lineTenantId = row.tenantId
+    const isCurrentLine = () =>
+      lines.value.some(
+        (item) =>
+          item.id === lineId &&
+          item.batchId === lineBatchId &&
+          item.batchId === action.id &&
+          item.tenantId === lineTenantId &&
+          item.tenantId === action.tenantId &&
+          item.status === 'unmatched'
+      )
+    if (!isCurrentLine()) return
+    actionBusy.value = true
     try {
       const reason = await promptReason(
         '忽略项不会参与资金流水匹配，但仍参与银行余额计算。',
@@ -636,45 +787,92 @@
           placeholder: '例如 银行利息待补录资金流水'
         }
       )
-      await ignoreBankStatementLine(row.id, reason)
-      await loadDetail()
+      if (!action.canDispatch() || !isCurrentLine()) {
+        if (action.sessionCurrent()) ElMessage.warning('银行流水状态或权限已变化，请刷新后重试。')
+        return
+      }
+      await ignoreBankStatementLine(lineId, reason, quietFeedback)
+      if (!action.isContextCurrent()) return
+      ElMessage.success('银行流水已忽略')
       emit('changed')
+      await loadDetail()
     } catch (error) {
       if (error === 'cancel' || error === 'close') return
-      notifyFriendlyError(error, '忽略银行流水失败，请刷新流水状态后重试。')
+      if (action.isContextCurrent())
+        notifyFriendlyError(error, '忽略银行流水失败，请刷新流水状态后重试。')
+    } finally {
+      if (action.sessionCurrent()) actionBusy.value = false
     }
   }
 
   async function handleUnmatch(row: Match): Promise<void> {
+    const action = captureBatchAction('FinanceBankReconciliation:Unmatch')
+    if (!action) return
+    const line = selectedLine.value
+    const lineId = line?.id
+    const lineStatus = line?.status
+    const matchId = row.id
+    const matchLineId = row.statementLineId
+    const matchTenantId = row.tenantId
+    const isCurrentMatch = () =>
+      Boolean(
+        lineId &&
+        selectedLine.value?.id === lineId &&
+        selectedLine.value?.status === lineStatus &&
+        lines.value.some(
+          (item) =>
+            item.id === lineId &&
+            item.status === lineStatus &&
+            item.batchId === action.id &&
+            item.tenantId === action.tenantId
+        ) &&
+        matchLineId === lineId &&
+        matchTenantId === action.tenantId &&
+        matches.value.some(
+          (item) =>
+            item.id === matchId &&
+            item.statementLineId === lineId &&
+            item.tenantId === action.tenantId
+        )
+      )
+    if (!isCurrentMatch()) return
+    actionBusy.value = true
     try {
       await confirmAction('确定撤销该匹配关系吗？', '撤销银行流水匹配', {
         type: 'warning',
         confirmButtonText: '确认撤销'
       })
-      await unmatchBankStatementLine(row.id)
-      await loadDetail()
+      if (!action.canDispatch() || !isCurrentMatch()) {
+        if (action.sessionCurrent()) ElMessage.warning('匹配记录或权限已变化，请刷新后重试。')
+        return
+      }
+      await unmatchBankStatementLine(matchId, quietFeedback)
+      if (!action.isContextCurrent()) return
+      ElMessage.success('匹配已撤销')
       emit('changed')
+      await loadDetail()
     } catch (error) {
       if (error === 'cancel' || error === 'close') return
-      notifyFriendlyError(error, '撤销匹配失败，请刷新匹配记录后重试。')
+      if (action.isContextCurrent())
+        notifyFriendlyError(error, '撤销匹配失败，请刷新匹配记录后重试。')
+    } finally {
+      if (action.sessionCurrent()) actionBusy.value = false
     }
   }
 
   async function handleMatchChanged(): Promise<void> {
+    const batchId = activeBatchId.value
+    if (!batchId) return
+    const contextCurrent = captureBatchContext(batchId)
+    const nextReadVersion = detailRequestVersion + 1
     await loadDetail()
-    emit('changed')
+    if (contextCurrent() && detailRequestVersion === nextReadVersion) emit('changed')
   }
 
   async function handleOpen(row: Batch): Promise<void> {
-    detailRequestVersion += 1
-    matchRequestVersion += 1
+    invalidateDetailContext()
     activeBatchId.value = row.id
     detail.value = row
-    lines.value = []
-    selectedLine.value = undefined
-    matches.value = []
-    matchesLoading.value = false
-    matchesError.value = null
     await drawerRef.value?.handleOpen(row, {
       title: '银行对账',
       subtitle: `${row.batchNo} · 银行流水与资金记录`,
@@ -685,9 +883,14 @@
   }
 
   onDeactivated(() => {
-    detailRequestVersion += 1
-    matchRequestVersion += 1
+    active = false
+    invalidateDetailContext()
+    void drawerRef.value?.handleClose(true)
   })
+  onActivated(() => {
+    active = true
+  })
+  onBeforeUnmount(invalidateDetailContext)
 
   defineExpose({ handleOpen })
 </script>

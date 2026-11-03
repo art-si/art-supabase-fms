@@ -1,9 +1,9 @@
 <template>
   <ArtDialog
-    :loading="candidatesLoading"
     ref="dialogRef"
     size="md"
-    :confirm-disabled="candidatesLoading || candidateLoadFailed || !ledgerOptions.length"
+    :confirm-disabled="!formRef?.readyToSubmit || !candidateIds.length"
+    @close="() => void invalidateDialogSession()"
   >
     <template #subtitle> 同账户、同方向的资金流水可按剩余金额分摊匹配。 </template>
     <ArtDescriptions
@@ -15,44 +15,28 @@
       label-width="108px"
       class="mb-4"
     />
-    <ElAlert v-if="candidateLoadFailed" type="error" :closable="false" show-icon class="mb-4">
-      <template #title>匹配候选加载失败，请重试。</template>
-      <ElButton plain type="primary" :loading="candidatesLoading" @click="loadCandidates">
-        重新加载候选
-      </ElButton>
-    </ElAlert>
-    <ArtAsyncState loading-text="正在加载匹配候选…">
-      <ArtEmptyState
-        v-if="!candidatesLoading && !candidateLoadFailed && !ledgerOptions.length"
-        title="暂无可匹配资金流水"
-        description="请先核对同账户、同方向的资金流水是否已登记，且仍有未匹配金额。"
-        size="compact"
-        :visual-size="64"
-      >
-        <ElButton type="primary" plain @click="loadCandidates">刷新候选</ElButton>
-      </ArtEmptyState>
-      <ArtForm
-        v-if="ledgerOptions.length || candidateLoadFailed"
-        ref="formRef"
-        v-model="form.data"
-        :items="formItems"
-        :rules="form.rules"
-        :span="24"
-        label-width="108px"
-      />
-    </ArtAsyncState>
+    <ArtForm
+      ref="formRef"
+      v-model="form.data"
+      :items="formItems"
+      :rules="form.rules"
+      :span="24"
+      label-width="108px"
+    />
   </ArtDialog>
 </template>
 
 <script setup lang="ts">
+  import { ElMessage } from 'element-plus'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
+  import { artOverlayRequestScopeKey, useArtOverlaySession } from '@/hooks/core/useArtOverlay'
+  import { useTenantOperationGuard } from '@/hooks/core/useTenantOperationGuard'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { normalizeNullableText } from '@/utils/form/normalize'
   import type { FormRules } from 'element-plus'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
-  import ArtEmptyState from '@/components/core/feedback/art-empty-state/index.vue'
   import ArtDescriptions from '@/components/core/base/art-descriptions/index.vue'
   import type { ArtDescriptionItem } from '@/components/core/base/art-descriptions/types'
   import { fetchBankMatchCandidates, matchBankStatementLine } from '@fms/api'
@@ -68,8 +52,16 @@
 
   const emit = defineEmits<{ success: [] }>()
   const dialogRef = ref<ArtDialogExpose>()
-  const formRef = ref<{ validate: () => Promise<boolean>; clearValidate: () => void }>()
+  const formRef = ref<InstanceType<typeof ArtForm>>()
   const line = shallowRef<Api.Fms.BankStatementLineRecord>()
+  const candidateIds = shallowRef<string[]>([])
+  const captureOperation = useTenantOperationGuard('FinanceBankReconciliation:Match')
+  const ownerScope = inject(artOverlayRequestScopeKey, undefined)
+  const {
+    version: dialogSession,
+    invalidate: invalidateDialogSession,
+    isCurrent: isDialogSessionCurrent
+  } = useArtOverlaySession(() => Boolean(unref(dialogRef.value?.visible)))
   const lineDescriptionItems: ArtDescriptionItem<Api.Fms.BankStatementLineRecord>[] = [
     { key: 'transactionDate', field: 'transactionDate', label: '交易日期', format: 'date' },
     { key: 'counterpartyName', field: 'counterpartyName', label: '对方名称' },
@@ -81,14 +73,7 @@
       format: 'money'
     }
   ]
-  const ledgerOptions = ref<Array<{ label: string; value: string; amount: number }>>([])
-  const candidatesLoading = ref(false)
-  const candidateLoadFailed = ref(false)
-  let candidateRequestId = 0
-  watch(
-    () => candidatesLoading.value || candidateLoadFailed.value || !ledgerOptions.value.length,
-    (confirmDisabled) => dialogRef.value?.setOptions({ confirmDisabled })
-  )
+  let candidateCurrent: (() => boolean) | undefined
   const form = reactive<{ data: FormData; rules: FormRules<FormData> }>({
     data: { ledgerEntryId: '', amount: 0, remark: '' },
     rules: {
@@ -111,10 +96,55 @@
       label: '资金流水',
       key: 'ledgerEntryId',
       type: 'select',
+      immediate: false,
+      params: { lineId: line.value?.id },
+      beforeFetch: (params) => {
+        form.data.ledgerEntryId = ''
+        candidateIds.value = []
+        const requestLine = line.value
+        const operationCurrent = captureOperation()
+        const session = dialogSession.value
+        const ownerVersion = ownerScope?.version.value
+        candidateCurrent = () =>
+          operationCurrent() &&
+          isDialogSessionCurrent(session) &&
+          (!ownerScope ||
+            (ownerScope.visible.value && ownerScope.version.value === ownerVersion)) &&
+          line.value === requestLine &&
+          line.value?.id === params?.lineId
+        return params
+      },
+      api: async (params) => {
+        const lineId = typeof params?.lineId === 'string' ? params.lineId : ''
+        if (!lineId) throw new Error('银行流水已变化，请重新打开后重试')
+        return fetchBankMatchCandidates(lineId, undefined, { showErrorMessage: false })
+      },
+      afterFetch: (result) => {
+        if (
+          !result ||
+          typeof result !== 'object' ||
+          !('data' in result) ||
+          !Array.isArray(result.data)
+        )
+          throw new Error('匹配候选数据无效，请重新加载')
+        const ids = result.data.map((candidate: unknown) => {
+          if (
+            !candidate ||
+            typeof candidate !== 'object' ||
+            !('id' in candidate) ||
+            typeof candidate.id !== 'string'
+          )
+            throw new Error('匹配候选数据无效，请重新加载')
+          return candidate.id
+        })
+        if (candidateCurrent?.()) candidateIds.value = ids
+        return result
+      },
+      resultField: 'data',
+      valueField: 'id',
+      labelFn: (candidate) =>
+        `${candidate.entryDate} · ${candidate.summary} · ${formatCurrencyValue(candidate.amount)}${candidate.sourceNo ? ` · ${candidate.sourceNo}` : ''}`,
       props: {
-        options: ledgerOptions.value,
-        loading: candidatesLoading.value,
-        disabled: candidatesLoading.value || candidateLoadFailed.value,
         noDataText: '暂无同账户、同方向的可匹配资金流水',
         filterable: true,
         placeholder: '选择同账户、同方向的资金流水'
@@ -141,34 +171,71 @@
   ])
 
   async function handleSubmit(): Promise<boolean> {
+    const selectedLine = line.value
+    if (!selectedLine || !formRef.value?.readyToSubmit) return false
+    const submitted = {
+      lineId: selectedLine.id,
+      tenantId: selectedLine.tenantId,
+      batchId: selectedLine.batchId,
+      status: selectedLine.status,
+      remainingAmount: getRemainingAmount(),
+      ledgerEntryId: form.data.ledgerEntryId,
+      amount: Number(form.data.amount),
+      remark: normalizeNullableText(form.data.remark)
+    }
+    const operationCurrent = captureOperation()
+    const session = dialogSession.value
+    const ownerVersion = ownerScope?.version.value
+    const isCurrent = () =>
+      operationCurrent() &&
+      isDialogSessionCurrent(session) &&
+      (!ownerScope || (ownerScope.visible.value && ownerScope.version.value === ownerVersion)) &&
+      line.value === selectedLine &&
+      line.value.id === submitted.lineId &&
+      line.value.tenantId === submitted.tenantId &&
+      line.value.batchId === submitted.batchId &&
+      line.value.status === submitted.status &&
+      getRemainingAmount() === submitted.remainingAmount &&
+      form.data.ledgerEntryId === submitted.ledgerEntryId &&
+      Object.is(Number(form.data.amount), submitted.amount) &&
+      normalizeNullableText(form.data.remark) === submitted.remark
     try {
-      if (candidatesLoading.value || candidateLoadFailed.value) return false
+      if (!isCurrent() || !['unmatched', 'partial_matched'].includes(submitted.status)) return false
       if (!(await validateArtFormForSubmit(formRef.value))) return false
-      if (!line.value) return false
-      await matchBankStatementLine(
-        line.value.id,
-        form.data.ledgerEntryId,
-        form.data.amount,
-        normalizeNullableText(form.data.remark)
+      if (
+        !isCurrent() ||
+        !candidateIds.value.includes(submitted.ledgerEntryId) ||
+        !Number.isFinite(submitted.amount) ||
+        submitted.amount <= 0 ||
+        submitted.amount > submitted.remainingAmount
       )
+        return false
+      await matchBankStatementLine(
+        submitted.lineId,
+        submitted.ledgerEntryId,
+        submitted.amount,
+        submitted.remark,
+        { showMessage: false, showErrorMessage: false }
+      )
+      if (!isCurrent() || !candidateIds.value.includes(submitted.ledgerEntryId)) return false
+      ElMessage.success('银行流水已匹配')
       emit('success')
       return true
     } catch (error) {
-      notifyFriendlyError(error, '银行流水匹配失败，请稍后重试')
+      if (isCurrent()) notifyFriendlyError(error, '银行流水匹配失败，请稍后重试')
       return false
     }
   }
 
   async function handleOpen(row: Api.Fms.BankStatementLineRecord): Promise<void> {
-    ++candidateRequestId
-    candidateLoadFailed.value = false
+    invalidateDialogSession()
     line.value = row
+    candidateIds.value = []
     Object.assign(form.data, {
       ledgerEntryId: '',
       amount: Number(row.remainingAmount ?? 0),
       remark: ''
     })
-    ledgerOptions.value = []
     await dialogRef.value?.handleOpen(undefined, {
       title: `手工匹配 · 第 ${row.lineNo} 行`,
       confirmText: '确认匹配',
@@ -178,7 +245,7 @@
       onOpen: async (_openData, api) => {
         formRef.value?.clearValidate()
         try {
-          await loadCandidates()
+          await formRef.value?.reloadOptions('ledgerEntryId')
         } finally {
           api.setLoading(false)
         }
@@ -187,32 +254,7 @@
     })
   }
 
-  async function loadCandidates(): Promise<void> {
-    const currentLineId = line.value?.id
-    const requestId = ++candidateRequestId
-    candidateLoadFailed.value = false
-    ledgerOptions.value = []
-    form.data.ledgerEntryId = ''
-    if (!currentLineId) return
-    candidatesLoading.value = true
-    try {
-      const { data, error } = await fetchBankMatchCandidates(currentLineId)
-      if (requestId !== candidateRequestId || line.value?.id !== currentLineId) return
-      if (error) {
-        candidateLoadFailed.value = true
-        return
-      }
-      ledgerOptions.value = (data ?? []).map((item) => ({
-        label: `${item.entryDate} · ${item.summary} · ${formatCurrencyValue(item.amount)}${item.sourceNo ? ` · ${item.sourceNo}` : ''}`,
-        value: item.id,
-        amount: Number(item.amount ?? 0)
-      }))
-    } catch {
-      if (requestId === candidateRequestId) candidateLoadFailed.value = true
-    } finally {
-      if (requestId === candidateRequestId) candidatesLoading.value = false
-    }
-  }
+  onDeactivated(invalidateDialogSession)
 
   function getRemainingAmount(): number {
     const value = Number(line.value?.remainingAmount ?? 0)

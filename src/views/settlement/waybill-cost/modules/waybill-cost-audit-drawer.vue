@@ -19,7 +19,9 @@
         >
           <header class="cost-auditor__hero-header">
             <div class="cost-auditor__hero-main">
-              <span class="cost-auditor__icon">
+              <span
+                class="cost-auditor__icon grid size-[48px] flex-none place-items-center [font-size:24px] [color:var(--el-color-primary)] [background:var(--el-color-primary-light-9)] [border-radius:var(--el-border-radius-base)]"
+              >
                 <ArtSvgIcon icon="ri:shield-check-line" />
               </span>
               <div>
@@ -229,7 +231,11 @@
           </ArtSectionTitle>
           <ol class="cost-auditor__actions art-card-xs">
             <li v-for="(action, index) in state.data.assessment.recommendedActions" :key="action">
-              <span>{{ index + 1 }}</span>
+              <span
+                class="grid size-[26px] flex-none place-items-center font-bold [color:var(--el-color-primary)] [background:var(--el-color-primary-light-9)] [border-radius:50%]"
+              >
+                {{ index + 1 }}
+              </span>
               <div>
                 <small>核对步骤 {{ index + 1 }}</small>
                 <p>{{ action }}</p>
@@ -549,18 +555,6 @@
         color: var(--el-text-color-secondary);
         white-space: nowrap;
       }
-    }
-
-    &__icon {
-      display: grid;
-      flex: none;
-      place-items: center;
-      width: 48px;
-      height: 48px;
-      font-size: 24px;
-      color: var(--el-color-primary);
-      background: var(--el-color-primary-light-9);
-      border-radius: var(--el-border-radius-base);
     }
 
     &__eyebrow {
@@ -903,18 +897,6 @@
 
         & + li {
           border-top: 1px dashed var(--el-border-color-lighter);
-        }
-
-        > span {
-          display: grid;
-          flex: none;
-          place-items: center;
-          width: 26px;
-          height: 26px;
-          font-weight: 700;
-          color: var(--el-color-primary);
-          background: var(--el-color-primary-light-9);
-          border-radius: 50%;
         }
 
         > div {

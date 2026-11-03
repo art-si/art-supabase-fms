@@ -277,7 +277,8 @@ export async function saveFundTransfer(payload: Api.Fms.SaveFundTransferPayload)
 export async function transitionFundTransfer(
   id: string,
   action: Exclude<Api.Fms.FundTransferAction, 'create' | 'edit'>,
-  options: { reason?: string | null; executionDate?: string | null; version?: number } = {}
+  options: { reason?: string | null; executionDate?: string | null; version?: number } = {},
+  feedback: ApiFeedbackOptions = {}
 ) {
   return await responseHandle<FundTransfer>(
     () =>
@@ -288,7 +289,12 @@ export async function transitionFundTransfer(
         p_execution_date: options.executionDate || null,
         p_expected_version: options.version ?? null
       }),
-    { breakReturn: true, showMessage: true, message: '资金调拨状态已更新' }
+    {
+      breakReturn: true,
+      showMessage: feedback.showMessage ?? true,
+      showErrorMessage: feedback.showErrorMessage ?? true,
+      message: '资金调拨状态已更新'
+    }
   )
 }
 
@@ -358,14 +364,18 @@ export async function fetchBankStatementMatches(lineId: string, options?: ApiFee
   )
 }
 
-export async function fetchBankMatchCandidates(lineId: string, toleranceDays = 30) {
+export async function fetchBankMatchCandidates(
+  lineId: string,
+  toleranceDays = 30,
+  feedback: ApiFeedbackOptions = {}
+) {
   const result = await responseHandle<BankMatchCandidateListPayload>(
     () =>
       supabase.rpc('fms_list_bank_match_candidates_secure', {
         p_statement_line_id: lineId,
         p_date_tolerance_days: toleranceDays
       }),
-    { showErrorMessage: true }
+    { showErrorMessage: feedback.showErrorMessage ?? true }
   )
   return {
     data: result.data?.records ?? [],
@@ -381,14 +391,23 @@ export async function importBankReconciliation(payload: Api.Fms.ImportBankReconc
   )
 }
 
-export async function autoMatchBankReconciliation(id: string, toleranceDays = 3) {
+export async function autoMatchBankReconciliation(
+  id: string,
+  toleranceDays = 3,
+  feedback: ApiFeedbackOptions = {}
+) {
   return await responseHandle<number>(
     () =>
       supabase.rpc('auto_match_fms_bank_reconciliation_secure', {
         p_batch_id: id,
         p_date_tolerance_days: toleranceDays
       }),
-    { breakReturn: true, showMessage: true, message: '自动匹配已完成' }
+    {
+      breakReturn: true,
+      showMessage: feedback.showMessage ?? true,
+      showErrorMessage: feedback.showErrorMessage ?? true,
+      message: '自动匹配已完成'
+    }
   )
 }
 
@@ -396,7 +415,8 @@ export async function matchBankStatementLine(
   lineId: string,
   ledgerEntryId: string,
   amount?: number,
-  remark?: string | null
+  remark?: string | null,
+  feedback: ApiFeedbackOptions = {}
 ) {
   return await responseHandle<Api.Fms.BankStatementMatchRecord>(
     () =>
@@ -406,32 +426,52 @@ export async function matchBankStatementLine(
         p_matched_amount: amount ?? null,
         p_remark: remark || null
       }),
-    { breakReturn: true, showMessage: true, message: '银行流水已匹配' }
+    {
+      breakReturn: true,
+      showMessage: feedback.showMessage ?? true,
+      showErrorMessage: feedback.showErrorMessage ?? true,
+      message: '银行流水已匹配'
+    }
   )
 }
 
-export async function unmatchBankStatementLine(matchId: string) {
+export async function unmatchBankStatementLine(matchId: string, feedback: ApiFeedbackOptions = {}) {
   return await responseHandle<string>(
     () => supabase.rpc('unmatch_fms_bank_statement_line_secure', { p_match_id: matchId }),
-    { breakReturn: true, showMessage: true, message: '匹配已撤销' }
+    {
+      breakReturn: true,
+      showMessage: feedback.showMessage ?? true,
+      showErrorMessage: feedback.showErrorMessage ?? true,
+      message: '匹配已撤销'
+    }
   )
 }
 
-export async function ignoreBankStatementLine(lineId: string, reason: string) {
+export async function ignoreBankStatementLine(
+  lineId: string,
+  reason: string,
+  feedback: ApiFeedbackOptions = {}
+) {
   return await responseHandle<Api.Fms.BankStatementLineRecord>(
     () =>
       supabase.rpc('ignore_fms_bank_statement_line_secure', {
         p_statement_line_id: lineId,
         p_reason: reason
       }),
-    { breakReturn: true, showMessage: true, message: '银行流水已忽略' }
+    {
+      breakReturn: true,
+      showMessage: feedback.showMessage ?? true,
+      showErrorMessage: feedback.showErrorMessage ?? true,
+      message: '银行流水已忽略'
+    }
   )
 }
 
 export async function transitionBankReconciliation(
   id: string,
   action: 'complete' | 'void',
-  options: { reason?: string | null; version?: number } = {}
+  options: { reason?: string | null; version?: number } = {},
+  feedback: ApiFeedbackOptions = {}
 ) {
   return await responseHandle<ReconciliationBatch>(
     () =>
@@ -441,6 +481,11 @@ export async function transitionBankReconciliation(
         p_reason: options.reason || null,
         p_expected_version: options.version ?? null
       }),
-    { breakReturn: true, showMessage: true, message: '银行对账状态已更新' }
+    {
+      breakReturn: true,
+      showMessage: feedback.showMessage ?? true,
+      showErrorMessage: feedback.showErrorMessage ?? true,
+      message: '银行对账状态已更新'
+    }
   )
 }

@@ -170,6 +170,7 @@
     '资金调拨'
   )
   const transitionBusy = ref(false)
+  let transitionVersion = 0
   const { runWithAccountSet } = useFinanceAccountSetPrerequisite()
   const userStore = useUserStore()
   const tenantScope = useTenantScopeStore()
@@ -740,7 +741,7 @@
           (candidate) => candidate.key === action.key && candidate.auth === action.auth
         )
       )
-    if (!action || !canRunAction()) {
+    if (!action?.auth || !canRunAction()) {
       ElMessage.error('调拨操作权限或状态已变化，请刷新页面后重试')
       return
     }
@@ -755,23 +756,60 @@
       })
       return
     }
+    if (
+      item.key !== 'submit' &&
+      item.key !== 'approve' &&
+      item.key !== 'reject' &&
+      item.key !== 'execute' &&
+      item.key !== 'reverse'
+    )
+      return
+    const actionKey = item.key
+    const actionAuth = action.auth
+    const record = {
+      id: row.id,
+      tenantId: row.tenantId,
+      version: row.version,
+      status: row.status
+    }
+    const operationCurrent = captureOperation()
+    const scopeKey = readScopeKey.value
+    const acceptedScopeKey = tableScopeKey.value
+    const acceptedTableContextKey = tableContextKey.value
+    const scopeCurrent = () =>
+      active &&
+      operationCurrent() &&
+      readScopeKey.value === scopeKey &&
+      tableScopeKey.value === acceptedScopeKey &&
+      acceptedScopeKey === scopeKey &&
+      tableContextKey.value === acceptedTableContextKey
+    const actionCurrent = () =>
+      scopeCurrent() &&
+      hasAuth(actionAuth) &&
+      currentRows.value.some(
+        (current) =>
+          current.id === record.id &&
+          current.tenantId === record.tenantId &&
+          current.version === record.version &&
+          current.status === record.status &&
+          getActionItems(current).some(
+            (candidate) => candidate.key === actionKey && candidate.auth === actionAuth
+          )
+      )
+    if (!actionCurrent()) {
+      if (scopeCurrent()) ElMessage.error('调拨操作权限或状态已变化，请刷新页面后重试')
+      return
+    }
+    const version = ++transitionVersion
     transitionBusy.value = true
     try {
-      if (
-        item.key !== 'submit' &&
-        item.key !== 'approve' &&
-        item.key !== 'reject' &&
-        item.key !== 'execute' &&
-        item.key !== 'reverse'
-      )
-        return
       let reason: string | undefined
-      if (item.key === 'reject' || item.key === 'reverse') {
+      if (actionKey === 'reject' || actionKey === 'reverse') {
         reason = await promptReason(
-          item.key === 'reject'
+          actionKey === 'reject'
             ? '请说明驳回原因和修改要求。'
             : '冲销会生成反向资金流水，请说明业务原因。',
-          item.key === 'reject' ? '驳回资金调拨' : '冲销资金调拨',
+          actionKey === 'reject' ? '驳回资金调拨' : '冲销资金调拨',
           { emptyMessage: '请填写原因', placeholder: '填写可审计的处理原因' }
         )
       } else {
@@ -780,28 +818,36 @@
           approve: '审批通过后仍需执行入账，当前操作不会立即改变余额。',
           execute: buildExecuteConfirmMessage(row)
         }
-        await confirmAction(messages[item.key] || '确定执行该操作吗？', item.label, {
-          type: item.key === 'execute' ? 'warning' : 'info',
+        await confirmAction(messages[actionKey] || '确定执行该操作吗？', item.label, {
+          type: actionKey === 'execute' ? 'warning' : 'info',
           confirmButtonText: item.label
         })
       }
-      if (!canRunAction()) {
-        ElMessage.error('调拨操作权限或状态已变化，请刷新页面后重试')
+      if (!actionCurrent()) {
+        if (scopeCurrent()) ElMessage.error('调拨操作权限或状态已变化，请刷新页面后重试')
         return
       }
-      await transitionFundTransfer(row.id, item.key, {
-        reason,
-        executionDate: ['execute', 'reverse'].includes(String(item.key))
-          ? dayjs().format('YYYY-MM-DD')
-          : null,
-        version: row.version
-      })
+      await transitionFundTransfer(
+        record.id,
+        actionKey,
+        {
+          reason,
+          executionDate:
+            actionKey === 'execute' || actionKey === 'reverse'
+              ? dayjs().format('YYYY-MM-DD')
+              : null,
+          version: record.version
+        },
+        { showMessage: false, showErrorMessage: false }
+      )
+      if (!actionCurrent()) return
+      ElMessage.success('资金调拨状态已更新')
       await refreshAll('update')
     } catch (error) {
       if (error === 'cancel' || error === 'close') return
-      notifyFriendlyError(error, `${item.label}失败，请刷新调拨状态后重试`)
+      if (actionCurrent()) notifyFriendlyError(error, `${item.label}失败，请刷新调拨状态后重试`)
     } finally {
-      transitionBusy.value = false
+      if (version === transitionVersion) transitionBusy.value = false
     }
   }
 
@@ -862,6 +908,8 @@
   watch(
     readScopeKey,
     () => {
+      transitionVersion += 1
+      transitionBusy.value = false
       tableRef.value?.cancelRequest()
       cancelPendingReads()
       if (!active) return
@@ -885,6 +933,8 @@
   watch(
     () => [route.path, route.fullPath] as const,
     ([path], [previousPath]) => {
+      transitionVersion += 1
+      transitionBusy.value = false
       if (!active || path !== previousPath || (route.name && route.name !== 'FinanceFundTransfer'))
         return
       void loadOverview()
@@ -913,6 +963,8 @@
     await Promise.all([loadAccountSetOptions(), loadOverview()])
   })
   onDeactivated(() => {
+    transitionVersion += 1
+    transitionBusy.value = false
     active = false
     needsResume = true
     tableRef.value?.cancelRequest()

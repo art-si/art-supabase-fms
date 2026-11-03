@@ -155,10 +155,14 @@
     }
   ])
   const searchQuery = ref<SearchParams>({
-    customerId: customerDeleteContext.value.customerId,
+    customerId:
+      customerDeleteContext.value.customerId ||
+      (typeof route.query.customerId === 'string' ? route.query.customerId : ''),
     keyword: '',
     periodRange: [],
-    recordId: customerDeleteContext.value.recordId,
+    recordId:
+      customerDeleteContext.value.recordId ||
+      (typeof route.query.recordId === 'string' ? route.query.recordId : ''),
     status: typeof route.query.status === 'string' ? route.query.status : ''
   })
 
@@ -547,8 +551,16 @@
 
   function syncCustomerDeleteRoute(forceRefresh = false): void {
     const context = customerDeleteContext.value
-    const customerId = context.active ? context.customerId : ''
-    const recordId = context.active ? context.recordId : ''
+    const customerId = context.active
+      ? context.customerId
+      : typeof route.query.customerId === 'string'
+        ? route.query.customerId
+        : ''
+    const recordId = context.active
+      ? context.recordId
+      : typeof route.query.recordId === 'string'
+        ? route.query.recordId
+        : ''
     const changed =
       searchQuery.value.customerId !== customerId || searchQuery.value.recordId !== recordId
     Object.assign(searchQuery.value, {
