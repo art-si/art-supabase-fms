@@ -84,7 +84,7 @@
     keyword: ''
   })
   const modes = useDictionaryOptions('apReportMode')
-  const agingBases = useDictionaryOptions('apReportAgingBasis')
+  const agingBases = useDictionaryOptions('commonAgingBasis')
   const allocations = useDictionaryOptions('apReportAllocation')
   const kinds = useDictionaryOptions('apReportKind')
   const partyTypes = useDictionaryOptions('apReportPartyType')

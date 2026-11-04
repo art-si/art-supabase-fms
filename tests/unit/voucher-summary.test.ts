@@ -1,8 +1,29 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { formatVoucherSummary } from '../../src/views/modules/voucher-summary'
+import {
+  formatVoucherSummary,
+  voucherSourceLabel,
+  voucherSourceOptions
+} from '../../src/views/modules/voucher-summary'
 
 const billEvents = [{ value: 'discounted', label: '票据贴现' }]
+
+test('凭证来源按字典标签和顺序展示，忽略未实现或停用的来源', () => {
+  const configured = [
+    { value: 'commercial_bill', label: '商业票据' },
+    { value: 'manual', label: '手工录入' },
+    { value: 'future_source', label: '未来来源' },
+    { value: 'tax', label: '税务核算', status: '0' }
+  ]
+  assert.deepEqual(voucherSourceOptions(configured), [
+    { value: 'commercial_bill', label: '商业票据' },
+    { value: 'manual', label: '手工录入' }
+  ])
+  assert.equal(voucherSourceLabel('commercial_bill', configured), '商业票据')
+  assert.equal(voucherSourceLabel('tax', configured), '税务核算')
+  assert.equal(voucherSourceLabel('legacy_source', configured), '历史来源（待核对）')
+  assert.equal(voucherSourceLabel(null, configured), '--')
+})
 
 test('票据系统摘要按票据动作字典展示，保留来源单号', () => {
   assert.equal(

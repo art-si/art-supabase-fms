@@ -1,1 +1,0 @@
-import{Ji as e,Sa as t,ra as n}from"./sys-_5NO3G5z.js";import{t as r}from"./ar-secondary-workspace-BC9-GNm3.js";var i=n({name:`FinanceReceipt`,__name:`index`,setup(n){return(n,i)=>(t(),e(r,{kind:`receipt`}))}});export{i as default};

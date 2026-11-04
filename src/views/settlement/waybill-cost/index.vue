@@ -576,13 +576,19 @@
           </span>
           <span
             class="truncate text-xs text-[var(--art-gray-600)]"
-            title={`${emptyText(row.plateNoSnapshot)} · ${emptyText(row.driverNameSnapshot)}`}
+            title={emptyText(row.plateNoSnapshot)}
           >
-            {emptyText(row.plateNoSnapshot)} · {emptyText(row.driverNameSnapshot)}
+            {emptyText(row.plateNoSnapshot)}
           </span>
         </div>
       )
     },
+    { prop: 'orderNoSnapshot', label: '订单号', minWidth: 155, showOverflowTooltip: true },
+    { prop: 'routeSnapshot', label: '线路', minWidth: 200, showOverflowTooltip: true },
+    { prop: 'driverNameSnapshot', label: '司机', minWidth: 110, showOverflowTooltip: true },
+    { prop: 'lineNo', label: '行号', width: 70, align: 'center' },
+    { prop: 'expenseClassification', label: '费用分类', width: 110,
+      dict: { code: 'tmsExpenseClassification', display: 'auto' } },
     {
       prop: 'expenseItem.itemName',
       label: '费用 / 服务商',

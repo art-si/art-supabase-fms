@@ -97,7 +97,7 @@
     kind: ''
   })
   const reportModes = useDictionaryOptions('arReportMode')
-  const agingOptions = useDictionaryOptions('arAgingBasis')
+  const agingOptions = useDictionaryOptions('commonAgingBasis')
   const kinds = useDictionaryOptions('arDocumentKind')
   const searchItems = computed<SearchFormItem[]>(() => [
     {

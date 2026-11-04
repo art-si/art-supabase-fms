@@ -1,0 +1,1 @@
+import{vo as e}from"./sys-I7eVEpI5.js";function t(t,n){return t==null||e(t,n)}export{t};

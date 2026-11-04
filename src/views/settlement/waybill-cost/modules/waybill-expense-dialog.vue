@@ -73,6 +73,25 @@
           @failed="form.data.ocrStatus = 'failed'" /></template
     ></ArtForm>
 
+    <section v-if="!form.data.id && canEditCostAmounts && !form.data.maintenanceRecordId" class="mt-5">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <ArtSectionTitle>追加费用明细</ArtSectionTitle>
+        <ElButton v-auth="'FinanceWaybillCost:Add'" :disabled="extraLines.length >= 19" @click="addExtraLine">添加费用项目</ElButton>
+      </div>
+      <p class="my-2 text-sm text-[var(--art-gray-700)]">上方费用为第 10 行；追加项目按 20、30… 编号，并与首行一起保存。</p>
+      <ArtTable v-if="extraLines.length" :data="extraLines" :columns="extraColumns" row-key="key">
+        <template #costNo="{ row }"><ElInput v-model="row.costNo" maxlength="50" placeholder="自动编号可留空" aria-label="费用单号" /></template>
+        <template #expenseItemId="{ row }"><ElSelect v-model="row.expenseItemId" class="w-full" filterable placeholder="费用项目" aria-label="费用项目"><ElOption v-for="item in selectableExpenseItems" :key="item.id" :label="item.itemName" :value="item.id || ''" /></ElSelect></template>
+        <template #amount="{ row }"><ElInputNumber v-model="row.amount" class="w-full!" :min="0.01" :precision="2" :controls="false" aria-label="费用金额" /></template>
+        <template #occurredOn="{ row }"><ElDatePicker v-model="row.occurredOn" class="w-full!" type="date" value-format="YYYY-MM-DD" aria-label="发生日期" /></template>
+        <template #quantity="{ row }"><ElInputNumber v-model="row.quantity" class="w-full!" :min="0" :precision="3" :controls="false" aria-label="数量" /></template>
+        <template #unitPrice="{ row }"><ElInputNumber v-model="row.unitPrice" class="w-full!" :min="0" :precision="4" :controls="false" aria-label="单价" /></template>
+        <template #remark="{ row }"><ElInput v-model="row.remark" maxlength="500" aria-label="费用说明" /></template>
+        <template #expenseClassification="{ row }"><ElSelect v-model="row.expenseClassification" class="w-full" aria-label="费用分类"><ElOption v-for="item in classificationOptions" :key="item.value" :label="item.label" :value="item.value" /></ElSelect></template>
+        <template #operation="{ row }"><ArtIconButton icon="ri:delete-bin-line" tone="danger" label="移除费用明细" @click="removeExtraLine(row.key)" /></template>
+      </ArtTable>
+    </section>
+
     <ElAlert
       v-if="canViewPaymentDetails && form.data.payeeType === 'driver'"
       class="mt-4"
@@ -123,6 +142,10 @@
     ArtAddressPickerExpose
   } from '@/components/core/forms/art-address-picker/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
+  import ArtTable from '@/components/core/tables/art-table/index.vue'
+  import ArtSectionTitle from '@/components/core/surfaces/art-section-title/index.vue'
+  import ArtIconButton from '@/components/core/widget/art-icon-button/index.vue'
+  import type { ColumnOption } from '@/types'
   import FinanceDataSourceEmptyActions from '../../../components/finance-data-source-empty-actions.vue'
   import type {
     DataSelectColumn,
@@ -131,6 +154,7 @@
   } from '@/components/core/forms/art-data-select/types'
   import {
     addWaybillCost,
+    addWaybillCostBatch,
     editWaybillCost,
     fetchExpenseItemTree,
     fetchFinanceWaybillOptions,
@@ -146,6 +170,7 @@
   import { useDocumentNumberRule } from '@/hooks/core/useDocumentNumberRule'
   import { useAuth } from '@/hooks/core/useAuth'
   import TreeUtils from '@/utils/tree'
+  import { useUserStore } from '@/store/modules/user'
   import ExpenseOcrPanel from './expense-ocr-panel.vue'
   import MaintenanceSourceSelector from './maintenance-source-selector.vue'
 
@@ -159,6 +184,17 @@
     attachments: string[]
     expenseRegionPath: string[]
     locationPicker?: string
+  }
+  type ExpenseLine = {
+    key: string
+    costNo: string
+    expenseItemId: string
+    amount: number
+    occurredOn: string
+    quantity: number | null
+    unitPrice: number | null
+    remark: string
+    expenseClassification: 'normal' | 'abnormal'
   }
   type Waybill = Api.Fms.WaybillOption
   const expenseOptionTreeUtils = new TreeUtils({ parentKey: 'parentId' })
@@ -191,6 +227,29 @@
 
   const emit = defineEmits<{ success: [type: 'add' | 'edit'] }>()
   const { hasAuth } = useAuth()
+  const userStore = useUserStore()
+  const { getDictMap } = storeToRefs(userStore)
+  const classificationOptions = computed(() => getDictMap.value.tmsExpenseClassification ?? [])
+  const selectableExpenseItems = ref<Api.Fms.ExpenseItem[]>([])
+  const extraLines = ref<ExpenseLine[]>([])
+  const extraColumns: ColumnOption<ExpenseLine>[] = [
+    { prop: 'lineNo', label: '行号', width: 65, formatter: (row) => (extraLines.value.findIndex((line) => line.key === row.key) + 2) * 10 },
+    { prop: 'costNo', label: '费用单号', minWidth: 150, useSlot: true },
+    { prop: 'expenseItemId', label: '费用项目', minWidth: 150, useSlot: true },
+    { prop: 'amount', label: '金额', width: 130, useSlot: true },
+    { prop: 'occurredOn', label: '发生日期', width: 165, useSlot: true },
+    { prop: 'quantity', label: '数量', width: 115, useSlot: true },
+    { prop: 'unitPrice', label: '单价', width: 115, useSlot: true },
+    { prop: 'remark', label: '说明', minWidth: 160, useSlot: true },
+    { prop: 'expenseClassification', label: '分类', width: 120, useSlot: true },
+    { prop: 'operation', label: '操作', width: 70, useSlot: true }
+  ]
+  function addExtraLine() {
+    extraLines.value.push({ key: crypto.randomUUID(), costNo: '', expenseItemId: '', amount: 0,
+      occurredOn: dayjs().format('YYYY-MM-DD'), quantity: null, unitPrice: null, remark: '',
+      expenseClassification: 'normal' })
+  }
+  function removeExtraLine(key: string) { extraLines.value = extraLines.value.filter((line) => line.key !== key) }
   const savePermission = ref('FinanceWaybillCost:Add')
   const isCompact = useMediaQuery('(max-width: 767px)')
   const dialogRef = ref<ArtDialogExpose<ExpenseDialogOpenData>>()
@@ -242,6 +301,7 @@
     sourceId: null,
     expenseItemId: '',
     costType: 'other',
+    expenseClassification: 'normal',
     amount: 0,
     occurredOn: dayjs().format('YYYY-MM-DD'),
     quantity: null,
@@ -418,6 +478,10 @@
         key: 'waybillId',
         type: 'dataSelect'
       },
+      { label: '运单司机', key: 'driverNameSnapshot', type: 'input',
+        props: { readonly: true, placeholder: '选择运单后自动带出' } },
+      { label: '司机电话', key: 'driverPhoneSnapshot', type: 'input',
+        props: { readonly: true, placeholder: '选择运单后自动带出' } },
       {
         label: '费用归属',
         key: 'legId',
@@ -440,7 +504,9 @@
         hidden: Boolean(formData.id) || !hasAuth('VehicleMaintenance:View'),
         description: '选择后自动带入维修金额；费用项目请选择维修保养，审核后计入成本。'
       },
-      { label: '费用信息', key: 'expenseSection', type: 'divider', span: 24 },
+      { label: formData.id ? '费用信息' : '费用明细 · 10', key: 'expenseSection', type: 'divider', span: 24 },
+      { label: '费用分类', key: 'expenseClassification', type: 'select', span: 12,
+        options: classificationOptions.value, description: '默认正常费用；异常费用单独标记，便于审核与筛选。' },
       {
         label: '费用项目',
         key: 'expenseItemId',
@@ -668,6 +734,11 @@
   })
 
   const selectedWaybill = computed(() => selection.waybills[0])
+  watch(selectedWaybill, (waybill) => {
+    if (state.hydrating || form.data.id) return
+    form.data.driverNameSnapshot = waybill?.driverName || ''
+    form.data.driverPhoneSnapshot = waybill?.driver?.phone || waybill?.order?.dispatchDriverPhone || ''
+  })
   function applyMaintenanceSource(source: { id: string; amount: number }): void {
     Object.assign(form.data, { maintenanceRecordId: source.id, amount: source.amount })
   }
@@ -870,7 +941,7 @@
     const plate = waybill.plateNo || waybill.order?.dispatchPlateNo || '车牌待补充'
     const route =
       waybill.route || [waybill.originCity, waybill.destinationCity].filter(Boolean).join(' → ')
-    return `${waybill.waybillNo} · ${plate} · ${driver}${route ? ` · ${route}` : ''}`
+    return `${waybill.orderNo || '关联订单待补充'} · ${waybill.waybillNo} · ${plate} · ${driver}${route ? ` · ${route}` : ''}`
   })
   const waybillColumns: DataSelectColumn[] = [
     { prop: 'waybillNo', label: '运单号', width: 180 },
@@ -895,6 +966,20 @@
       }))
     }
   }
+
+  watch(() => form.data.tenantId, async (tenantId) => {
+    selectableExpenseItems.value = []
+    if (!tenantId) return
+    const session = formSession.value
+    try {
+      const result = await fetchSelectableExpenseItems(tenantId)
+      if (!isCurrent(session) || form.data.tenantId !== tenantId) return
+      selectableExpenseItems.value = expenseOptionTreeUtils.treeToList(result.data)
+        .filter((item) => item.isSelectable && item.isEnabled)
+    } catch {
+      if (isCurrent(session)) saveError.value = '费用项目加载失败，请重新选择运单后重试'
+    }
+  })
 
   async function fetchWaybillSelectorData(params: DataSelectFetchParams) {
     const { from, to } = buildSupabasePageRange({ current: params.page, size: params.pageSize })
@@ -1078,18 +1163,40 @@
       return false
     }
     if (!canSave()) return false
+    if (extraLines.value.length) {
+      for (const [index, line] of extraLines.value.entries()) {
+        if (!selectableExpenseItems.value.some((item) => item.id === line.expenseItemId)
+          || !Number.isFinite(line.amount) || line.amount <= 0 || !line.occurredOn
+          || (expenseNumber.manualRequired(false) && !line.costNo.trim())) {
+          ElMessage.warning(`请完善第 ${(index + 2) * 10} 行的费用项目、金额、日期和单号`)
+          return false
+        }
+      }
+    }
     const payload = buildExpensePayload()
     const type = payload.id ? 'edit' : 'add'
     const artifactId = canUseOcr.value ? payload.ocrArtifactId : undefined
     const finalPayload = artifactId ? buildOcrFinalPayload() : undefined
     let entityId: string | undefined
     try {
-      const response = payload.id
-        ? await editWaybillCost(payload, { showMessage: false, showErrorMessage: false })
-        : await addWaybillCost(payload, { showMessage: false, showErrorMessage: false })
-      if (response.error || !response.data)
-        throw response.error ?? new Error('费用保存后未返回单据，请刷新列表核对')
-      entityId = payload.id || response.data?.id
+      if (!payload.id && extraLines.value.length) {
+        const lines = [payload, ...extraLines.value].map((line) => ({
+          costNo: line.costNo || '', expenseItemId: line.expenseItemId, amount: line.amount,
+          occurredOn: line.occurredOn, quantity: line.quantity, unitPrice: line.unitPrice,
+          remark: line.remark, expenseClassification: line.expenseClassification || 'normal' as const
+        }))
+        const response = await addWaybillCostBatch(payload, lines)
+        if (response.error || !response.data?.[0]?.id)
+          throw response.error ?? new Error('费用保存后未返回单据，请刷新列表核对')
+        entityId = response.data[0].id
+      } else {
+        const response = payload.id
+          ? await editWaybillCost(payload, { showMessage: false, showErrorMessage: false })
+          : await addWaybillCost(payload, { showMessage: false, showErrorMessage: false })
+        if (response.error || !response.data)
+          throw response.error ?? new Error('费用保存后未返回单据，请刷新列表核对')
+        entityId = payload.id || response.data.id
+      }
     } catch (error) {
       if (isCurrent(session)) {
         saveError.value = getFriendlySupabaseErrorMessage(
@@ -1145,6 +1252,7 @@
     saveError.value = ''
     state.autoLocateArmed = false
     Object.assign(form.data, createInitialForm())
+    extraLines.value = []
     selection.waybills = []
     fuelCardOptions.value = []
     fuelCardLoadError.value = ''
@@ -1214,6 +1322,7 @@
           const [, enabled] = await Promise.all([
             expenseNumber.loadRule(),
             fetchWaybillExpenseOcrEnabled(),
+            userStore.ensureDictLoaded('tmsExpenseClassification'),
             data.row
               ? loadFuelCards(form.data.waybillId, form.data.tenantId || '')
               : Promise.resolve(),

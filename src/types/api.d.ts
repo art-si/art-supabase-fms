@@ -1580,6 +1580,9 @@ declare global {
         legId?: string | null
         expenseItemId: string
         costType: WaybillCostType | string
+        expenseClassification?: 'normal' | 'abnormal'
+        expenseBatchId?: string | null
+        lineNo?: number | null
         amount: Api.Fms.SensitiveNumber
         occurredOn: string
         quantity?: Api.Fms.SensitiveNumber

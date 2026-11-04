@@ -244,7 +244,7 @@
     voucherGenerated: ''
   })
   const statusOptions = useDictionaryOptions('arDocumentStatus')
-  const viewOptions = useDictionaryOptions('arViewMode')
+  const viewOptions = useDictionaryOptions('commonDocumentDisplayMode')
   const accountingOptions = useDictionaryOptions('arPartialStatus')
   const booleanOptions = useDictionaryOptions('commonBoolean')
   const searchItems = computed<SearchFormItem[]>(() => [

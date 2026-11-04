@@ -103,7 +103,7 @@
     saveFinancialStatementMappings
   } from '@fms/api'
   import { useUserStore } from '@/store/modules/user'
-  import { statementOptionsWithFallback } from '../../../modules/financial-statement-options'
+  import { statementDictionaryOptions } from '../../../modules/financial-statement-options'
 
   defineOptions({ name: 'FinanceStatementRuleDialog' })
 
@@ -169,10 +169,7 @@
 
   const isFormula = computed(() => currentItem.value?.calculationMethod === 'formula')
   const directionOptions = computed(() =>
-    statementOptionsWithFallback(
-      'fmsStatementMappingDirection',
-      getDictMap.value.fmsStatementMappingDirection
-    )
+    statementDictionaryOptions(getDictMap.value.fmsStatementMappingDirection)
   )
   const sourceOptions = computed(() =>
     optionTree.listToTree(
@@ -510,6 +507,8 @@
             await loadFormulas()
           } else {
             await userStore.ensureDictLoaded('fmsStatementMappingDirection')
+            if (!directionOptions.value.length)
+              throw new Error('取数方向字典未配置，请联系管理员维护后重试')
           }
         } catch (error) {
           notifyFriendlyError(error, '报表取数规则加载失败，请重试')

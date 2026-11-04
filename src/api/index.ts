@@ -178,6 +178,7 @@ export {
 export {
   addExpenseItem,
   addWaybillCost,
+  addWaybillCostBatch,
   analyzeReceivablesCollectionByAi,
   analyzeWaybillCostByAi,
   analyzeWaybillExpenseByAi,

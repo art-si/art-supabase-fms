@@ -26,7 +26,7 @@
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
   import { saveFinancialStatementItem } from '@fms/api'
   import { useUserStore } from '@/store/modules/user'
-  import { statementOptionsWithFallback } from '../../../modules/financial-statement-options'
+  import { statementDictionaryOptions } from '../../../modules/financial-statement-options'
 
   defineOptions({ name: 'FinanceStatementItemDialog' })
 
@@ -161,10 +161,7 @@
       key: 'displayStyle',
       type: 'select',
       props: {
-        options: statementOptionsWithFallback(
-          'fmsStatementDisplayStyle',
-          getDictMap.value.fmsStatementDisplayStyle
-        )
+        options: statementDictionaryOptions(getDictMap.value.fmsStatementDisplayStyle)
       }
     },
     {
@@ -181,10 +178,7 @@
       span: 12,
       help: '科目取数用于明细行，公式计算用于合计行，标题行不产生金额。',
       props: {
-        options: statementOptionsWithFallback(
-          'fmsStatementCalculationMethod',
-          getDictMap.value.fmsStatementCalculationMethod
-        ),
+        options: statementDictionaryOptions(getDictMap.value.fmsStatementCalculationMethod),
         onChange: (value: Api.Fms.FinancialStatementCalculationMethod) => {
           if (value !== 'mapping') form.data.cashFlowDirection = null
         }
@@ -199,10 +193,7 @@
         form.data.statementType !== 'cash_flow_statement' ||
         form.data.calculationMethod !== 'mapping',
       props: {
-        options: statementOptionsWithFallback(
-          'fmsCashFlowDirection',
-          getDictMap.value.fmsCashFlowDirection
-        ),
+        options: statementDictionaryOptions(getDictMap.value.fmsCashFlowDirection),
         clearable: false,
         placeholder: '请选择流入或流出'
       }
@@ -273,6 +264,12 @@
             userStore.ensureDictLoaded('fmsCashFlowDirection'),
             userStore.ensureDictLoaded('commonEnabledStatus')
           ])
+          if (
+            !getDictMap.value.fmsStatementDisplayStyle?.length ||
+            !getDictMap.value.fmsStatementCalculationMethod?.length ||
+            !getDictMap.value.fmsCashFlowDirection?.length
+          )
+            throw new Error('报表项目字典未配置，请联系管理员维护后重试')
           formRef.value?.clearValidate()
         } catch (error) {
           notifyFriendlyError(error, '报表项目加载失败，请重试')

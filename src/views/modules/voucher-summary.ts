@@ -2,38 +2,45 @@ interface CostTypeOption {
   value: string | number
   label?: string
   name?: string
+  status?: string
 }
 
-const voucherSourceLabels: Record<Api.Fms.VoucherSourceType, string> = {
-  estimated_payable: '暂估应付',
-  financial_payable: '财务应付',
-  manual: '手工录入',
-  customer_statement: '客户对账',
-  carrier_statement: '承运商对账',
-  customer_receipt: '客户收款',
-  carrier_payment: '承运商付款',
-  invoice: '发票',
-  expense_reimbursement: '费用报销',
-  waybill_cost: '运单费用',
-  system: '系统生成',
-  commercial_bill: '商业票据',
-  fixed_asset: '固定资产',
-  asset_depreciation: '资产折旧',
-  payroll: '薪资核算',
-  tax: '税务核算',
-  period_close: '月末结账',
-  reversal: '冲销凭证'
-}
+const supportedVoucherSources = new Set<string>([
+  'estimated_payable',
+  'financial_payable',
+  'manual',
+  'customer_statement',
+  'carrier_statement',
+  'customer_receipt',
+  'carrier_payment',
+  'invoice',
+  'expense_reimbursement',
+  'waybill_cost',
+  'system',
+  'commercial_bill',
+  'fixed_asset',
+  'asset_depreciation',
+  'payroll',
+  'tax',
+  'period_close',
+  'reversal'
+])
 
 export function voucherSourceOptions(configured: CostTypeOption[] = []) {
-  return Object.entries(voucherSourceLabels).map(([value, fallbackLabel]) => {
-    const option = configured.find((item) => item.value === value)
-    return { value, label: option?.label || option?.name || fallbackLabel }
-  })
+  return configured
+    .filter(
+      (item) =>
+        (!item.status || item.status === '1') &&
+        typeof item.value === 'string' &&
+        supportedVoucherSources.has(item.value)
+    )
+    .map((item) => ({ value: String(item.value), label: item.label || item.name || '未命名来源' }))
 }
 
 export function voucherSourceLabel(value: unknown, configured: CostTypeOption[] = []): string {
-  return voucherSourceOptions(configured).find((item) => item.value === value)?.label ?? '--'
+  if (value === null || value === undefined || value === '') return '--'
+  const option = configured.find((item) => String(item.value) === String(value))
+  return option?.label || option?.name || '历史来源（待核对）'
 }
 
 export function formatVoucherSummary(

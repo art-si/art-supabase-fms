@@ -324,9 +324,10 @@ export async function fetchWaybillFuelCardOptions(waybillId: string) {
 export async function addWaybillCost(params: WaybillCost, options: FinanceRequestFeedback = {}) {
   return await responseHandle<WaybillCost>(
     () =>
-      supabase.rpc('tms_save_waybill_cost_secure', {
+      supabase.rpc('tms_save_waybill_cost_classified_secure', {
         p_id: null,
-        p_payload: keysToSnakeDeep(createCostWritePayload(params))
+        p_payload: keysToSnakeDeep(createCostWritePayload(params)),
+        p_classification: params.expenseClassification || 'normal'
       }),
     { showMessage: true, breakReturn: true, ...options }
   )
@@ -336,11 +337,25 @@ export async function editWaybillCost(params: WaybillCost, options: FinanceReque
   if (!params.id) throw new Error('缺少费用ID')
   return await responseHandle<WaybillCost>(
     () =>
-      supabase.rpc('tms_save_waybill_cost_secure', {
+      supabase.rpc('tms_save_waybill_cost_classified_secure', {
         p_id: params.id,
-        p_payload: keysToSnakeDeep(createCostWritePayload(params))
+        p_payload: keysToSnakeDeep(createCostWritePayload(params)),
+        p_classification: params.expenseClassification || 'normal'
       }),
     { showMessage: true, breakReturn: true, ...options }
+  )
+}
+
+export async function addWaybillCostBatch(
+  base: WaybillCost,
+  lines: Array<Pick<WaybillCost, 'costNo' | 'expenseItemId' | 'amount' | 'occurredOn' | 'quantity' | 'unitPrice' | 'remark' | 'expenseClassification'>>
+) {
+  return await responseHandle<WaybillCost[]>(
+    () => supabase.rpc('tms_save_waybill_cost_batch_secure', {
+      p_base: keysToSnakeDeep(createCostWritePayload(base)),
+      p_lines: keysToSnakeDeep(lines)
+    }),
+    { showMessage: false, showErrorMessage: false, breakReturn: true, errorMessage: '费用明细保存失败，请核对后重试' }
   )
 }
 
