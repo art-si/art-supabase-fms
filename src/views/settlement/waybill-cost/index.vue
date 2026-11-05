@@ -567,28 +567,45 @@
     },
     {
       prop: 'waybillNoSnapshot',
-      label: '运单 / 车辆',
+      label: '关联运单号',
       minWidth: 165,
-      formatter: (row) => (
-        <div class="flex min-w-0 flex-col gap-1">
-          <span class="truncate" title={emptyText(row.waybillNoSnapshot)}>
-            {emptyText(row.waybillNoSnapshot)}
-          </span>
-          <span
-            class="truncate text-xs text-[var(--art-gray-600)]"
-            title={emptyText(row.plateNoSnapshot)}
-          >
-            {emptyText(row.plateNoSnapshot)}
-          </span>
-        </div>
-      )
+      showOverflowTooltip: true
     },
     { prop: 'orderNoSnapshot', label: '订单号', minWidth: 155, showOverflowTooltip: true },
     { prop: 'routeSnapshot', label: '线路', minWidth: 200, showOverflowTooltip: true },
+    { prop: 'plateNoSnapshot', label: '车牌号', minWidth: 120, showOverflowTooltip: true },
     { prop: 'driverNameSnapshot', label: '司机', minWidth: 110, showOverflowTooltip: true },
+    {
+      prop: 'waybill.driverOwnership',
+      label: '司机归属',
+      minWidth: 110,
+      formatter: (row) =>
+        row.waybill?.driverOwnership ? (
+          <ArtDictDisplay dictCode="tmsDriverOwnership" value={row.waybill.driverOwnership} />
+        ) : (
+          '--'
+        )
+    },
+    {
+      prop: 'waybill.companyName',
+      label: '所属公司',
+      minWidth: 150,
+      formatter: (row) => emptyText(row.waybill?.companyName)
+    },
+    {
+      prop: 'waybill.carrierName',
+      label: '承运商',
+      minWidth: 155,
+      formatter: (row) => emptyText(row.waybill?.carrierName || row.waybill?.carrier?.companyName)
+    },
+    { prop: 'remark', label: '备注', minWidth: 180, showOverflowTooltip: true },
     { prop: 'lineNo', label: '行号', width: 70, align: 'center' },
-    { prop: 'expenseClassification', label: '费用分类', width: 110,
-      dict: { code: 'tmsExpenseClassification', display: 'auto' } },
+    {
+      prop: 'expenseClassification',
+      label: '费用分类',
+      width: 110,
+      dict: { code: 'tmsExpenseClassification', display: 'auto' }
+    },
     {
       prop: 'expenseItem.itemName',
       label: '费用 / 服务商',

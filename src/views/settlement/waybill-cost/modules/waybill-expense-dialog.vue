@@ -70,27 +70,150 @@
           :enabled="state.ocrEnabled"
           :resource-tenant-id="attachmentTenantId"
           @apply="applyOcrResult"
-          @failed="form.data.ocrStatus = 'failed'" /></template
-    ></ArtForm>
-
-    <section v-if="!form.data.id && canEditCostAmounts && !form.data.maintenanceRecordId" class="mt-5">
-      <div class="flex flex-wrap items-center justify-between gap-2">
-        <ArtSectionTitle>追加费用明细</ArtSectionTitle>
-        <ElButton v-auth="'FinanceWaybillCost:Add'" :disabled="extraLines.length >= 19" @click="addExtraLine">添加费用项目</ElButton>
-      </div>
-      <p class="my-2 text-sm text-[var(--art-gray-700)]">上方费用为第 10 行；追加项目按 20、30… 编号，并与首行一起保存。</p>
-      <ArtTable v-if="extraLines.length" :data="extraLines" :columns="extraColumns" row-key="key">
-        <template #costNo="{ row }"><ElInput v-model="row.costNo" maxlength="50" placeholder="自动编号可留空" aria-label="费用单号" /></template>
-        <template #expenseItemId="{ row }"><ElSelect v-model="row.expenseItemId" class="w-full" filterable placeholder="费用项目" aria-label="费用项目"><ElOption v-for="item in selectableExpenseItems" :key="item.id" :label="item.itemName" :value="item.id || ''" /></ElSelect></template>
-        <template #amount="{ row }"><ElInputNumber v-model="row.amount" class="w-full!" :min="0.01" :precision="2" :controls="false" aria-label="费用金额" /></template>
-        <template #occurredOn="{ row }"><ElDatePicker v-model="row.occurredOn" class="w-full!" type="date" value-format="YYYY-MM-DD" aria-label="发生日期" /></template>
-        <template #quantity="{ row }"><ElInputNumber v-model="row.quantity" class="w-full!" :min="0" :precision="3" :controls="false" aria-label="数量" /></template>
-        <template #unitPrice="{ row }"><ElInputNumber v-model="row.unitPrice" class="w-full!" :min="0" :precision="4" :controls="false" aria-label="单价" /></template>
-        <template #remark="{ row }"><ElInput v-model="row.remark" maxlength="500" aria-label="费用说明" /></template>
-        <template #expenseClassification="{ row }"><ElSelect v-model="row.expenseClassification" class="w-full" aria-label="费用分类"><ElOption v-for="item in classificationOptions" :key="item.value" :label="item.label" :value="item.value" /></ElSelect></template>
-        <template #operation="{ row }"><ArtIconButton icon="ri:delete-bin-line" tone="danger" label="移除费用明细" @click="removeExtraLine(row.key)" /></template>
-      </ArtTable>
-    </section>
+          @failed="form.data.ocrStatus = 'failed'"
+      /></template>
+      <template #expenseLines>
+        <section class="min-w-0">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <ArtSectionTitle>费用明细</ArtSectionTitle>
+            <ElButton
+              v-if="!form.data.id && canEditCostAmounts && !form.data.maintenanceRecordId"
+              v-auth="'FinanceWaybillCost:Add'"
+              :disabled="extraLines.length >= 19"
+              @click="addExtraLine"
+              >添加费用行</ElButton
+            >
+          </div>
+          <p class="my-2 text-sm text-[var(--art-gray-700)]"
+            >费用明细按 10、20、30… 编号；多条费用将一起保存。</p
+          >
+          <div
+            v-if="!form.data.id && canEditCostAmounts && !form.data.maintenanceRecordId"
+            class="mb-3 flex flex-wrap items-center gap-2"
+          >
+            <ElSelect
+              v-model="batchExpenseItemIds"
+              multiple
+              filterable
+              collapse-tags
+              collapse-tags-tooltip
+              class="min-w-0 flex-1"
+              placeholder="批量选择费用项目"
+              aria-label="批量选择费用项目"
+            >
+              <ElOption
+                v-for="item in selectableExpenseItems"
+                :key="item.id"
+                :label="item.itemName"
+                :value="item.id || ''"
+              />
+            </ElSelect>
+            <ElButton
+              v-auth="'FinanceWaybillCost:Add'"
+              :disabled="!batchExpenseItemIds.length || extraLines.length >= 19"
+              @click="addSelectedExpenseItems"
+              >批量加入</ElButton
+            >
+          </div>
+          <ArtTable :data="tableLines" :columns="lineColumns" row-key="key">
+            <template #costNo="{ row }"
+              ><ElInput
+                :model-value="row.costNo"
+                @update:model-value="updateLineField(row, 'costNo', $event)"
+                maxlength="50"
+                :placeholder="row.key === 'base' ? '与上方费用单号一致' : '自动编号可留空'"
+                aria-label="费用单号"
+                :disabled="row.key === 'base'"
+            /></template>
+            <template #expenseItemId="{ row }"
+              ><ElSelect
+                :model-value="row.expenseItemId"
+                @update:model-value="updateLineField(row, 'expenseItemId', $event)"
+                class="w-full"
+                filterable
+                placeholder="费用项目"
+                aria-label="费用项目"
+                ><ElOption
+                  v-for="item in selectableExpenseItems"
+                  :key="item.id"
+                  :label="item.itemName"
+                  :value="item.id || ''" /></ElSelect
+            ></template>
+            <template #amount="{ row }"
+              ><ElInputNumber
+                :model-value="row.amount"
+                @update:model-value="updateLineField(row, 'amount', $event)"
+                class="w-full!"
+                :min="0.01"
+                :precision="2"
+                :controls="false"
+                :disabled="
+                  !canEditCostAmounts || (row.key === 'base' && !!form.data.maintenanceRecordId)
+                "
+                aria-label="费用金额"
+            /></template>
+            <template #occurredOn="{ row }"
+              ><ElDatePicker
+                :model-value="row.occurredOn"
+                @update:model-value="updateLineField(row, 'occurredOn', $event)"
+                class="w-full!"
+                type="date"
+                value-format="YYYY-MM-DD"
+                aria-label="发生日期"
+            /></template>
+            <template #quantity="{ row }"
+              ><ElInputNumber
+                :model-value="row.quantity"
+                @update:model-value="updateLineField(row, 'quantity', $event)"
+                class="w-full!"
+                :min="0"
+                :precision="3"
+                :controls="false"
+                :disabled="!canEditCostAmounts"
+                aria-label="数量"
+            /></template>
+            <template #unitPrice="{ row }"
+              ><ElInputNumber
+                :model-value="row.unitPrice"
+                @update:model-value="updateLineField(row, 'unitPrice', $event)"
+                class="w-full!"
+                :min="0"
+                :precision="4"
+                :controls="false"
+                :disabled="!canEditCostAmounts"
+                aria-label="单价"
+            /></template>
+            <template #remark="{ row }"
+              ><ElInput
+                :model-value="row.remark"
+                @update:model-value="updateLineField(row, 'remark', $event)"
+                maxlength="500"
+                aria-label="费用说明"
+            /></template>
+            <template #expenseClassification="{ row }"
+              ><ElSelect
+                :model-value="row.expenseClassification"
+                @update:model-value="updateLineField(row, 'expenseClassification', $event)"
+                class="w-full"
+                aria-label="费用分类"
+                ><ElOption
+                  v-for="item in classificationOptions"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value" /></ElSelect
+            ></template>
+            <template #operation="{ row }"
+              ><ArtIconButton
+                v-if="row.key !== 'base'"
+                icon="ri:delete-bin-line"
+                tone="danger"
+                label="移除费用明细"
+                @click="removeExtraLine(row.key)"
+            /></template>
+          </ArtTable>
+        </section>
+      </template>
+    </ArtForm>
 
     <ElAlert
       v-if="canViewPaymentDetails && form.data.payeeType === 'driver'"
@@ -132,6 +255,7 @@
   import { useMediaQuery } from '@vueuse/core'
   import type { ComputedRef } from 'vue'
   import { useArtOverlaySession } from '@/hooks/core/useArtOverlay'
+  import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { ElMessage, type FormRules } from 'element-plus'
   import { fetchRegionOptions } from '@/api/region-options'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
@@ -184,9 +308,13 @@
     attachments: string[]
     expenseRegionPath: string[]
     locationPicker?: string
+    driverOwnershipDisplay: string
+    companyNameDisplay: string
+    carrierNameDisplay: string
   }
   type ExpenseLine = {
     key: string
+    lineNo?: number | null
     costNo: string
     expenseItemId: string
     amount: number
@@ -230,10 +358,20 @@
   const userStore = useUserStore()
   const { getDictMap } = storeToRefs(userStore)
   const classificationOptions = computed(() => getDictMap.value.tmsExpenseClassification ?? [])
+  const driverOwnershipOptions = useDictionaryOptions('tmsDriverOwnership')
   const selectableExpenseItems = ref<Api.Fms.ExpenseItem[]>([])
   const extraLines = ref<ExpenseLine[]>([])
+  const batchExpenseItemIds = ref<string[]>([])
   const extraColumns: ColumnOption<ExpenseLine>[] = [
-    { prop: 'lineNo', label: '行号', width: 65, formatter: (row) => (extraLines.value.findIndex((line) => line.key === row.key) + 2) * 10 },
+    {
+      prop: 'lineNo',
+      label: '行号',
+      width: 65,
+      formatter: (row) =>
+        row.key === 'base'
+          ? (row.lineNo ?? 10)
+          : (extraLines.value.findIndex((line) => line.key === row.key) + 2) * 10
+    },
     { prop: 'costNo', label: '费用单号', minWidth: 150, useSlot: true },
     { prop: 'expenseItemId', label: '费用项目', minWidth: 150, useSlot: true },
     { prop: 'amount', label: '金额', width: 130, useSlot: true },
@@ -245,11 +383,33 @@
     { prop: 'operation', label: '操作', width: 70, useSlot: true }
   ]
   function addExtraLine() {
-    extraLines.value.push({ key: crypto.randomUUID(), costNo: '', expenseItemId: '', amount: 0,
-      occurredOn: dayjs().format('YYYY-MM-DD'), quantity: null, unitPrice: null, remark: '',
-      expenseClassification: 'normal' })
+    extraLines.value.push({
+      key: crypto.randomUUID(),
+      costNo: '',
+      expenseItemId: '',
+      amount: 0,
+      occurredOn: dayjs().format('YYYY-MM-DD'),
+      quantity: null,
+      unitPrice: null,
+      remark: '',
+      expenseClassification: 'normal'
+    })
   }
-  function removeExtraLine(key: string) { extraLines.value = extraLines.value.filter((line) => line.key !== key) }
+  function addSelectedExpenseItems() {
+    const remaining = 19 - extraLines.value.length
+    if (batchExpenseItemIds.value.length > remaining) {
+      ElMessage.warning(`最多还能添加 ${remaining} 行费用`)
+      return
+    }
+    for (const expenseItemId of batchExpenseItemIds.value) {
+      addExtraLine()
+      extraLines.value[extraLines.value.length - 1].expenseItemId = expenseItemId
+    }
+    batchExpenseItemIds.value = []
+  }
+  function removeExtraLine(key: string) {
+    extraLines.value = extraLines.value.filter((line) => line.key !== key)
+  }
   const savePermission = ref('FinanceWaybillCost:Add')
   const isCompact = useMediaQuery('(max-width: 767px)')
   const dialogRef = ref<ArtDialogExpose<ExpenseDialogOpenData>>()
@@ -295,6 +455,12 @@
     tenantId: '',
     costNo: '',
     waybillId: '',
+    plateNoSnapshot: '',
+    driverNameSnapshot: '',
+    driverPhoneSnapshot: '',
+    driverOwnershipDisplay: '',
+    companyNameDisplay: '',
+    carrierNameDisplay: '',
     legId: null,
     maintenanceRecordId: null,
     sourceType: null,
@@ -339,6 +505,25 @@
   })
 
   const formData = reactive<ExpenseForm>(createInitialForm())
+  const tableLines = computed<ExpenseLine[]>(() => [
+    {
+      key: 'base',
+      lineNo: formData.lineNo,
+      costNo: formData.costNo || '',
+      expenseItemId: formData.expenseItemId || '',
+      amount: Number(formData.amount || 0),
+      occurredOn: formData.occurredOn || '',
+      quantity: formData.quantity == null ? null : Number(formData.quantity),
+      unitPrice: formData.unitPrice == null ? null : Number(formData.unitPrice),
+      remark: formData.remark || '',
+      expenseClassification: formData.expenseClassification || 'normal'
+    },
+    ...extraLines.value
+  ])
+  function updateLineField(row: ExpenseLine, field: keyof ExpenseLine, value: unknown): void {
+    const target = row.key === 'base' ? formData : row
+    ;(target as unknown as Record<string, unknown>)[field] = value
+  }
   const expenseNumber = useDocumentNumberRule(
     'tms.waybill_cost',
     () => formData.tenantId || undefined
@@ -347,6 +532,13 @@
   const activeFieldAccess = computed(() => formData.fieldAccess ?? NEW_RECORD_FIELD_ACCESS)
   const canViewCostAmounts = computed(() => canViewField(activeFieldAccess.value, 'costAmounts'))
   const canEditCostAmounts = computed(() => canEditField(activeFieldAccess.value, 'costAmounts'))
+  const lineColumns = computed<ColumnOption<ExpenseLine>[]>(() =>
+    extraColumns.filter(
+      (column) =>
+        canViewCostAmounts.value ||
+        !['amount', 'quantity', 'unitPrice'].includes(String(column.prop))
+    )
+  )
   const canViewPaymentDetails = computed(() =>
     canViewField(activeFieldAccess.value, 'paymentDetails')
   )
@@ -402,6 +594,9 @@
         }
       ],
       expenseItemId: [{ required: true, message: '请选择费用项目', trigger: 'change' }],
+      expenseClassification: [
+        { required: true, message: '请选择正常或异常费用分类', trigger: 'change' }
+      ],
       amount: [
         {
           required: canEditCostAmounts.value,
@@ -478,10 +673,46 @@
         key: 'waybillId',
         type: 'dataSelect'
       },
-      { label: '运单司机', key: 'driverNameSnapshot', type: 'input',
-        props: { readonly: true, placeholder: '选择运单后自动带出' } },
-      { label: '司机电话', key: 'driverPhoneSnapshot', type: 'input',
-        props: { readonly: true, placeholder: '选择运单后自动带出' } },
+      {
+        label: '运单司机',
+        key: 'driverNameSnapshot',
+        type: 'input',
+        props: { readonly: true, placeholder: '选择运单后自动带出' }
+      },
+      {
+        label: '运单车辆',
+        key: 'plateNoSnapshot',
+        type: 'input',
+        props: { readonly: true, placeholder: '选择运单后自动带出' }
+      },
+      {
+        label: '司机归属',
+        key: 'driverOwnershipDisplay',
+        type: 'select',
+        props: {
+          options: driverOwnershipOptions,
+          disabled: true,
+          placeholder: '选择运单后自动带出'
+        }
+      },
+      {
+        label: '所属公司',
+        key: 'companyNameDisplay',
+        type: 'input',
+        props: { readonly: true, placeholder: '选择运单后自动带出' }
+      },
+      {
+        label: '承运商',
+        key: 'carrierNameDisplay',
+        type: 'input',
+        props: { readonly: true, placeholder: '选择运单后自动带出' }
+      },
+      {
+        label: '司机电话',
+        key: 'driverPhoneSnapshot',
+        type: 'input',
+        props: { readonly: true, placeholder: '选择运单后自动带出' }
+      },
       {
         label: '费用归属',
         key: 'legId',
@@ -504,14 +735,27 @@
         hidden: Boolean(formData.id) || !hasAuth('VehicleMaintenance:View'),
         description: '选择后自动带入维修金额；费用项目请选择维修保养，审核后计入成本。'
       },
-      { label: formData.id ? '费用信息' : '费用明细 · 10', key: 'expenseSection', type: 'divider', span: 24 },
-      { label: '费用分类', key: 'expenseClassification', type: 'select', span: 12,
-        options: classificationOptions.value, description: '默认正常费用；异常费用单独标记，便于审核与筛选。' },
+      {
+        label: formData.id ? '费用信息' : '费用明细 · 10',
+        key: 'expenseSection',
+        type: 'divider',
+        span: 24
+      },
+      {
+        label: '费用分类',
+        key: 'expenseClassification',
+        type: 'select',
+        span: 12,
+        hidden: true,
+        options: classificationOptions.value,
+        description: '默认正常费用；异常费用单独标记，便于审核与筛选。'
+      },
       {
         label: '费用项目',
         key: 'expenseItemId',
         type: 'treeSelect',
         span: 24,
+        hidden: true,
         api: () => fetchSelectableExpenseItems(formData.tenantId || ''),
         params: { tenantId: formData.tenantId },
         shouldFetch: (params) => Boolean(params?.tenantId),
@@ -530,7 +774,7 @@
         label: '费用金额',
         key: 'amount',
         type: 'number',
-        hidden: !canViewCostAmounts.value,
+        hidden: true,
         props: {
           min: 0.01,
           precision: 2,
@@ -546,13 +790,14 @@
         label: '发生日期',
         key: 'occurredOn',
         type: 'date',
+        hidden: true,
         props: { valueFormat: 'YYYY-MM-DD', class: '!w-full' }
       },
       {
         label: '数量/用量',
         key: 'quantity',
         type: 'number',
-        hidden: !canViewCostAmounts.value,
+        hidden: true,
         props: {
           min: 0,
           precision: 3,
@@ -565,7 +810,7 @@
         label: '单价',
         key: 'unitPrice',
         type: 'number',
-        hidden: !canViewCostAmounts.value,
+        hidden: true,
         props: {
           min: 0,
           precision: 4,
@@ -579,6 +824,7 @@
         key: 'remark',
         type: 'textarea',
         span: 24,
+        hidden: true,
         props: {
           rows: 3,
           maxlength: 500,
@@ -586,6 +832,7 @@
           placeholder: '说明费用产生原因、业务背景或票据异常'
         }
       },
+      { label: '', key: 'expenseLines', span: 24, labelWidth: 0 },
       {
         label: '收款与票据',
         key: 'paymentSection',
@@ -735,9 +982,14 @@
 
   const selectedWaybill = computed(() => selection.waybills[0])
   watch(selectedWaybill, (waybill) => {
-    if (state.hydrating || form.data.id) return
+    if (state.hydrating) return
     form.data.driverNameSnapshot = waybill?.driverName || ''
-    form.data.driverPhoneSnapshot = waybill?.driver?.phone || waybill?.order?.dispatchDriverPhone || ''
+    form.data.plateNoSnapshot = waybill?.plateNo || waybill?.order?.dispatchPlateNo || ''
+    form.data.driverPhoneSnapshot =
+      waybill?.driver?.phone || waybill?.order?.dispatchDriverPhone || ''
+    form.data.driverOwnershipDisplay = waybill?.driverOwnership || ''
+    form.data.companyNameDisplay = waybill?.companyName || ''
+    form.data.carrierNameDisplay = waybill?.carrierName || waybill?.carrier?.companyName || ''
   })
   function applyMaintenanceSource(source: { id: string; amount: number }): void {
     Object.assign(form.data, { maintenanceRecordId: source.id, amount: source.amount })
@@ -967,19 +1219,23 @@
     }
   }
 
-  watch(() => form.data.tenantId, async (tenantId) => {
-    selectableExpenseItems.value = []
-    if (!tenantId) return
-    const session = formSession.value
-    try {
-      const result = await fetchSelectableExpenseItems(tenantId)
-      if (!isCurrent(session) || form.data.tenantId !== tenantId) return
-      selectableExpenseItems.value = expenseOptionTreeUtils.treeToList(result.data)
-        .filter((item) => item.isSelectable && item.isEnabled)
-    } catch {
-      if (isCurrent(session)) saveError.value = '费用项目加载失败，请重新选择运单后重试'
+  watch(
+    () => form.data.tenantId,
+    async (tenantId) => {
+      selectableExpenseItems.value = []
+      if (!tenantId) return
+      const session = formSession.value
+      try {
+        const result = await fetchSelectableExpenseItems(tenantId)
+        if (!isCurrent(session) || form.data.tenantId !== tenantId) return
+        selectableExpenseItems.value = expenseOptionTreeUtils
+          .treeToList(result.data)
+          .filter((item) => item.isSelectable && item.isEnabled)
+      } catch {
+        if (isCurrent(session)) saveError.value = '费用项目加载失败，请重新选择运单后重试'
+      }
     }
-  })
+  )
 
   async function fetchWaybillSelectorData(params: DataSelectFetchParams) {
     const { from, to } = buildSupabasePageRange({ current: params.page, size: params.pageSize })
@@ -1102,7 +1358,13 @@
 
   function buildExpensePayload(): Expense {
     return {
-      ...omit(structuredClone(toRaw(form.data)), ['expenseRegionPath', 'locationPicker']),
+      ...omit(structuredClone(toRaw(form.data)), [
+        'expenseRegionPath',
+        'locationPicker',
+        'driverOwnershipDisplay',
+        'companyNameDisplay',
+        'carrierNameDisplay'
+      ]),
       payeeType: form.data.payeeType || 'manual',
       payeeDriverId: form.data.payeeType === 'driver' ? form.data.payeeDriverId || null : null,
       payeeBank: normalizeNullableText(form.data.payeeBank),
@@ -1163,12 +1425,27 @@
       return false
     }
     if (!canSave()) return false
+    if (
+      !form.data.expenseItemId ||
+      !form.data.occurredOn ||
+      !['normal', 'abnormal'].includes(form.data.expenseClassification || '') ||
+      (canEditCostAmounts.value &&
+        (!Number.isFinite(Number(form.data.amount)) || Number(form.data.amount) <= 0))
+    ) {
+      ElMessage.warning('请完善第 10 行的费用项目、分类、金额和日期')
+      return false
+    }
     if (extraLines.value.length) {
       for (const [index, line] of extraLines.value.entries()) {
-        if (!selectableExpenseItems.value.some((item) => item.id === line.expenseItemId)
-          || !Number.isFinite(line.amount) || line.amount <= 0 || !line.occurredOn
-          || (expenseNumber.manualRequired(false) && !line.costNo.trim())) {
-          ElMessage.warning(`请完善第 ${(index + 2) * 10} 行的费用项目、金额、日期和单号`)
+        if (
+          !selectableExpenseItems.value.some((item) => item.id === line.expenseItemId) ||
+          !Number.isFinite(line.amount) ||
+          line.amount <= 0 ||
+          !line.occurredOn ||
+          !['normal', 'abnormal'].includes(line.expenseClassification) ||
+          (expenseNumber.manualRequired(false) && !line.costNo.trim())
+        ) {
+          ElMessage.warning(`请完善第 ${(index + 2) * 10} 行的费用项目、分类、金额、日期和单号`)
           return false
         }
       }
@@ -1181,9 +1458,14 @@
     try {
       if (!payload.id && extraLines.value.length) {
         const lines = [payload, ...extraLines.value].map((line) => ({
-          costNo: line.costNo || '', expenseItemId: line.expenseItemId, amount: line.amount,
-          occurredOn: line.occurredOn, quantity: line.quantity, unitPrice: line.unitPrice,
-          remark: line.remark, expenseClassification: line.expenseClassification || 'normal' as const
+          costNo: line.costNo || '',
+          expenseItemId: line.expenseItemId,
+          amount: line.amount,
+          occurredOn: line.occurredOn,
+          quantity: line.quantity,
+          unitPrice: line.unitPrice,
+          remark: line.remark,
+          expenseClassification: line.expenseClassification || ('normal' as const)
         }))
         const response = await addWaybillCostBatch(payload, lines)
         if (response.error || !response.data?.[0]?.id)
@@ -1253,6 +1535,7 @@
     state.autoLocateArmed = false
     Object.assign(form.data, createInitialForm())
     extraLines.value = []
+    batchExpenseItemIds.value = []
     selection.waybills = []
     fuelCardOptions.value = []
     fuelCardLoadError.value = ''
@@ -1294,6 +1577,10 @@
       state.hydrating = true
       Object.assign(form.data, createInitialForm(), structuredClone(toRaw(data.row)))
       selection.waybills = [toEditSelectedWaybill(data.row)]
+      form.data.driverOwnershipDisplay = data.row.waybill?.driverOwnership || ''
+      form.data.companyNameDisplay = data.row.waybill?.companyName || ''
+      form.data.carrierNameDisplay =
+        data.row.waybill?.carrierName || data.row.waybill?.carrier?.companyName || ''
       form.data.expenseRegionPath = String(form.data.expenseRegion || '')
         .split('/')
         .map((item) => item.trim())

@@ -1548,6 +1548,9 @@ declare global {
         id: string
         tenantId?: string | null
         plateNo?: string | null
+        driverOwnership?: string | null
+        companyName?: string | null
+        carrierName?: string | null
         waybillNo: string
         status: string
         orderId?: string | null

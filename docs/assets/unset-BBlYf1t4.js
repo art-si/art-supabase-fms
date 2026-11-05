@@ -1,0 +1,1 @@
+import{yo as e}from"./sys-YbwtrnHO.js";function t(t,n){return t==null||e(t,n)}export{t};
