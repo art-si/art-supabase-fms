@@ -1,0 +1,1 @@
+import{Ca as e,Yi as t,ia as n}from"./sys-vl3g3gmk.js";import{t as r}from"./receivable-workspace-B-3bhzUV.js";var i=n({name:`FinanceFinancialReceivable`,__name:`index`,setup(n){return(n,i)=>(e(),t(r,{kind:`financial`}))}});export{i as default};

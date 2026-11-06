@@ -120,6 +120,7 @@
   const customerOptions = ref<Array<{ label: string; value: string }>>([])
   const fieldAccess = ref<Api.Fms.CustomerStatementFieldAccessMap>({})
   const currentRows = ref<CustomerStatement[]>([])
+  const openedRouteRecordId = ref('')
   const totalCount = ref(0)
   const metrics = computed<BusinessWorkspaceMetric[]>(() => [
     {
@@ -581,6 +582,38 @@
     { flush: 'post' }
   )
 
+  function openRouteRecordDetail(): void {
+    const recordId = route.query.recordId
+    if (
+      typeof recordId !== 'string' ||
+      !recordId ||
+      openedRouteRecordId.value === recordId ||
+      !hasAuth('FinanceCustomerSettlement:View')
+    )
+      return
+
+    const row = currentRows.value.find((item) => item.id === recordId)
+    if (!row) return
+
+    openedRouteRecordId.value = recordId
+    void nextTick()
+      .then(() => drawerRef.value?.handleOpen(row))
+      .catch((error) => {
+        openedRouteRecordId.value = ''
+        notifyFriendlyError(error, '客户对账详情打开失败，请刷新列表后重试')
+      })
+  }
+
+  watch([() => route.query.recordId, currentRows], openRouteRecordDetail, { flush: 'post' })
+
+  watch(
+    () => route.query.recordId,
+    () => {
+      openedRouteRecordId.value = ''
+    },
+    { flush: 'sync' }
+  )
+
   watch(
     () => route.query.status,
     (value) => {
@@ -590,7 +623,11 @@
     }
   )
 
-  onActivated(() => syncCustomerDeleteRoute(true))
+  onActivated(() => {
+    openedRouteRecordId.value = ''
+    syncCustomerDeleteRoute(true)
+    openRouteRecordDetail()
+  })
 
   onMounted(() => {
     void userStore.ensureDictLoaded('tmsSettlementStatus').catch(() => undefined)

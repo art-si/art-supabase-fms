@@ -20,6 +20,7 @@
   import { useTenantOperationGuard } from '@/hooks/core/useTenantOperationGuard'
   import { useArtOverlaySession } from '@/hooks/core/useArtOverlay'
   import TreeUtils from '@/utils/tree'
+  import { findExpenseCompany } from '../../shared/expense-company'
   import { useTenantScopeFormPolicy } from '@/hooks/core/useTenantScopeFormPolicy'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
@@ -247,10 +248,7 @@
     )
       return
     const tree = response.data ?? []
-    const path = organizationTreeUtils.getPathToNode(tree, selected.organizationId) ?? []
-    const companyId = path
-      .reverse()
-      .find((id) => organizationTreeUtils.findNode(tree, id)?.organizationType === 'company')
+    const companyId = findExpenseCompany(tree, selected.organizationId)?.id
     model.value.costCompanyId = companyId ? String(companyId) : null
   }
 

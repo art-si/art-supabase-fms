@@ -602,7 +602,7 @@
     { prop: 'lineNo', label: '行号', width: 70, align: 'center' },
     {
       prop: 'expenseClassification',
-      label: '费用分类',
+      label: '费用划分',
       width: 110,
       dict: { code: 'tmsExpenseClassification', display: 'auto' }
     },

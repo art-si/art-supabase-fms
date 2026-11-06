@@ -13,10 +13,6 @@ export function findExpenseCompany(
   organizationId: string | null | undefined
 ): Organization | null {
   if (!organizationId) return null
-  const path = organizationTreeUtils.getPathToNode(organizations, organizationId) ?? []
-  for (const id of path.reverse()) {
-    const organization = organizationTreeUtils.findNode(organizations, id)
-    if (organization?.organizationType === 'company') return organization
-  }
-  return null
+  const ancestors = organizationTreeUtils.getAncestors(organizations, organizationId)
+  return ancestors.reverse().find((item) => item.organizationType === 'company') ?? null
 }
