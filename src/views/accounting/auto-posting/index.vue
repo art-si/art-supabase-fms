@@ -376,7 +376,7 @@
       canEditField(eventFieldAccess.value, 'processingDiagnostics')
         ? [
             {
-              auth: 'FinanceAutoPosting:ProcessPending',
+              permission: 'FinanceAutoPosting:ProcessPending',
               key: 'process-pending',
               label: '批量处理待办',
               icon: 'ri:refresh-line',

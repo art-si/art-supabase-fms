@@ -281,7 +281,7 @@
 
   const headerActions = computed<ArtTableQueryHeaderAction[]>(() => [
     {
-      auth: 'FinanceWaybillProfit:AiProfitAnalysis',
+      permission: 'FinanceWaybillProfit:AiProfitAnalysis',
       key: 'ai-profit-analysis',
       label: 'AI 利润诊断',
       icon: 'ri:sparkling-2-line',

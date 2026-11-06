@@ -443,7 +443,7 @@
     ]),
     headerActions: computed<ArtTableQueryHeaderAction[]>(() => [
       {
-        auth: 'FinanceWaybillCost:OcrLogs',
+        permission: 'FinanceWaybillCost:OcrLogs',
         key: 'ocrLogs',
         label: 'OCR 识别记录',
         buttonProps: { plain: true },
@@ -456,7 +456,7 @@
         onClick: () => openExpenseDialog()
       },
       {
-        auth: 'FinanceWaybillCost:Convert',
+        permission: 'FinanceWaybillCost:Convert',
         key: 'convert',
         label: '转费用报销',
         selectionRequired: true,
