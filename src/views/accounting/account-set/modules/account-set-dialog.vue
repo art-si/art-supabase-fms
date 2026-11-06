@@ -22,6 +22,7 @@
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { normalizeNullableText } from '@/utils/form/normalize'
+  import dayjs from 'dayjs'
   import type { FormRules } from 'element-plus'
   import { storeToRefs } from 'pinia'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
@@ -66,7 +67,7 @@
     accountingStandard: 'enterprise_2019',
     vatTaxpayerType: 'general',
     baseCurrencyCode: 'CNY',
-    enabledOn: new Date().toISOString().slice(0, 10),
+    enabledOn: dayjs().format('YYYY-MM-DD'),
     fiscalYearStartMonth: 1,
     status: 'draft',
     isDefault: false,

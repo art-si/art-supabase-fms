@@ -348,14 +348,32 @@ export async function editWaybillCost(params: WaybillCost, options: FinanceReque
 
 export async function addWaybillCostBatch(
   base: WaybillCost,
-  lines: Array<Pick<WaybillCost, 'costNo' | 'expenseItemId' | 'amount' | 'occurredOn' | 'quantity' | 'unitPrice' | 'remark' | 'expenseClassification'>>
+  lines: Array<
+    Pick<
+      WaybillCost,
+      | 'costNo'
+      | 'expenseItemId'
+      | 'amount'
+      | 'occurredOn'
+      | 'quantity'
+      | 'unitPrice'
+      | 'remark'
+      | 'expenseClassification'
+    >
+  >
 ) {
   return await responseHandle<WaybillCost[]>(
-    () => supabase.rpc('tms_save_waybill_cost_batch_secure', {
-      p_base: keysToSnakeDeep(createCostWritePayload(base)),
-      p_lines: keysToSnakeDeep(lines)
-    }),
-    { showMessage: false, showErrorMessage: false, breakReturn: true, errorMessage: '费用明细保存失败，请核对后重试' }
+    () =>
+      supabase.rpc('tms_save_waybill_cost_batch_secure', {
+        p_base: keysToSnakeDeep(createCostWritePayload(base)),
+        p_lines: keysToSnakeDeep(lines)
+      }),
+    {
+      showMessage: false,
+      showErrorMessage: false,
+      breakReturn: true,
+      errorMessage: '费用明细保存失败，请核对后重试'
+    }
   )
 }
 
