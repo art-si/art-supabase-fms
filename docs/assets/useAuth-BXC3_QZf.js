@@ -1,1 +1,0 @@
-import{B as e,S as t,r as n,un as r}from"./sys-vl3g3gmk.js";var i=()=>{let{isFrontendMode:i}=t(),a=n(),o=e(),{info:s,isPlatformSuper:c}=r(a),{buttonList:l}=r(o),u=()=>s.value.buttons??[],d=()=>Array.isArray(l.value)?l.value:[],f=e=>c.value?!0:i.value?u().includes(e):d().some(t=>t?.name===e);return{hasAuth:f,hasAnyAuth:e=>e.some(f),hasAllAuth:e=>e.every(f)}};export{i as t};
