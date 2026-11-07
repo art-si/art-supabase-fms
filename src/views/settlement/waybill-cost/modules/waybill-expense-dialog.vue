@@ -75,19 +75,38 @@
       /></template>
       <template #expenseLines>
         <section class="min-w-0">
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <ArtSectionTitle>费用明细</ArtSectionTitle>
-            <ElButton
-              v-if="!form.data.id && canEditCostAmounts && !form.data.maintenanceRecordId"
-              v-auth="'FinanceWaybillCost:Add'"
-              :disabled="extraLines.length >= 19"
-              @click="addExtraLine"
-              >添加费用行</ElButton
-            >
-          </div>
+          <ElButton
+            v-if="!form.data.id && canEditCostAmounts && !form.data.maintenanceRecordId"
+            v-auth="'FinanceWaybillCost:Add'"
+            :disabled="extraLines.length >= 19"
+            @click="addExtraLine"
+            >添加费用行</ElButton
+          >
           <p class="my-2 text-sm text-[var(--art-gray-700)]"
             >费用明细按 10、20、30… 编号；多条费用将一起保存。</p
           >
+          <ArtAsyncState
+            v-if="
+              form.data.tenantId &&
+              (state.expenseItemsLoading ||
+                state.expenseItemsError ||
+                !selectableExpenseItems.length)
+            "
+            size="compact"
+            loading-mode="mask"
+            :min-height="state.expenseItemsLoading ? 180 : 80"
+            :loading="state.expenseItemsLoading"
+            :error="state.expenseItemsError"
+            :empty="!selectableExpenseItems.length"
+            error-title="选项加载失败"
+            empty-text="暂无可记账的费用项目"
+            empty-description="请配置当前运单所属租户的启用费用项目后重新加载。"
+            @retry="state.expenseItemsReload += 1"
+          >
+            <template #empty-action>
+              <ElButton @click="state.expenseItemsReload += 1">重新加载</ElButton>
+            </template>
+          </ArtAsyncState>
           <ElAlert
             v-if="lineValidationMessage"
             :title="lineValidationMessage"
@@ -109,6 +128,8 @@
               class="min-w-0 flex-1"
               placeholder="批量选择费用项目"
               aria-label="批量选择费用项目"
+              :loading="state.expenseItemsLoading"
+              :disabled="expenseItemsDisabled"
             >
               <ElOption
                 v-for="item in selectableExpenseItems"
@@ -142,6 +163,8 @@
                 filterable
                 placeholder="费用项目"
                 aria-label="费用项目"
+                :loading="state.expenseItemsLoading"
+                :disabled="expenseItemsDisabled"
                 ><ElOption
                   v-for="item in selectableExpenseItems"
                   :key="item.id"
@@ -151,7 +174,7 @@
             <template #amount="{ row }"
               ><ElInputNumber
                 :model-value="row.amount"
-                @update:model-value="updateLineField(row, 'amount', $event)"
+                @update:model-value="updateLineField(row, 'amount', $event ?? null)"
                 class="w-full!"
                 :min="0.01"
                 :precision="2"
@@ -174,7 +197,7 @@
             <template #quantity="{ row }"
               ><ElInputNumber
                 :model-value="row.quantity"
-                @update:model-value="updateLineField(row, 'quantity', $event)"
+                @update:model-value="updateLineField(row, 'quantity', $event ?? null)"
                 class="w-full!"
                 :min="0"
                 :precision="3"
@@ -185,7 +208,7 @@
             <template #unitPrice="{ row }"
               ><ElInputNumber
                 :model-value="row.unitPrice"
-                @update:model-value="updateLineField(row, 'unitPrice', $event)"
+                @update:model-value="updateLineField(row, 'unitPrice', $event ?? null)"
                 class="w-full!"
                 :min="0"
                 :precision="4"
@@ -277,7 +300,6 @@
   } from '@/components/core/forms/art-address-picker/types'
   import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
   import ArtTable, { type ArtTableExpose } from '@/components/core/tables/art-table/index.vue'
-  import ArtSectionTitle from '@/components/core/surfaces/art-section-title/index.vue'
   import ArtIconButton from '@/components/core/widget/art-icon-button/index.vue'
   import type { ColumnOption } from '@/types'
   import FinanceDataSourceEmptyActions from '../../../components/finance-data-source-empty-actions.vue'
@@ -472,15 +494,26 @@
   const driverAccountError = ref('')
   const driverAccountLoading = ref(false)
   const manualPayeeSnapshot = ref<{ name: string; bank: string; account: string } | null>(null)
-  const state = reactive({ autoLocateArmed: false, ocrEnabled: true, hydrating: false })
+  const state = reactive({
+    autoLocateArmed: false,
+    ocrEnabled: true,
+    hydrating: false,
+    expenseItemsLoading: false,
+    expenseItemsError: '',
+    expenseItemsReload: 0
+  })
   const saveError = ref('')
   const {
     version: formSession,
     invalidate,
     isCurrent
   } = useArtOverlaySession(() => Boolean(unref(dialogRef.value?.visible)))
+  const driverAccountRequests = useArtOverlaySession(() => Boolean(unref(dialogRef.value?.visible)))
+  const fuelCardRequests = useArtOverlaySession(() => Boolean(unref(dialogRef.value?.visible)))
   function invalidateSession(): number {
     invalidate()
+    driverAccountRequests.invalidate()
+    fuelCardRequests.invalidate()
     state.autoLocateArmed = false
     addressPickerRef.value?.cancelLocate()
     ocrPanelRef.value?.reset()
@@ -565,10 +598,14 @@
     },
     ...extraLines.value
   ])
-  function updateLineField(row: ExpenseLine, field: keyof ExpenseLine, value: unknown): void {
+  function updateLineField<K extends keyof ExpenseLine>(
+    row: ExpenseLine,
+    field: K,
+    value: ExpenseLine[K]
+  ): void {
     lineValidationMessage.value = ''
     const target = row.key === 'base' ? formData : row
-    ;(target as unknown as Record<string, unknown>)[field] = value
+    Object.assign(target, { [field]: value })
   }
   const expenseNumber = useDocumentNumberRule(
     'tms.waybill_cost',
@@ -801,20 +838,7 @@
         key: 'expenseItemId',
         type: 'treeSelect',
         span: 24,
-        hidden: true,
-        api: () => fetchSelectableExpenseItems(formData.tenantId || ''),
-        params: { tenantId: formData.tenantId },
-        shouldFetch: (params) => Boolean(params?.tenantId),
-        resultField: 'data',
-        labelField: 'itemName',
-        valueField: 'id',
-        childrenField: 'children',
-        props: {
-          placeholder: '请选择可记账的费用项目',
-          checkStrictly: true,
-          defaultExpandAll: true,
-          renderAfterExpand: false
-        }
+        hidden: true
       },
       {
         label: '费用金额',
@@ -1027,6 +1051,14 @@
   })
 
   const selectedWaybill = computed(() => selection.waybills[0])
+  const expenseItemsDisabled = computed(
+    () =>
+      !form.data.tenantId ||
+      state.expenseItemsLoading ||
+      Boolean(state.expenseItemsError) ||
+      !selectableExpenseItems.value.length
+  )
+
   watch(selectedWaybill, (waybill) => {
     if (state.hydrating) return
     form.data.driverNameSnapshot = waybill?.driverName || ''
@@ -1082,8 +1114,10 @@
     () => form.data.payeeType,
     (payeeType, previousType) => {
       if (state.hydrating || payeeType === previousType) return
+      driverAccountRequests.invalidate()
       driverDefaultAccount.value = null
       driverAccountError.value = ''
+      driverAccountLoading.value = false
       if (payeeType === 'driver') {
         manualPayeeSnapshot.value = {
           name: form.data.payeeName || '',
@@ -1112,22 +1146,25 @@
   )
 
   async function loadDriverDefaultAccount(): Promise<void> {
+    const request = driverAccountRequests.invalidate()
+    driverAccountLoading.value = false
+    driverAccountError.value = ''
     const waybillId = form.data.waybillId
     if (!waybillId || !selectedWaybill.value?.driverId) {
       driverAccountError.value = '请先选择已分配司机的运单。'
       return
     }
     const session = formSession.value
+    const isCurrentDriverAccount = () =>
+      isCurrent(session) &&
+      driverAccountRequests.isCurrent(request) &&
+      form.data.waybillId === waybillId &&
+      form.data.payeeType === 'driver'
     const ensureScope = createTenantScopeReadGuard()
     driverAccountLoading.value = true
     try {
       const { data, error } = await fetchWaybillDriverDefaultAccount(waybillId, form.data.id)
-      if (
-        !isCurrent(session) ||
-        form.data.waybillId !== waybillId ||
-        form.data.payeeType !== 'driver'
-      )
-        return
+      if (!isCurrentDriverAccount()) return
       ensureScope()
       if (error) throw error
       if (!data?.driverId) {
@@ -1144,13 +1181,13 @@
         driverAccountError.value = '该司机未启用默认开票账户，请人工核对收款银行与账号。'
       }
     } catch (error) {
-      if (isCurrent(session))
+      if (isCurrentDriverAccount())
         driverAccountError.value = getFriendlySupabaseErrorMessage(
           error,
           '司机收款资料加载失败，请重试。'
         )
     } finally {
-      if (isCurrent(session)) driverAccountLoading.value = false
+      if (isCurrentDriverAccount()) driverAccountLoading.value = false
     }
   }
   watch(
@@ -1174,19 +1211,27 @@
   )
 
   async function loadFuelCards(waybillId: string, tenantId: string): Promise<void> {
+    const request = fuelCardRequests.invalidate()
+    driverAccountRequests.invalidate()
     fuelCardOptions.value = []
     driverDefaultAccount.value = null
     driverAccountError.value = ''
     driverAccountLoading.value = false
     manualPayeeSnapshot.value = null
     fuelCardLoadError.value = ''
+    fuelCardLoading.value = false
     if (!waybillId || !tenantId) return
     const session = formSession.value
+    const isCurrentFuelCardLoad = () =>
+      isCurrent(session) &&
+      fuelCardRequests.isCurrent(request) &&
+      form.data.waybillId === waybillId &&
+      form.data.tenantId === tenantId
     const ensureScope = createTenantScopeReadGuard()
     fuelCardLoading.value = true
     try {
       const result = await fetchWaybillFuelCardOptions(waybillId)
-      if (!isCurrent(session) || form.data.waybillId !== waybillId) return
+      if (!isCurrentFuelCardLoad()) return
       ensureScope()
       if (result.error) throw result.error
       fuelCardOptions.value = result.data || []
@@ -1210,13 +1255,13 @@
         form.data.fuelCardId = fuelCardOptions.value[0].id
       }
     } catch (error) {
-      if (isCurrent(session))
+      if (isCurrentFuelCardLoad())
         fuelCardLoadError.value = getFriendlySupabaseErrorMessage(
           error,
           '油卡加载失败，请重试或更换支付渠道'
         )
     } finally {
-      if (isCurrent(session)) fuelCardLoading.value = false
+      if (isCurrentFuelCardLoad()) fuelCardLoading.value = false
     }
   }
   const expenseLocationModel = computed({
@@ -1251,7 +1296,7 @@
 
   async function fetchSelectableExpenseItems(tenantId: string) {
     if (!tenantId) return { data: [], error: null }
-    const result = await fetchExpenseItemTree({ tenantId })
+    const result = await fetchExpenseItemTree({ tenantId }, { showErrorMessage: false })
     const enabledItems = expenseOptionTreeUtils.removeNodesByCondition(
       result.data,
       (item) => !item.isEnabled
@@ -1266,19 +1311,37 @@
   }
 
   watch(
-    () => form.data.tenantId,
-    async (tenantId) => {
+    [() => form.data.tenantId, () => state.expenseItemsReload],
+    async ([tenantId], _previous, onCleanup) => {
+      let active = true
+      onCleanup(() => {
+        active = false
+      })
       selectableExpenseItems.value = []
+      state.expenseItemsLoading = false
+      state.expenseItemsError = ''
       if (!tenantId) return
       const session = formSession.value
+      const ensureScope = createTenantScopeReadGuard()
+      state.expenseItemsLoading = true
       try {
         const result = await fetchSelectableExpenseItems(tenantId)
-        if (!isCurrent(session) || form.data.tenantId !== tenantId) return
+        if (!active || !isCurrent(session) || form.data.tenantId !== tenantId) return
+        ensureScope()
+        if (result.error) throw result.error
         selectableExpenseItems.value = expenseOptionTreeUtils
           .treeToList(result.data)
           .filter((item) => item.isSelectable && item.isEnabled)
-      } catch {
-        if (isCurrent(session)) saveError.value = '费用项目加载失败，请重新选择运单后重试'
+      } catch (error) {
+        if (active && isCurrent(session) && form.data.tenantId === tenantId) {
+          state.expenseItemsError = getFriendlySupabaseErrorMessage(
+            error,
+            '费用项目加载失败，请重新加载后重试'
+          )
+        }
+      } finally {
+        if (active && isCurrent(session) && form.data.tenantId === tenantId)
+          state.expenseItemsLoading = false
       }
     }
   )
@@ -1476,6 +1539,14 @@
     }
     if (!canSave()) return false
     const lineValidation = await lineTableRef.value?.validate()
+    if (!isCurrent(session)) return false
+    try {
+      ensureScope()
+    } catch (error) {
+      notifyFriendlyError(error, '租户范围已变化，请刷新后重试')
+      return false
+    }
+    if (!canSave()) return false
     if (!lineValidation) {
       lineValidationMessage.value = '费用明细尚未准备完成，请稍后再保存'
       return false

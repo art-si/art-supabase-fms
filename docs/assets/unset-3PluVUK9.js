@@ -1,0 +1,1 @@
+import{ko as e}from"./sys-CnoZQwYp.js";function t(t,n){return t==null||e(t,n)}export{t};

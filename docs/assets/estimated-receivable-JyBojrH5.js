@@ -1,0 +1,1 @@
+import{Na as e,ia as t,pa as n}from"./sys-CnoZQwYp.js";import{t as r}from"./receivable-workspace-D8ey3AEc.js";var i=n({name:`FinanceEstimatedReceivable`,__name:`index`,setup(n){return(n,i)=>(e(),t(r,{kind:`estimate`}))}});export{i as default};

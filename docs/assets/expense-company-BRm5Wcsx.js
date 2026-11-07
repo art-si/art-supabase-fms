@@ -1,1 +1,0 @@
-import{x as e}from"./sys-DFYhAuQk.js";var t=new e({idKey:`id`,parentKey:`parentId`,childrenKey:`children`});function n(e,n){return n?t.getAncestors(e,n).reverse().find(e=>e.organizationType===`company`)??null:null}export{n as t};
