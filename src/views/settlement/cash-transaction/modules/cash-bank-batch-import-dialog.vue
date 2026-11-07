@@ -5,9 +5,10 @@
     ref="dialogRef"
     size="xl"
     :show-fullscreen-button="true"
+    @close="handleClose"
   >
     <div class="bank-batch">
-      <section class="bank-batch__hero">
+      <section v-if="!state.error" class="bank-batch__hero">
         <header>
           <div class="bank-batch__hero-main">
             <span class="bank-batch__hero-icon" aria-hidden="true">
@@ -20,13 +21,15 @@
             </div>
           </div>
           <ArtExcelImport
-            v-if="state.result"
+            v-if="state.result && canImport"
+            :context-key="importContextVersion"
             accept=".xlsx,.xls,.csv"
             :disabled="state.analyzing || state.committing"
             :button-props="{ type: 'primary', plain: true, loading: state.analyzing }"
             icon="ri:refresh-line"
             @import-success="handleImport"
             @import-error="handleImportError"
+            @parsing-change="state.reading = $event"
           >
             重新导入并分析
           </ArtExcelImport>
@@ -53,20 +56,27 @@
         </div>
       </section>
 
-      <ElAlert v-if="!isPlatformSuper" type="info" :closable="false" show-icon>
-        <template #title>当前为只读分析模式</template>
-        普通用户可导入并查看 AI 匹配建议；批量写入财务流水仅允许平台超级管理员执行。
+      <ElAlert v-if="!canImport || !isPlatformSuper" type="info" :closable="false" show-icon>
+        <template #title>{{ canImport ? '当前为只读分析模式' : '导入权限已变更' }}</template>
+        {{
+          canImport
+            ? '普通用户可导入并查看 AI 匹配建议；批量写入财务流水仅允许平台超级管理员执行。'
+            : '当前账号暂无银行流水导入权限，请联系管理员授权后重试。'
+        }}
       </ElAlert>
 
       <ArtAsyncState :error="state.error" :retryable="false" :min-height="320">
         <template #error-action>
           <ArtExcelImport
+            v-if="canImport"
+            :context-key="importContextVersion"
             accept=".xlsx,.xls,.csv"
             :disabled="state.analyzing || state.committing"
             :button-props="{ type: 'primary' }"
             icon="ri:upload-cloud-2-line"
             @import-success="handleImport"
             @import-error="handleImportError"
+            @parsing-change="state.reading = $event"
           >
             重新选择文件
           </ArtExcelImport>
@@ -133,12 +143,15 @@
               <p>系统将读取首个工作表，并自动识别常见银行字段。</p>
             </div>
             <ArtExcelImport
+              v-if="canImport"
+              :context-key="importContextVersion"
               accept=".xlsx,.xls,.csv"
               :disabled="state.analyzing || state.committing"
               :button-props="{ type: 'primary', size: 'large', loading: state.analyzing }"
               icon="ri:upload-cloud-2-line"
               @import-success="handleImport"
               @import-error="handleImportError"
+              @parsing-change="state.reading = $event"
             >
               选择流水文件
             </ArtExcelImport>
@@ -196,9 +209,16 @@
           >
             <span>
               <ElButton
+                v-if="canImport"
                 type="primary"
                 :loading="state.committing"
-                :disabled="!isPlatformSuper || !selectedRows.length || state.analyzing"
+                :disabled="
+                  !isPlatformSuper ||
+                  !selectedRows.length ||
+                  state.reading ||
+                  state.analyzing ||
+                  state.committing
+                "
                 @click="handleCommit"
               >
                 确认入账 {{ selectedRows.length ? `(${selectedRows.length})` : '' }}
@@ -215,7 +235,8 @@
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import { createFriendlySupabaseError, getFriendlySupabaseErrorMessage } from '@/utils/supabase'
   import { ElCheckbox, ElMessage, ElTag } from 'element-plus'
-  import { uniq } from 'lodash-es'
+  import { cloneDeep, uniq } from 'lodash-es'
+  import { onDeactivated, shallowRef, watch } from 'vue'
   import ArtDialog from '@/components/core/dialogs/art-dialog/index.vue'
   import type { ArtDialogExpose } from '@/components/core/dialogs/art-dialog/types'
   import ArtAsyncState from '@/components/core/feedback/art-async-state/index.vue'
@@ -226,6 +247,9 @@
   import { analyzeBankStatementBatchByAi, commitBankStatementBatchByAi } from '@fms/api'
   import { useUserStore } from '@/store/modules/user'
   import { useArtFeedback } from '@/hooks/core/useArtFeedback'
+  import { useArtOverlaySession } from '@/hooks/core/useArtOverlay'
+  import { useTenantOperationGuard } from '@/hooks/core/useTenantOperationGuard'
+  import { useAuth } from '@/hooks/core/useAuth'
   import { formatSensitiveNumberWithAffix } from '@/utils/field-permission'
 
   defineOptions({ name: 'FinanceCashBankBatchImportDialog' })
@@ -233,6 +257,11 @@
   type Status = Api.Fms.BankBatchRowStatus
   const emit = defineEmits<{ success: [] }>()
   const dialogRef = ref<ArtDialogExpose>()
+  const analysisSession = useArtOverlaySession(() => Boolean(unref(dialogRef.value?.visible)))
+  const importContextVersion = analysisSession.version
+  const captureImportOperation = useTenantOperationGuard('FinanceCashTransaction:Import')
+  const { hasAuth } = useAuth()
+  const canImport = computed(() => hasAuth('FinanceCashTransaction:Import'))
   const { confirm } = useArtFeedback()
   const { isPlatformSuper } = storeToRefs(useUserStore())
   const selectedRowIds = ref<string[]>([])
@@ -240,18 +269,28 @@
     (state.result?.rows ?? []).filter((row) => selectedRowIds.value.includes(row.rowId))
   )
   const state = reactive<{
+    reading: boolean
     analyzing: boolean
     committing: boolean
     error: Error | null
     fileName: string
     result?: Api.Fms.BankBatchAnalyzeResponse
   }>({
+    reading: false,
     analyzing: false,
     committing: false,
     error: null,
     fileName: '',
     result: undefined
   })
+  const activeImportScope = shallowRef<(() => boolean) | null>(null)
+  watch(
+    () => activeImportScope.value?.(),
+    (current) => {
+      if (current === false) handleClose()
+    },
+    { flush: 'sync' }
+  )
   const statusMeta: Record<
     Status,
     { label: string; type: 'success' | 'warning' | 'info' | 'danger' }
@@ -382,6 +421,13 @@
       : selectedRowIds.value.filter((id) => id !== row.rowId)
   }
   async function handleImport(rows: Array<Record<string, unknown>>, file: File) {
+    if (state.analyzing || state.committing || !unref(dialogRef.value?.visible) || !canImport.value)
+      return
+    const operationCurrent = captureImportOperation()
+    if (!operationCurrent()) return
+    const request = analysisSession.invalidate()
+    activeImportScope.value = operationCurrent
+    const isCurrent = () => analysisSession.isCurrent(request) && operationCurrent()
     state.analyzing = true
     state.error = null
     state.fileName = file.name
@@ -389,53 +435,89 @@
     selectedRowIds.value = []
     try {
       const response = await analyzeBankStatementBatchByAi({ rows, fileName: file.name })
+      if (!isCurrent()) return
       if (response.error || !response.data) throw response.error || new Error('AI 未返回匹配结果')
       state.result = response.data
       selectedRowIds.value = response.data.rows.filter(isSelectable).map((row) => row.rowId)
       ElMessage.success(`已完成 ${response.data.rows.length} 条流水匹配`)
     } catch (error) {
-      state.error = createFriendlySupabaseError(error, '银行流水分析失败')
+      if (isCurrent()) state.error = createFriendlySupabaseError(error, '银行流水分析失败')
     } finally {
-      state.analyzing = false
+      if (analysisSession.isCurrent(request)) state.analyzing = false
     }
   }
   function handleImportError(error: Error) {
+    if (state.analyzing || state.committing || !unref(dialogRef.value?.visible) || !canImport.value)
+      return
+    handleClose()
     state.error = createFriendlySupabaseError(error, '文件解析失败，请检查文件格式后重试')
   }
+  function handleClose() {
+    analysisSession.invalidate()
+    activeImportScope.value = null
+    state.reading = false
+    state.analyzing = false
+    state.committing = false
+    state.error = null
+    state.fileName = ''
+    state.result = undefined
+    selectedRowIds.value = []
+  }
+  onDeactivated(() => {
+    handleClose()
+    void dialogRef.value?.handleClose()
+  })
 
   async function handleCommit() {
-    if (!state.result || !selectedRows.value.length || !isPlatformSuper.value) return
+    if (
+      state.reading ||
+      state.committing ||
+      state.analyzing ||
+      !state.result ||
+      !activeImportScope.value?.() ||
+      !selectedRows.value.length ||
+      !isPlatformSuper.value ||
+      !canImport.value
+    )
+      return
+    const operationCurrent = captureImportOperation()
+    const request = analysisSession.version.value
+    const payload = {
+      artifactId: state.result.artifactId,
+      rows: cloneDeep(selectedRows.value)
+    }
+    const isCurrent = () =>
+      analysisSession.isCurrent(request) &&
+      operationCurrent() &&
+      isPlatformSuper.value &&
+      !state.reading
+    state.committing = true
     try {
       await confirm(
-        `将一次性写入 ${selectedRows.value.length} 条收付款流水，并按推荐对账单完成核销。整批校验失败时不会写入任何数据。`,
+        `将一次性写入 ${payload.rows.length} 条收付款流水，并按推荐对账单完成核销。整批校验失败时不会写入任何数据。`,
         {
           title: '确认批量入账',
           confirmButtonText: '确认入账',
           cancelButtonText: '继续核对'
         }
       )
-      state.committing = true
-      const response = await commitBankStatementBatchByAi({
-        artifactId: state.result.artifactId,
-        rows: selectedRows.value
-      })
+      if (!isCurrent()) return
+      const response = await commitBankStatementBatchByAi(payload)
+      if (!isCurrent()) return
       if (response.error || !response.data) throw response.error || new Error('批量入账结果未返回')
       ElMessage.success(`已成功入账 ${response.data.committedCount} 条银行流水`)
       emit('success')
-      dialogRef.value?.handleClose()
+      if (isCurrent()) void dialogRef.value?.handleClose()
     } catch (error) {
-      if (error !== 'cancel' && error !== 'close') {
+      if (isCurrent() && error !== 'cancel' && error !== 'close') {
         ElMessage.error(getFriendlySupabaseErrorMessage(error, '银行流水入账失败，请稍后重试'))
       }
     } finally {
-      state.committing = false
+      if (analysisSession.isCurrent(request)) state.committing = false
     }
   }
   async function handleOpen() {
-    state.error = null
-    state.result = undefined
-    state.fileName = ''
-    selectedRowIds.value = []
+    handleClose()
     await dialogRef.value?.handleOpen(undefined, {
       title: 'AI 银行流水批量导入',
       subtitle: 'AI 自动映射表头、匹配往来单位与待核销对账单；确认后才会写入财务数据',
