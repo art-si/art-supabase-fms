@@ -24,6 +24,9 @@
 </template>
 
 <script setup lang="ts">
+  import { vehicleDriverSelectProps } from '@/components/business/vehicle-driver-select/columns'
+  import { fetchVehicleDriverChoices } from '@/api/vehicle-driver-select'
+  import type { DataSelectFetchParams } from '@/components/core/forms/art-data-select/types'
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { useAuth } from '@/hooks/core/useAuth'
@@ -188,17 +191,24 @@
           ? {
               label: '关联车辆',
               key: 'vehicleId',
-              type: 'select',
+              type: 'dataSelect',
               span: 24,
               props: {
-                options: vehicleOptions.value,
-                clearable: true,
-                filterable: true,
-                remote: true,
-                remoteMethod: loadVehicles,
-                loading: vehiclesLoading.value,
+                ...vehicleDriverSelectProps('vehicle'),
+                apiFn: (params: DataSelectFetchParams) =>
+                  fetchVehicleDriverChoices<{ id: string; plateNo: string }>(
+                    'asset_vehicle',
+                    params,
+                    { accountSetId: form.value.accountSetId }
+                  ),
+                selectedData: vehicleOptions.value
+                  .filter((row) => row.value === form.value.vehicleId)
+                  .map((row) => ({ id: row.value, plateNo: row.label })),
                 disabled: !form.value.accountSetId,
-                placeholder: '非车辆资产可留空，输入车牌搜索'
+                placeholder: '非车辆资产可留空，点击选择车辆',
+                onChange: (_value: unknown, rows: { id: string; plateNo: string }[]) => {
+                  vehicleOptions.value = rows.map((row) => ({ value: row.id, label: row.plateNo }))
+                }
               }
             }
           : {

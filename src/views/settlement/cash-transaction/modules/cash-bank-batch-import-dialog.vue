@@ -190,14 +190,16 @@
 
     <template #footer="{ api }">
       <div class="bank-batch__footer">
-        <span class="art-icon-label">
+        <span class="art-icon-label" role="status" aria-live="polite">
           <ArtSvgIcon icon="ri:lock-2-line" aria-hidden="true" />
           {{
-            !isPlatformSuper
-              ? '当前仅分析匹配建议，不会写入财务流水'
-              : state.result
-                ? '请核对选中流水，确认后将整批写入'
-                : '选择文件后才能进入核对与入账步骤'
+            state.reading
+              ? '正在读取新文件，请稍候…'
+              : !isPlatformSuper
+                ? '当前仅分析匹配建议，不会写入财务流水'
+                : state.result
+                  ? '请核对选中流水，确认后将整批写入'
+                  : '选择文件后才能进入核对与入账步骤'
           }}
         </span>
         <div>
