@@ -286,6 +286,11 @@ export {
 
 export { fetchCashForecastOverview } from '@fms/api/modules/treasury/cash-forecast'
 export { fetchReceivableAgingOverview } from '@fms/api/modules/transport/receivable-aging'
+export {
+  fetchProjectArApReport,
+  type ProjectArApReportQuery,
+  type ProjectArApReportRow
+} from '@fms/api/project-ar-ap-report'
 export { fetchFinancialExceptionOverview } from '@fms/api/modules/financial-exception'
 
 export {
