@@ -5,21 +5,24 @@
     :loading="state.loading"
     :show-footer="false"
   >
-    <div class="collection-advisor">
+    <div class="collection-advisor art-ai-advisor">
       <template v-if="state.data">
         <ArtSectionCard
-          :class="['collection-advisor__hero', `is-${assessment.riskLevel}`]"
+          class="collection-advisor__hero art-ai-advisor__hero"
+          :class="`is-${assessment.riskLevel}`"
           :show-scrollbar="false"
         >
           <template #header>
-            <header class="collection-advisor__hero-header">
-              <div class="collection-advisor__hero-main">
-                <span class="collection-advisor__hero-icon">
+            <header class="collection-advisor__hero-header art-ai-advisor__hero-header">
+              <div class="collection-advisor__hero-main art-ai-advisor__hero-main">
+                <span class="collection-advisor__hero-icon art-ai-advisor__hero-icon">
                   <ArtSvgIcon icon="ri:funds-line" />
                 </span>
                 <div>
-                  <span class="collection-advisor__eyebrow"><i />AI RECEIVABLES CONTROL</span>
-                  <div class="collection-advisor__title-row">
+                  <span class="collection-advisor__eyebrow art-ai-advisor__eyebrow"
+                    ><i />AI RECEIVABLES CONTROL</span
+                  >
+                  <div class="collection-advisor__title-row art-ai-advisor__title-row">
                     <strong>应收回款风险研判</strong>
                     <ElTag :type="riskTagType" effect="dark" round>{{ riskLabel }}</ElTag>
                     <ElTag type="info" effect="plain" round>{{ recommendationLabel }}</ElTag>
@@ -32,7 +35,7 @@
               </ElButton>
             </header>
           </template>
-          <div class="collection-advisor__scores">
+          <div class="collection-advisor__scores art-ai-advisor__scores">
             <article>
               <header
                 ><span>回款风险</span><strong>{{ assessment.riskScore }}</strong></header
@@ -67,7 +70,7 @@
             </article>
           </div>
 
-          <div class="collection-advisor__conclusion">
+          <div class="collection-advisor__conclusion art-ai-advisor__conclusion">
             <span><ArtSvgIcon :icon="conclusionIcon" /></span>
             <div>
               <small>AI 财务结论</small>
@@ -77,9 +80,11 @@
         </ArtSectionCard>
 
         <ArtSectionCard title="应收健康指标" class="mt-5.5" :show-scrollbar="false">
-          <div class="collection-advisor__metrics">
+          <div class="collection-advisor__metrics art-ai-advisor__metrics">
             <article class="art-card-xs">
-              <span class="collection-advisor__metric-icon is-outstanding">
+              <span
+                class="collection-advisor__metric-icon is-outstanding art-ai-advisor__metric-icon"
+              >
                 <ArtSvgIcon icon="ri:wallet-3-line" />
               </span>
               <div
@@ -89,7 +94,7 @@
               >
             </article>
             <article class="art-card-xs is-danger">
-              <span class="collection-advisor__metric-icon is-risk">
+              <span class="collection-advisor__metric-icon is-risk art-ai-advisor__metric-icon">
                 <ArtSvgIcon icon="ri:alarm-warning-line" />
               </span>
               <div
@@ -99,7 +104,7 @@
               >
             </article>
             <article class="art-card-xs">
-              <span class="collection-advisor__metric-icon is-aging">
+              <span class="collection-advisor__metric-icon is-aging art-ai-advisor__metric-icon">
                 <ArtSvgIcon icon="ri:time-line" />
               </span>
               <div
@@ -109,7 +114,7 @@
               >
             </article>
             <article class="art-card-xs">
-              <span class="collection-advisor__metric-icon is-review">
+              <span class="collection-advisor__metric-icon is-review art-ai-advisor__metric-icon">
                 <ArtSvgIcon icon="ri:file-search-line" />
               </span>
               <div
@@ -119,7 +124,7 @@
               >
             </article>
             <article class="art-card-xs">
-              <span class="collection-advisor__metric-icon is-invoice">
+              <span class="collection-advisor__metric-icon is-invoice art-ai-advisor__metric-icon">
                 <ArtSvgIcon icon="ri:bill-line" />
               </span>
               <div
@@ -129,7 +134,7 @@
               >
             </article>
             <article class="art-card-xs">
-              <span class="collection-advisor__metric-icon is-settled">
+              <span class="collection-advisor__metric-icon is-settled art-ai-advisor__metric-icon">
                 <ArtSvgIcon icon="ri:checkbox-circle-line" />
               </span>
               <div
@@ -158,7 +163,9 @@
             >
               <header>
                 <div>
-                  <span class="collection-advisor__risk-score">{{ statement.riskScore }}</span>
+                  <span class="collection-advisor__risk-score art-ai-advisor__risk-score">{{
+                    statement.riskScore
+                  }}</span>
                   <div>
                     <strong>{{ statement.statementNo }}</strong>
                     <p><ArtSvgIcon icon="ri:building-line" />{{ statement.customerName }}</p>
@@ -210,7 +217,8 @@
               <article
                 v-for="signal in assessment.signals"
                 :key="signal.type"
-                :class="['collection-advisor__signal art-card-xs', `is-${signal.severity}`]"
+                class="collection-advisor__signal art-card-xs art-ai-advisor__signal"
+                :class="`is-${signal.severity}`"
               >
                 <header>
                   <div
@@ -272,7 +280,7 @@
           empty-description="可结合回款指标和风险信号进行人工复核。"
           :empty-visual-size="72"
         >
-          <ol class="collection-advisor__actions">
+          <ol class="collection-advisor__actions art-ai-advisor__actions">
             <li v-for="(action, index) in assessment.recommendedActions" :key="action">
               <span>{{ index + 1 }}</span>
               <div
@@ -292,7 +300,7 @@
           empty-description="请结合当前分析范围复核研判结果。"
           :empty-visual-size="72"
         >
-          <div class="collection-advisor__limitations">
+          <div class="collection-advisor__limitations art-ai-advisor__limitations">
             <p v-for="item in assessment.limitations" :key="item">
               <ArtSvgIcon icon="ri:checkbox-circle-line" /><span>{{ item }}</span>
             </p>
@@ -331,6 +339,7 @@
 </template>
 
 <script setup lang="ts">
+  import '@styles/core/ai-advisor-layout.scss'
   import {
     formatDateTimeValue,
     formatCnyCurrencyValue as formatMoney,
@@ -483,46 +492,14 @@
 </script>
 
 <style scoped lang="scss">
-  @use '@/assets/styles/core/ai-surface-mixins' as ai;
-
   .collection-advisor {
     min-width: 0;
 
     &__hero {
-      position: relative;
       padding: 20px;
-      overflow: hidden;
       background: var(--default-box-color);
-
-      &::before {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 4px;
-        height: 100%;
-        content: '';
-        background: var(--el-color-primary);
-      }
-
-      &.is-critical::before,
-      &.is-high::before {
-        background: var(--el-color-danger);
-      }
-
-      &.is-medium::before {
-        background: var(--el-color-warning);
-      }
-
-      &.is-low::before {
-        background: var(--el-color-success);
-      }
     }
 
-    &__hero-header,
-    &__hero-main,
-    &__title-row,
-    &__signal header,
-    &__signal header > div,
     &__statement header,
     &__statement header > div,
     &__evidence,
@@ -531,182 +508,34 @@
       align-items: center;
     }
 
-    &__hero-header,
-    &__signal header,
     &__statement header {
       justify-content: space-between;
     }
 
-    &__hero-main {
-      gap: 14px;
-      min-width: 0;
-
-      > div {
-        min-width: 0;
-      }
-
-      p {
-        margin: 6px 0 0;
-        color: var(--el-text-color-secondary);
-      }
-    }
-
     &__hero-icon {
-      display: grid;
       flex: 0 0 40px;
-      place-items: center;
       width: 40px;
       height: 40px;
-      color: var(--el-color-primary);
-      background: var(--el-color-primary-light-9);
-      border-radius: var(--custom-radius);
-
-      :deep(svg) {
-        width: 25px;
-        height: 25px;
-      }
     }
 
     &__eyebrow {
-      display: inline-flex;
-      gap: 6px;
-      align-items: center;
       font-size: 12px;
-      font-weight: 700;
-      color: var(--el-color-primary);
-      letter-spacing: 0.13em;
-
-      i {
-        width: 6px;
-        height: 6px;
-        background: var(--el-color-success);
-        border-radius: 50%;
-      }
-    }
-
-    &__title-row {
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 4px;
-
-      > strong {
-        margin-right: 3px;
-        font-size: 19px;
-        color: var(--el-text-color-primary);
-      }
     }
 
     &__scores {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 12px;
-      margin-top: 18px;
-
       article {
-        min-width: 0;
-        padding: 13px 14px;
         background: color-mix(in srgb, var(--art-gray-100) 95%, var(--el-color-primary));
-        border-radius: var(--el-border-radius-base);
-
-        header {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          margin-bottom: 9px;
-        }
-
-        span,
-        small {
-          color: var(--el-text-color-secondary);
-        }
-
-        strong {
-          font-size: 20px;
-          color: var(--el-text-color-primary);
-        }
 
         small {
-          display: block;
-          margin-top: 7px;
-          overflow: hidden;
-          text-overflow: ellipsis;
           font-size: 12px;
-          white-space: nowrap;
         }
-      }
-    }
-
-    &__conclusion {
-      display: flex;
-      gap: 12px;
-      align-items: center;
-      padding-top: 16px;
-      margin-top: 16px;
-      border-top: 1px dashed var(--el-border-color-lighter);
-
-      > span {
-        display: grid;
-        flex: 0 0 34px;
-        place-items: center;
-        width: 34px;
-        height: 34px;
-        color: var(--el-color-danger);
-        background: var(--el-color-danger-light-9);
-        border-radius: var(--el-border-radius-base);
-      }
-
-      small {
-        color: var(--el-text-color-secondary);
-      }
-
-      p {
-        margin: 3px 0 0;
-        line-height: 1.65;
-        color: var(--el-text-color-primary);
       }
     }
 
     &__metrics {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 10px;
-
       article {
-        display: flex;
-        gap: 12px;
-        align-items: center;
-        min-width: 0;
-        padding: 14px;
-
-        > div {
-          min-width: 0;
-        }
-
-        span,
-        strong,
         small {
-          display: block;
-        }
-
-        span,
-        small {
-          color: var(--el-text-color-secondary);
-        }
-
-        strong {
-          margin: 3px 0;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          font-size: 16px;
-          color: var(--el-text-color-primary);
-          white-space: nowrap;
-        }
-
-        small {
-          overflow: hidden;
-          text-overflow: ellipsis;
           font-size: 12px;
-          white-space: nowrap;
         }
 
         &.is-danger strong {
@@ -716,8 +545,6 @@
     }
 
     &__metric-icon {
-      @include ai.metric-icon-badge;
-
       &.is-risk,
       &.is-aging {
         color: var(--el-color-danger) !important;
@@ -781,10 +608,6 @@
         color: var(--el-text-color-secondary);
         border-top: 1px dashed var(--el-border-color-lighter);
       }
-    }
-
-    &__risk-score {
-      @include ai.risk-score-badge;
     }
 
     &__statement-metrics {
@@ -853,47 +676,6 @@
       gap: 10px;
     }
 
-    &__signal {
-      position: relative;
-      padding: 15px 16px;
-      overflow: hidden;
-
-      &::before {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 3px;
-        height: 100%;
-        content: '';
-        background: var(--el-color-warning);
-      }
-
-      &.is-critical::before,
-      &.is-high::before {
-        background: var(--el-color-danger);
-      }
-
-      header > div {
-        gap: 9px;
-
-        > span {
-          display: grid;
-          place-items: center;
-          width: 30px;
-          height: 30px;
-          color: var(--el-color-danger);
-          background: var(--el-color-danger-light-9);
-          border-radius: var(--el-border-radius-base);
-        }
-      }
-
-      p {
-        margin: 10px 0;
-        line-height: 1.65;
-        color: var(--el-text-color-secondary);
-      }
-    }
-
     &__customers {
       article {
         display: grid;
@@ -931,24 +713,7 @@
     }
 
     &__actions {
-      margin: 0;
-      list-style: none;
-
       li {
-        display: grid;
-        grid-template-columns: 30px minmax(0, 1fr);
-        gap: 12px;
-        align-items: center;
-        padding: 13px 0;
-
-        & + li {
-          border-top: 1px dashed var(--el-border-color-lighter);
-        }
-
-        > span {
-          @include ai.numbered-step-marker;
-        }
-
         small {
           color: var(--el-color-primary);
         }
@@ -963,28 +728,13 @@
 
     &__limitations {
       p {
-        display: flex;
-        gap: 8px;
-        align-items: flex-start;
-        margin: 0;
-        line-height: 1.6;
         color: var(--el-text-color-secondary);
-
-        & + p {
-          margin-top: 8px;
-        }
-
-        :deep(svg) {
-          flex: 0 0 auto;
-          margin-top: 3px;
-          color: var(--el-color-primary);
-        }
       }
     }
 
     @media (width <= 760px) {
-      &__scores,
-      &__metrics,
+      --art-ai-advisor-summary-columns: 1fr;
+
       &__statements,
       &__decision-grid {
         grid-template-columns: 1fr;
@@ -992,16 +742,6 @@
     }
 
     @media (width <= 480px) {
-      &__hero-header,
-      &__hero-main {
-        flex-direction: column;
-        align-items: flex-start;
-      }
-
-      &__hero-header :deep(.el-button) {
-        width: 100%;
-      }
-
       &__statement footer {
         gap: 8px;
         align-items: flex-start;

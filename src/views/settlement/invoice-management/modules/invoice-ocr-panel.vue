@@ -1,13 +1,13 @@
 <template>
-  <ArtSectionCard class="invoice-ocr-panel" preserve-content-structure>
+  <ArtSectionCard class="invoice-ocr-panel art-ai-ocr-surface" preserve-content-structure>
     <template #header>
       <header class="invoice-ocr-panel__header">
         <div class="invoice-ocr-panel__identity">
-          <span class="invoice-ocr-panel__icon" aria-hidden="true">
+          <span class="invoice-ocr-panel__icon art-ai-ocr-surface__icon" aria-hidden="true">
             <ArtSvgIcon icon="ri-scan-2-line" />
           </span>
           <div>
-            <div class="invoice-ocr-panel__eyebrow">AI 智能识别</div>
+            <div class="invoice-ocr-panel__eyebrow art-ai-ocr-surface__eyebrow">AI 智能识别</div>
             <h3>上传发票，自动提取关键字段</h3>
             <p>识别结果先预览、再回填，不会自动保存或改变审核状态。</p>
           </div>
@@ -124,6 +124,7 @@
 </template>
 
 <script setup lang="ts">
+  import '@styles/core/ai-ocr-surface.scss'
   import { formatSensitiveNumberWithAffix } from '@/utils/field-permission'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import { getFriendlySupabaseErrorMessage } from '@/utils/supabase'
@@ -282,8 +283,6 @@
   @use '@/assets/styles/core/ai-surface-mixins' as ai;
 
   .invoice-ocr-panel {
-    @include ai.surface;
-
     padding: 14px 16px;
     margin-bottom: 16px;
 
@@ -318,14 +317,6 @@
         font-size: 12px;
         color: var(--el-text-color-secondary);
       }
-    }
-
-    &__icon {
-      @include ai.identity-icon(38px, 19px);
-    }
-
-    &__eyebrow {
-      @include ai.eyebrow;
     }
 
     &__body {

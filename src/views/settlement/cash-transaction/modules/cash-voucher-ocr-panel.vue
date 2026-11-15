@@ -1,11 +1,13 @@
 <template>
-  <ArtSectionCard class="voucher-ocr" preserve-content-structure>
+  <ArtSectionCard class="voucher-ocr art-ai-ocr-surface" preserve-content-structure>
     <template #header>
       <header class="voucher-ocr__header">
         <div class="voucher-ocr__identity">
-          <span class="voucher-ocr__icon"><ArtSvgIcon icon="ri-bank-card-line" /></span>
+          <span class="voucher-ocr__icon art-ai-ocr-surface__icon">
+            <ArtSvgIcon icon="ri-bank-card-line" />
+          </span>
           <div>
-            <span class="voucher-ocr__eyebrow">AI 凭证识别</span>
+            <span class="voucher-ocr__eyebrow art-ai-ocr-surface__eyebrow">AI 凭证识别</span>
             <h3>{{
               direction === 'receipt'
                 ? '识别收款凭证并匹配客户对账单'
@@ -118,6 +120,7 @@
 </template>
 
 <script setup lang="ts">
+  import '@styles/core/ai-ocr-surface.scss'
   import { formatCnyCurrencyValue as formatMoney } from '@/utils/ui/format'
 
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
@@ -219,11 +222,7 @@
 </script>
 
 <style scoped lang="scss">
-  @use '@/assets/styles/core/ai-surface-mixins' as ai;
-
   .voucher-ocr {
-    @include ai.surface;
-
     padding: 16px;
     margin-bottom: 16px;
 
@@ -259,14 +258,6 @@
         font-size: 12px;
         color: var(--el-text-color-secondary);
       }
-    }
-
-    &__icon {
-      @include ai.identity-icon(38px, 19px);
-    }
-
-    &__eyebrow {
-      @include ai.eyebrow;
     }
 
     &__body {

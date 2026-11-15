@@ -1,11 +1,13 @@
 <template>
-  <ArtSectionCard class="expense-ocr" preserve-content-structure>
+  <ArtSectionCard class="expense-ocr art-ai-ocr-surface" preserve-content-structure>
     <template #header>
       <header class="expense-ocr__header">
         <div class="expense-ocr__identity">
-          <span class="expense-ocr__icon"><ArtSvgIcon icon="ri:scan-2-line" /></span>
+          <span class="expense-ocr__icon art-ai-ocr-surface__icon">
+            <ArtSvgIcon icon="ri:scan-2-line" />
+          </span>
           <div>
-            <span class="expense-ocr__eyebrow">智能票据识别</span>
+            <span class="expense-ocr__eyebrow art-ai-ocr-surface__eyebrow">智能票据识别</span>
             <strong>上传票据后自动填写费用要素</strong>
             <small>识别结果仅写入当前草稿，保存前请人工核对金额与日期。</small>
           </div>
@@ -78,6 +80,7 @@
 </template>
 
 <script setup lang="ts">
+  import '@styles/core/ai-ocr-surface.scss'
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import { getFriendlySupabaseErrorMessage } from '@/utils/supabase'
   import { ElMessage } from 'element-plus'
@@ -167,10 +170,9 @@
 </script>
 
 <style scoped lang="scss">
-  @use '@/assets/styles/core/ai-surface-mixins' as ai;
-
   .expense-ocr {
-    @include ai.surface;
+    --art-ai-ocr-icon-size: 40px;
+    --art-ai-ocr-icon-font-size: 20px;
 
     padding: var(--art-space-4);
     margin-bottom: var(--art-space-4);
@@ -212,14 +214,6 @@
         line-height: 1.5;
         color: var(--el-text-color-secondary);
       }
-    }
-
-    &__icon {
-      @include ai.identity-icon(40px, 20px);
-    }
-
-    &__eyebrow {
-      @include ai.eyebrow;
     }
 
     &__body {

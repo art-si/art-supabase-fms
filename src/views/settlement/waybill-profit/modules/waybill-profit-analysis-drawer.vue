@@ -5,21 +5,24 @@
     :loading="state.loading"
     :show-footer="false"
   >
-    <div class="profit-analyst">
+    <div class="profit-analyst art-ai-advisor">
       <template v-if="state.data">
         <ArtSectionCard
-          :class="['profit-analyst__hero', `is-${assessment.riskLevel}`]"
+          class="profit-analyst__hero art-ai-advisor__hero"
+          :class="`is-${assessment.riskLevel}`"
           :show-scrollbar="false"
         >
           <template #header>
-            <header class="profit-analyst__hero-header">
-              <div class="profit-analyst__hero-main">
-                <span class="profit-analyst__hero-icon">
+            <header class="profit-analyst__hero-header art-ai-advisor__hero-header">
+              <div class="profit-analyst__hero-main art-ai-advisor__hero-main">
+                <span class="profit-analyst__hero-icon art-ai-advisor__hero-icon">
                   <ArtSvgIcon icon="ri:funds-box-line" />
                 </span>
                 <div>
-                  <span class="profit-analyst__eyebrow"><i />AI PROFIT HEALTH CHECK</span>
-                  <div class="profit-analyst__title-row">
+                  <span class="profit-analyst__eyebrow art-ai-advisor__eyebrow"
+                    ><i />AI PROFIT HEALTH CHECK</span
+                  >
+                  <div class="profit-analyst__title-row art-ai-advisor__title-row">
                     <strong>运单利润经营体检</strong>
                     <ElTag :type="riskTagType" effect="dark" round>{{ riskLabel }}</ElTag>
                     <ElTag type="info" effect="plain" round>{{ recommendationLabel }}</ElTag>
@@ -33,7 +36,7 @@
             </header>
           </template>
 
-          <div class="profit-analyst__scores">
+          <div class="profit-analyst__scores art-ai-advisor__scores">
             <article>
               <header
                 ><span>经营风险</span><strong>{{ assessment.riskScore }}</strong></header
@@ -68,7 +71,7 @@
             </article>
           </div>
 
-          <div class="profit-analyst__conclusion">
+          <div class="profit-analyst__conclusion art-ai-advisor__conclusion">
             <span><ArtSvgIcon :icon="conclusionIcon" /></span>
             <div>
               <small>AI 经营结论</small>
@@ -82,9 +85,9 @@
           title="利润健康指标"
           :show-scrollbar="false"
         >
-          <div class="profit-analyst__metrics">
+          <div class="profit-analyst__metrics art-ai-advisor__metrics">
             <article class="art-card-xs">
-              <span class="profit-analyst__metric-icon is-receivable">
+              <span class="profit-analyst__metric-icon is-receivable art-ai-advisor__metric-icon">
                 <ArtSvgIcon icon="ri:wallet-3-line" />
               </span>
               <div
@@ -94,7 +97,7 @@
               >
             </article>
             <article class="art-card-xs">
-              <span class="profit-analyst__metric-icon is-cost">
+              <span class="profit-analyst__metric-icon is-cost art-ai-advisor__metric-icon">
                 <ArtSvgIcon icon="ri:funds-line" />
               </span>
               <div
@@ -104,7 +107,7 @@
               >
             </article>
             <article :class="['art-card-xs', profitTone]">
-              <span class="profit-analyst__metric-icon is-profit">
+              <span class="profit-analyst__metric-icon is-profit art-ai-advisor__metric-icon">
                 <ArtSvgIcon icon="ri:line-chart-line" />
               </span>
               <div
@@ -114,7 +117,7 @@
               >
             </article>
             <article class="art-card-xs">
-              <span class="profit-analyst__metric-icon is-coverage">
+              <span class="profit-analyst__metric-icon is-coverage art-ai-advisor__metric-icon">
                 <ArtSvgIcon icon="ri:pie-chart-2-line" />
               </span>
               <div
@@ -124,7 +127,7 @@
               >
             </article>
             <article class="art-card-xs is-danger">
-              <span class="profit-analyst__metric-icon is-loss">
+              <span class="profit-analyst__metric-icon is-loss art-ai-advisor__metric-icon">
                 <ArtSvgIcon icon="ri:arrow-down-circle-line" />
               </span>
               <div
@@ -134,7 +137,7 @@
               >
             </article>
             <article class="art-card-xs">
-              <span class="profit-analyst__metric-icon is-carrier">
+              <span class="profit-analyst__metric-icon is-carrier art-ai-advisor__metric-icon">
                 <ArtSvgIcon icon="ri:truck-line" />
               </span>
               <div
@@ -158,7 +161,8 @@
             <article
               v-for="signal in assessment.signals"
               :key="signal.type"
-              :class="['profit-analyst__signal art-card-xs', `is-${signal.severity}`]"
+              class="profit-analyst__signal art-card-xs art-ai-advisor__signal"
+              :class="`is-${signal.severity}`"
             >
               <header>
                 <div>
@@ -193,7 +197,9 @@
             >
               <header>
                 <div>
-                  <span class="profit-analyst__risk-score">{{ waybill.riskScore }}</span>
+                  <span class="profit-analyst__risk-score art-ai-advisor__risk-score">{{
+                    waybill.riskScore
+                  }}</span>
                   <div>
                     <strong>{{ waybill.waybillNo }}</strong>
                     <p><ArtSvgIcon icon="ri:route-line" />{{ waybill.route }}</p>
@@ -239,7 +245,7 @@
           empty-title="暂无处理建议"
           empty-description="可结合利润指标和风险信号进行人工复核。"
         >
-          <ol class="profit-analyst__actions">
+          <ol class="profit-analyst__actions art-ai-advisor__actions">
             <li v-for="(action, index) in assessment.recommendedActions" :key="action">
               <span>{{ index + 1 }}</span>
               <div
@@ -258,7 +264,7 @@
           empty-title="暂无补充说明"
           empty-description="请结合当前分析范围复核诊断结果。"
         >
-          <div class="profit-analyst__limitations">
+          <div class="profit-analyst__limitations art-ai-advisor__limitations">
             <p v-for="item in assessment.limitations" :key="item">
               <ArtSvgIcon icon="ri:checkbox-circle-line" /><span>{{ item }}</span>
             </p>
@@ -295,6 +301,7 @@
 </template>
 
 <script setup lang="ts">
+  import '@styles/core/ai-advisor-layout.scss'
   import {
     formatDateTimeValue,
     formatCnyCurrencyValue as formatMoney,
@@ -438,45 +445,13 @@
 </script>
 
 <style scoped lang="scss">
-  @use '@/assets/styles/core/ai-surface-mixins' as ai;
-
   .profit-analyst {
     min-width: 0;
 
     &__hero {
-      position: relative;
-      overflow: hidden;
       background: var(--art-gray-100);
-
-      &::before {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 4px;
-        height: 100%;
-        content: '';
-        background: var(--el-color-primary);
-      }
-
-      &.is-critical::before,
-      &.is-high::before {
-        background: var(--el-color-danger);
-      }
-
-      &.is-medium::before {
-        background: var(--el-color-warning);
-      }
-
-      &.is-low::before {
-        background: var(--el-color-success);
-      }
     }
 
-    &__hero-header,
-    &__hero-main,
-    &__title-row,
-    &__signal header,
-    &__signal header > div,
     &__waybill header,
     &__waybill header > div,
     &__waybill-party,
@@ -486,138 +461,27 @@
       align-items: center;
     }
 
-    &__hero-header,
-    &__signal header,
     &__waybill header {
       justify-content: space-between;
     }
 
-    &__hero-main {
-      gap: 14px;
-      min-width: 0;
-
-      > div {
-        min-width: 0;
-      }
-
-      p {
-        margin: 6px 0 0;
-        color: var(--el-text-color-secondary);
-      }
-    }
-
     &__hero-icon {
-      display: grid;
       flex: 0 0 52px;
-      place-items: center;
       width: 52px;
       height: 52px;
-      color: var(--el-color-primary);
-      background: var(--el-color-primary-light-9);
-      border-radius: var(--custom-radius);
-
-      :deep(svg) {
-        width: 25px;
-        height: 25px;
-      }
     }
 
     &__eyebrow {
-      display: inline-flex;
-      gap: 6px;
-      align-items: center;
       font-size: 10px;
-      font-weight: 700;
-      color: var(--el-color-primary);
-      letter-spacing: 0.13em;
-
-      i {
-        width: 6px;
-        height: 6px;
-        background: var(--el-color-success);
-        border-radius: 50%;
-      }
-    }
-
-    &__title-row {
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 4px;
-
-      > strong {
-        margin-right: 3px;
-        font-size: 19px;
-        color: var(--el-text-color-primary);
-      }
     }
 
     &__scores {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 12px;
-      margin-top: 18px;
-
       article {
-        min-width: 0;
-        padding: 13px 14px;
         background: color-mix(in srgb, var(--art-gray-100) 95%, var(--el-color-primary));
-        border-radius: var(--el-border-radius-base);
-
-        header {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          margin-bottom: 9px;
-        }
-
-        span,
-        small {
-          color: var(--el-text-color-secondary);
-        }
-
-        strong {
-          font-size: 20px;
-          color: var(--el-text-color-primary);
-        }
 
         small {
-          display: block;
-          margin-top: 7px;
-          overflow: hidden;
-          text-overflow: ellipsis;
           font-size: 11px;
-          white-space: nowrap;
         }
-      }
-    }
-
-    &__conclusion {
-      display: flex;
-      gap: 12px;
-      align-items: center;
-      padding-top: 16px;
-      margin-top: 16px;
-      border-top: 1px dashed var(--el-border-color-lighter);
-
-      > span {
-        display: grid;
-        flex: 0 0 34px;
-        place-items: center;
-        width: 34px;
-        height: 34px;
-        color: var(--el-color-danger);
-        background: var(--el-color-danger-light-9);
-        border-radius: var(--el-border-radius-base);
-      }
-
-      small {
-        color: var(--el-text-color-secondary);
-      }
-
-      p {
-        margin: 3px 0 0;
-        line-height: 1.65;
-        color: var(--el-text-color-primary);
       }
     }
 
@@ -626,46 +490,9 @@
     }
 
     &__metrics {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 10px;
-
       article {
-        display: flex;
-        gap: 12px;
-        align-items: center;
-        min-width: 0;
-        padding: 14px;
-
-        > div {
-          min-width: 0;
-        }
-
-        span,
-        strong,
         small {
-          display: block;
-        }
-
-        span,
-        small {
-          color: var(--el-text-color-secondary);
-        }
-
-        strong {
-          margin: 3px 0;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          font-size: 16px;
-          color: var(--el-text-color-primary);
-          white-space: nowrap;
-        }
-
-        small {
-          overflow: hidden;
-          text-overflow: ellipsis;
           font-size: 11px;
-          white-space: nowrap;
         }
 
         &.is-danger strong {
@@ -675,8 +502,6 @@
     }
 
     &__metric-icon {
-      @include ai.metric-icon-badge;
-
       &.is-cost,
       &.is-loss {
         color: var(--el-color-danger) !important;
@@ -699,47 +524,6 @@
     &__waybills {
       display: grid;
       gap: 10px;
-    }
-
-    &__signal {
-      position: relative;
-      padding: 15px 16px;
-      overflow: hidden;
-
-      &::before {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 3px;
-        height: 100%;
-        content: '';
-        background: var(--el-color-warning);
-      }
-
-      &.is-critical::before,
-      &.is-high::before {
-        background: var(--el-color-danger);
-      }
-
-      header > div {
-        gap: 9px;
-
-        > span {
-          display: grid;
-          place-items: center;
-          width: 30px;
-          height: 30px;
-          color: var(--el-color-danger);
-          background: var(--el-color-danger-light-9);
-          border-radius: var(--el-border-radius-base);
-        }
-      }
-
-      p {
-        margin: 10px 0;
-        line-height: 1.65;
-        color: var(--el-text-color-secondary);
-      }
     }
 
     &__evidence,
@@ -800,10 +584,6 @@
       }
     }
 
-    &__risk-score {
-      @include ai.risk-score-badge;
-    }
-
     &__waybill-party {
       gap: 12px;
       margin: 12px 0;
@@ -856,24 +636,8 @@
 
     &__actions {
       padding: 0;
-      margin: 0;
-      list-style: none;
 
       li {
-        display: grid;
-        grid-template-columns: 30px minmax(0, 1fr);
-        gap: 12px;
-        align-items: center;
-        padding: 13px 0;
-
-        & + li {
-          border-top: 1px dashed var(--el-border-color-lighter);
-        }
-
-        > span {
-          @include ai.numbered-step-marker;
-        }
-
         small {
           color: var(--el-color-primary);
         }
@@ -890,32 +654,17 @@
       padding: 0;
 
       p {
-        display: flex;
-        gap: 8px;
-        align-items: flex-start;
-        margin: 0;
-        line-height: 1.6;
         color: var(--art-gray-700);
-
-        & + p {
-          margin-top: 8px;
-        }
-
-        :deep(svg) {
-          flex: 0 0 auto;
-          margin-top: 3px;
-          color: var(--el-color-primary);
-        }
       }
     }
 
     @media (width <= 720px) {
-      &__hero-header {
+      --art-ai-advisor-summary-columns: 1fr;
+
+      &__hero-header.art-ai-advisor__hero-header {
         align-items: flex-start;
       }
 
-      &__scores,
-      &__metrics,
       &__waybills {
         grid-template-columns: 1fr;
       }
@@ -926,16 +675,6 @@
     }
 
     @media (width <= 480px) {
-      &__hero-header,
-      &__hero-main {
-        flex-direction: column;
-        align-items: flex-start;
-      }
-
-      &__hero-header :deep(.el-button) {
-        width: 100%;
-      }
-
       &__waybill-party {
         flex-direction: column;
         gap: 5px;
