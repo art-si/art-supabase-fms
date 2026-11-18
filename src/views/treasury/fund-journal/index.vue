@@ -68,7 +68,7 @@
       :on-error="handleTableError"
       :columns-context-key="columnsContextKey"
       :columns-factory="columnsFactory"
-      :search-bar-props="{ span: 8, labelWidth: 86, isExpand: true, showExpand: false }"
+      :search-bar-props="{ span: 6, labelWidth: 86, isExpand: true, showExpand: false }"
       :table-props="{
         rowKey: 'id',
         tableLayout: 'fixed',
@@ -257,7 +257,12 @@
       label: '入账日期',
       key: 'entryDateRange',
       type: 'daterange',
-      props: { valueFormat: 'YYYY-MM-DD' }
+      span: 12,
+      props: {
+        valueFormat: 'YYYY-MM-DD',
+        startPlaceholder: '开始日期',
+        endPlaceholder: '结束日期'
+      }
     },
     {
       label: '关键字',

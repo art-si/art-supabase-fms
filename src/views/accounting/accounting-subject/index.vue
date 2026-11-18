@@ -80,10 +80,8 @@
         :items="searchItems"
         :span="8"
         :gutter="16"
-        label-position="left"
         label-width="76px"
         :show-expand="false"
-        :button-left-limit="0"
         @search="applyFilters"
         @reset="resetFilters"
       />

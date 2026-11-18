@@ -175,11 +175,8 @@
           class="accounting-currency-page__rate-search"
           :items="rateSearchItems"
           :span="8"
-          :gutter="12"
-          label-position="left"
           label-width="76px"
           :show-expand="false"
-          :button-left-limit="0"
           @search="applyRateFilters"
           @reset="resetRateFilters"
         />

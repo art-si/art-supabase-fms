@@ -52,28 +52,34 @@
     adjustmentAmount: 0,
     remark: null
   })
-  const { periodOptions, periodsLoading, periodLoadFailed, loadPeriods, resetPeriods } =
-    useAccountingPeriodOptions(
-      computed({
-        get: () => form.value.accountSetId,
-        set: (value) => {
-          form.value.accountSetId = value
-        }
-      }),
-      computed({
-        get: () => form.value.accountingPeriodId,
-        set: (value) => {
-          form.value.accountingPeriodId = value
-        }
-      }),
-      computed(() => Boolean(form.value.id))
-    )
+  const isEditing = computed(() => Boolean(form.value.id))
+  const {
+    periodOptions,
+    periodFieldText,
+    periodsLoading,
+    periodLoadFailed,
+    loadPeriods,
+    resetPeriods
+  } = useAccountingPeriodOptions(
+    computed({
+      get: () => form.value.accountSetId,
+      set: (value) => {
+        form.value.accountSetId = value
+      }
+    }),
+    computed({
+      get: () => form.value.accountingPeriodId,
+      set: (value) => {
+        form.value.accountingPeriodId = value
+      }
+    }),
+    isEditing
+  )
   const rules: FormRules = {
     accountSetId: [{ required: true, message: '请选择账套', trigger: 'change' }],
     accountingPeriodId: [{ required: true, message: '请选择期间', trigger: 'change' }],
     taxType: [{ required: true, message: '请选择税种', trigger: 'change' }]
   }
-  const isEditing = computed(() => Boolean(form.value.id))
   const canViewAmounts = computed(
     () => !isEditing.value || canViewField(fieldAccess.value, 'taxAmounts')
   )
@@ -92,7 +98,7 @@
           options: accountSetOptions.value,
           filterable: true,
           onChange: loadPeriods,
-          disabled: Boolean(form.value.id),
+          disabled: isEditing.value,
           noDataText: ACCOUNTING_SELECT_EMPTY_TEXT.accountSet
         }
       },
@@ -101,10 +107,11 @@
         key: 'accountingPeriodId',
         type: 'select',
         span: 24,
+        ...periodFieldText.value,
         props: {
           options: periodOptions.value,
           disabled:
-            Boolean(form.value.id) ||
+            isEditing.value ||
             !form.value.accountSetId ||
             periodsLoading.value ||
             periodLoadFailed.value,
@@ -119,7 +126,7 @@
         key: 'taxType',
         type: 'select',
         span: 24,
-        props: { options: getDictMap.value.fmsTaxType ?? [], disabled: Boolean(form.value.id) }
+        props: { options: getDictMap.value.fmsTaxType ?? [], disabled: isEditing.value }
       }
     ]
     if (canViewAmounts.value) {

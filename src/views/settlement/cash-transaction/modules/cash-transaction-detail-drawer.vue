@@ -22,7 +22,7 @@
         <ElButton type="primary" plain @click="retryLoad">重新加载</ElButton>
       </template>
       <div v-if="detail.data" class="cash-detail">
-        <ElTabs v-model="activeDetailTab"
+        <ElTabs class="art-card-xs art-overlay-tab-card" v-model="activeDetailTab"
           ><ElTabPane name="overview" label="收付款信息"
             ><div class="space-y-4"
               ><ArtSectionCard :title="`${directionLabel}概览`" preserve-content-structure>

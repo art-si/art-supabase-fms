@@ -1,0 +1,1 @@
+import{Wa as e,ha as t,wa as n}from"./sys-Nfr1rsgJ.js";import{t as r}from"./ar-secondary-workspace-B4w9UPlc.js";var i=n({name:`FinanceReceipt`,__name:`index`,setup(n){return(n,i)=>(e(),t(r,{kind:`receipt`}))}});export{i as default};

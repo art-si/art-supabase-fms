@@ -26,7 +26,7 @@
       @retry="reloadDetail"
     >
       <div v-if="period" class="tax-detail">
-        <ElTabs v-model="activeDetailTab"
+        <ElTabs class="art-card-xs art-overlay-tab-card" v-model="activeDetailTab"
           ><ElTabPane name="overview" label="期间与申报"
             ><div class="space-y-4"
               ><ArtSectionCard title="期间信息" preserve-content-structure>
@@ -453,9 +453,7 @@
 
     strong,
     small {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+      overflow-wrap: anywhere;
     }
   }
 

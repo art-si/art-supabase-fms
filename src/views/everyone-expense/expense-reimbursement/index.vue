@@ -61,7 +61,7 @@
   import { useTenantOperationGuard } from '@/hooks/core/useTenantOperationGuard'
   import { buildSupabasePageRange } from '@/utils/supabase/pagination'
   import type { TableRequestOptions } from '@/hooks/core/useTable'
-  import { documentGroupSpan } from '@/utils/business/document-detail-list'
+  import { createDocumentGroupSpan } from '@/utils/business/document-detail-list'
   import { formatCurrencyValue } from '@/utils/ui'
   import { formatWithDayjs } from '@/utils/time'
   import { financePaths, getExpenseReimbursementDetailPath } from '@/router/business-paths'
@@ -270,23 +270,12 @@
     const result = await fetchReimbursementWorkspaceList(query, options)
     return { ...result, total: result.total ?? 0 }
   }
-  function mergeDocumentCells({
-    rowIndex,
-    column
-  }: {
-    rowIndex: number
-    column: { property?: string }
-  }) {
-    return search.value.displayMode === 'line'
-      ? documentGroupSpan(
-          (tableRef.value?.dataState.rows.value as TableRecord[] | undefined) ?? [],
-          rowIndex,
-          column.property,
-          lineProperties,
-          (row) => ('reimbursementId' in row ? row.reimbursementId : '')
-        )
-      : ([1, 1] as [number, number])
-  }
+  const mergeDocumentCells = createDocumentGroupSpan(
+    () => search.value.displayMode,
+    () => tableRef.value?.dataState.rows.value as readonly TableRecord[] | undefined,
+    lineProperties,
+    (row) => ('reimbursementId' in row ? row.reimbursementId : '')
+  )
 
   const money = (value: Api.Fms.SensitiveNumber | undefined): string =>
     typeof value === 'number' ? formatCurrencyValue(value) : value === '***' ? '***' : '—'

@@ -1,0 +1,1 @@
+import{Fa as e,gi as t,mo as n}from"./sys-Nfr1rsgJ.js";function r(r,i){let a=0,o=!1,s=()=>{a+=1,document.body.classList.remove(r),o&&(o=!1,i())};return t(window,`afterprint`,()=>{o&&s()}),n(s),{print:async()=>{let t=++a;if(o=!0,document.body.classList.add(r),await e(),t===a)try{window.print()}catch(e){throw s(),e}}}}export{r as t};

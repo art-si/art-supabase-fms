@@ -17,7 +17,7 @@
           <ElButton v-auth="'FinancePayableWriteoff:View'" @click="automationManager?.handleOpen()"
             ><ArtSvgIcon icon="ri:time-line" />后台核销</ElButton
           >
-          <ElButton v-auth="'FinancePayableWriteoff:Scheme'" @click="schemeDialog?.handleOpen()"
+          <ElButton v-if="hasAuth('FinancePayableWriteoff:Scheme')" @click="openSchemes"
             ><ArtSvgIcon icon="ri:settings-3-line" />核销方案</ElButton
           >
         </template>
@@ -96,6 +96,7 @@
           ></template>
           <ElTree
             :data="partyNodes"
+            aria-label="往来单位树"
             node-key="id"
             :props="{ label: 'label' }"
             highlight-current
@@ -103,6 +104,7 @@
             :current-node-key="selectedParty"
             :expand-on-click-node="false"
             @node-click="(node) => (selectedParty = node.id)"
+            @keydown.capture="handleSelectableTreeKeydown"
             ><template #default="{ data }"
               ><span class="art-icon-label min-w-0"
                 ><ArtSvgIcon
@@ -249,18 +251,62 @@
           </ElTabs>
         </ArtSectionCard>
       </div>
-      <ArtDialog ref="schemeDialog" title="应付核销方案" size="xl" :show-footer="false">
-        <div class="mb-4"
-          ><ElButton
-            v-auth="'FinancePayableWriteoff:Scheme'"
-            type="primary"
-            @click="schemeEditor?.open()"
-            ><ArtSvgIcon icon="ri:add-line" />新增方案</ElButton
-          ></div
+      <ArtDialog
+        ref="schemeDialog"
+        title="应付核销方案"
+        size="xl"
+        :show-footer="false"
+        @close="resetSchemeManager"
+      >
+        <ArtSectionCard
+          title="方案列表"
+          :loading="schemes.loading && !schemes.configuration"
+          :error="schemes.configuration?.schemes.length ? '' : schemes.error"
+          :empty="Boolean(schemes.configuration) && !schemes.configuration?.schemes.length"
+          error-title="方案加载失败"
+          empty-title="暂无核销方案"
+          empty-description="新增方案后，可在核销工作台选择匹配规则。"
+          @retry="loadSchemes"
         >
-        <ArtTable :data="workspace.schemes" :columns="schemeColumns" :pagination="false" />
+          <template #actions>
+            <ElButton
+              v-auth="'FinancePayableWriteoff:Scheme'"
+              type="primary"
+              :disabled="!canEditSchemes"
+              @click="editScheme()"
+              ><ArtSvgIcon icon="ri:add-line" />新增方案</ElButton
+            >
+            <ArtIconButton
+              icon="ri:refresh-line"
+              label="刷新方案"
+              permission="FinancePayableWriteoff:Scheme"
+              :loading="schemes.loading"
+              @click="loadSchemes"
+            />
+          </template>
+          <ElAlert
+            v-if="schemes.configuration?.schemes.length && schemes.error"
+            class="mb-3"
+            :title="schemes.error"
+            type="error"
+            :closable="false"
+            show-icon
+          />
+          <ArtTable
+            :data="schemes.configuration?.schemes || []"
+            :columns="schemeColumns"
+            :pagination="false"
+          />
+        </ArtSectionCard>
       </ArtDialog>
-      <ReferenceEditor ref="schemeEditor" kind="scheme" @success="load" />
+      <ReferenceEditor
+        ref="schemeEditor"
+        kind="scheme"
+        :configuration-version="schemes.configuration?.configurationVersion ?? 0"
+        :relation-options="schemes.configuration?.relations || []"
+        :default-relation="filter.relation"
+        @success="handleSchemeSaved"
+      />
       <AutomationDialog ref="automationManager" />
       <PayableAutomaticWriteoff ref="automaticDialog" @success="load" @refresh="load" />
       <ArtDialog ref="recordDialog" title="应付核销单" size="lg" :show-footer="false"
@@ -290,7 +336,7 @@
   </ArtPermissionGuard>
 </template>
 <script setup lang="tsx">
-  import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+  import { computed, onBeforeUnmount, onMounted, reactive, ref, unref, watch } from 'vue'
   import dayjs from 'dayjs'
   import { ElInputNumber, ElMessage, ElButton } from 'element-plus'
   import { uniq, uniqBy } from 'lodash-es'
@@ -304,6 +350,7 @@
   import ArtSectionCard from '@/components/core/surfaces/art-section-card/index.vue'
   import ArtDescriptions from '@/components/core/base/art-descriptions/index.vue'
   import ArtButtonTable from '@/components/core/forms/art-button-table/index.vue'
+  import ArtIconButton from '@/components/core/widget/art-icon-button/index.vue'
   import BusinessWorkspaceHeader from '@/components/business/business-workspace-header/index.vue'
   import BusinessTableRowActions from '@/components/business/business-table-row-actions/index.vue'
   import BusinessTableIdentityCell from '@/components/business/business-table-identity-cell/index.vue'
@@ -322,7 +369,12 @@
     type PayableManualWriteoffItem,
     type PayableVoucherResult
   } from '@/api/payable-writeoff'
-  import type { PayableReference, PayableMatchRule } from '@/api/payable-reference'
+  import {
+    fetchPayableSchemeConfiguration,
+    type PayableReference,
+    type PayableMatchRule,
+    type PayableSchemeConfiguration
+  } from '@/api/payable-reference'
   import { payableMatchFields, payableMatchOperators } from '@/utils/finance/payable-match'
   import {
     allocateWriteoffAmounts,
@@ -333,13 +385,20 @@
   } from '@/utils/finance/payable-writeoff'
   import { useDictionaryOptions } from '@/hooks/core/useDictionaryOptions'
   import { formatCurrencyValue } from '@/utils/ui/format'
+  import { handleSelectableTreeKeydown } from '@/utils/ui/selection-tree-keyboard'
   import { notifyFriendlyError, useArtFeedback } from '@/hooks/core/useArtFeedback'
+  import { useArtOverlaySession } from '@/hooks/core/useArtOverlay'
   import { getFriendlySupabaseErrorMessage, isSupabaseAccessFailure } from '@/utils/supabase'
   import { useAuth } from '@/hooks/core/useAuth'
   import { financePaths } from '@/router/business-paths'
   import type { ColumnOption } from '@/types'
 
   defineOptions({ name: 'FinancePayableWriteoff' })
+  interface SchemeManagerState {
+    configuration: PayableSchemeConfiguration | null
+    loading: boolean
+    error: string
+  }
   const filter = ref<{
     keyword: string
     organizationId: string
@@ -411,6 +470,15 @@
   const { confirm, promptReason } = useArtFeedback()
   const { hasAuth } = useAuth()
   const router = useRouter()
+  const schemes = reactive<SchemeManagerState>({ configuration: null, loading: false, error: '' })
+  const schemeSession = useArtOverlaySession(() => Boolean(unref(schemeDialog.value?.visible)))
+  const canEditSchemes = computed(
+    () =>
+      hasAuth('FinancePayableWriteoff:Scheme') &&
+      schemes.configuration !== null &&
+      !schemes.loading &&
+      !schemes.error
+  )
   const partyKey = (row: { tenantId: string; supplierId: string; counterpartyKey?: string }) =>
     `${row.tenantId}:${row.counterpartyKey || row.supplierId}`
   const availableParties = computed(() => {
@@ -850,7 +918,8 @@
           type="edit"
           label="编辑方案"
           permission="FinancePayableWriteoff:Scheme"
-          onClick={() => schemeEditor.value?.open(row)}
+          disabled={!canEditSchemes.value}
+          onClick={() => editScheme(row)}
         />
       )
     }
@@ -922,6 +991,45 @@
   async function showRecord(row: PayableWriteoffRecord): Promise<void> {
     currentRecord.value = row
     await recordDialog.value?.handleOpen()
+  }
+  function resetSchemeManager(): void {
+    schemeSession.invalidate()
+    Object.assign(schemes, { configuration: null, loading: false, error: '' })
+    schemeEditor.value?.close()
+  }
+  async function openSchemes(): Promise<void> {
+    if (!hasAuth('FinancePayableWriteoff:Scheme') || unref(schemeDialog.value?.visible)) return
+    resetSchemeManager()
+    await schemeDialog.value?.handleOpen(undefined, { onOpen: loadSchemes })
+  }
+  async function loadSchemes(): Promise<void> {
+    const current = schemeSession.version.value
+    if (
+      !hasAuth('FinancePayableWriteoff:Scheme') ||
+      !schemeSession.isCurrent(current) ||
+      schemes.loading
+    )
+      return
+    schemes.loading = true
+    schemes.error = ''
+    try {
+      const configuration = await fetchPayableSchemeConfiguration()
+      if (!schemeSession.isCurrent(current) || !hasAuth('FinancePayableWriteoff:Scheme')) return
+      schemes.configuration = configuration
+    } catch (error) {
+      if (schemeSession.isCurrent(current) && hasAuth('FinancePayableWriteoff:Scheme')) {
+        schemes.error = getFriendlySupabaseErrorMessage(error, '方案资料加载失败，请重新加载')
+      }
+    } finally {
+      if (schemeSession.isCurrent(current)) schemes.loading = false
+    }
+  }
+  async function editScheme(row?: PayableReference): Promise<void> {
+    if (!canEditSchemes.value || !hasAuth('FinancePayableWriteoff:Scheme')) return
+    await schemeEditor.value?.open(row)
+  }
+  async function handleSchemeSaved(): Promise<void> {
+    await Promise.all([loadSchemes(), load()])
   }
   async function load(): Promise<void> {
     const current = ++version
@@ -1144,6 +1252,8 @@
   watch(
     () => tenantScope.revision,
     () => {
+      resetSchemeManager()
+      void schemeDialog.value?.handleClose(true)
       workspace.value = { primary: [], secondary: [], history: [], schemes: [] }
       loaded.value = false
       loadError.value = ''
@@ -1151,6 +1261,15 @@
       filter.value.schemeId = ''
       void load()
     }
+  )
+  watch(
+    () => hasAuth('FinancePayableWriteoff:Scheme'),
+    (allowed) => {
+      if (allowed) return
+      resetSchemeManager()
+      void schemeDialog.value?.handleClose(true)
+    },
+    { flush: 'sync' }
   )
   onMounted(load)
   onBeforeUnmount(() => {

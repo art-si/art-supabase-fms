@@ -136,6 +136,7 @@
           :api-fn="historyRows"
           :columns-factory="historyColumns"
           :header-actions="historyActions"
+          :table-props="{ height: 'clamp(320px, 60vh, 480px)' }"
         />
       </ArtDialog>
       <ArtDialog ref="recordDialog" title="核销双侧分录" size="xl" :show-footer="false">

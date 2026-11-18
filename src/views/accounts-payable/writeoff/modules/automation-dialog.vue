@@ -25,7 +25,7 @@
           >
           <ElButton :disabled="busy" @click="load">刷新记录</ElButton>
         </div>
-        <ElTabs v-model="tab">
+        <ElTabs class="art-card-xs art-overlay-tab-card" v-model="tab">
           <ElTabPane label="后台配置" name="configurations">
             <ArtTable
               :data="workspace.configurations.data"
@@ -107,6 +107,7 @@
       :api-fn="loadRecords"
       :columns-factory="() => recordColumns"
       :header-actions="[]"
+      :table-props="{ height: 'clamp(320px, 60vh, 480px)' }"
     />
   </ArtDialog>
   <MasterDataDeleteGuard ref="deleteGuard" />

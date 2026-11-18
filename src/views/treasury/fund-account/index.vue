@@ -51,8 +51,11 @@
       :table-props="{
         rowKey: 'id',
         tableLayout: 'fixed',
-        emptyText: '暂无资金账户',
-        emptyDescription: '创建首个资金账户后，收付款、资金调拨与银行对账即可关联实际账户。'
+        emptyText: hasAppliedFilters ? '没有符合条件的资金账户' : '暂无资金账户',
+        emptyDescription:
+          hasAppliedFilters || !hasAuth('FinanceFundAccount:Add')
+            ? '可调整账套、账户类型、状态或关键字后再查询。'
+            : '创建首个资金账户后，收付款、资金调拨与银行对账即可关联实际账户。'
       }"
       focusable
     />
@@ -71,6 +74,7 @@
     ArtTableQueryExpose,
     ArtTableQueryHeaderAction
   } from '@/components/core/tables/art-table-query/index.vue'
+  import ArtTooltip from '@/components/core/feedback/art-tooltip/index.vue'
   import ArtButtonTable from '@/components/core/forms/art-button-table/index.vue'
   import BusinessTableRowActions from '@/components/business/business-table-row-actions/index.vue'
   import MasterDataDeleteGuard from '@/components/business/master-data-delete-guard/index.vue'
@@ -111,8 +115,10 @@
   type Account = Api.Fms.FundAccountRecord
   type SearchParams = Api.Fms.FundAccountSearchParams
   type TableParams = SearchParams & { current: number; size: number }
+  type TableResult = Awaited<ReturnType<typeof fetchFundAccountList>> & { hasFilters: boolean }
   type TableResponse = ApiResponse<Account> & {
     fieldAccess: Api.Fms.FundAccountFieldAccessMap
+    hasFilters: boolean
   }
 
   interface DialogExpose {
@@ -161,6 +167,7 @@
     () => (tableRef.value?.dataState.rows.value as readonly Account[] | undefined) ?? []
   )
   const listFieldAccess = ref<Api.Fms.FundAccountFieldAccessMap>({})
+  const hasAppliedFilters = ref(false)
   let overviewRequestId = 0
   let accountSetsRequestId = 0
   let overviewController: AbortController | undefined
@@ -300,23 +307,34 @@
         label: '资金账户 / 账套',
         minWidth: 250,
         fixed: 'left',
-        formatter: (row) => (
-          <div class="fund-account-identity">
-            <div>
-              <strong title={row.accountName}>{row.accountName}</strong>
-              {row.isDefault ? <ElTag size="small">默认</ElTag> : null}
+        formatter: (row) => {
+          const identifier =
+            canViewRowField(row, 'accountDetails') && row.accountNoMasked
+              ? `${row.accountCode} · ${row.accountNoMasked}`
+              : row.accountCode
+          return (
+            <div class="fund-account-identity">
+              <div>
+                <strong title={row.accountName}>{row.accountName}</strong>
+                {row.isDefault ? <ElTag size="small">默认</ElTag> : null}
+              </div>
+              <small translate="no">
+                <ArtTooltip content={identifier} trigger="click" placement="top-start">
+                  <button
+                    type="button"
+                    class="block w-full cursor-pointer truncate text-left"
+                    title={identifier}
+                  >
+                    {identifier}
+                  </button>
+                </ArtTooltip>
+              </small>
+              <small title={row.accountSet?.accountSetName || '--'}>
+                {row.accountSet?.accountSetName || '--'}
+              </small>
             </div>
-            <small translate="no">
-              {row.accountCode}
-              {canViewRowField(row, 'accountDetails') && row.accountNoMasked
-                ? ` · ${row.accountNoMasked}`
-                : ''}
-            </small>
-            <small title={row.accountSet?.accountSetName || '--'}>
-              {row.accountSet?.accountSetName || '--'}
-            </small>
-          </div>
-        )
+          )
+        }
       },
       {
         prop: 'accountType',
@@ -402,32 +420,38 @@
     ]
   }
 
-  function responseAdapter(
-    response: Awaited<ReturnType<typeof fetchFundAccountList>>
-  ): TableResponse {
+  function responseAdapter(response: TableResult): TableResponse {
     return {
       ...defaultResponseAdapter<Account>(response),
-      fieldAccess: mergeFieldAccessMaps(response.fieldAccess)
+      fieldAccess: mergeFieldAccessMaps(response.fieldAccess),
+      hasFilters: response.hasFilters
     }
   }
 
   function acceptTableResult(_rows: Account[], response: TableResponse): void {
     listFieldAccess.value = response.fieldAccess
+    hasAppliedFilters.value = response.hasFilters
   }
 
   function handleTableError(): void {
     listFieldAccess.value = {}
   }
 
-  async function fetchTableData(params: TableParams, options?: TableRequestOptions) {
+  async function fetchTableData(
+    params: TableParams,
+    options?: TableRequestOptions
+  ): Promise<TableResult> {
     const isCurrent = captureOperation()
+    const hasFilters = Boolean(
+      params.accountSetId || params.accountType || params.status || params.keyword?.trim()
+    )
     const { from, to } = buildSupabasePageRange({ current: params.current, size: params.size })
     const result = await fetchFundAccountList(
       { ...params, from, to },
       { ...options, showErrorMessage: false }
     )
     if (!isCurrent()) throw new DOMException('查询范围已变化', 'AbortError')
-    return result
+    return { ...result, hasFilters }
   }
 
   async function loadOverview(): Promise<void> {
@@ -548,6 +572,7 @@
   function resetReadScope(): void {
     tableRef.value?.cancelRequest()
     listFieldAccess.value = {}
+    hasAppliedFilters.value = false
     resettingScope = true
     table.search.accountSetId = undefined
     resettingScope = false

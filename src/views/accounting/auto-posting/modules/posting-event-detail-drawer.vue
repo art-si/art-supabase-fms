@@ -23,6 +23,7 @@
       </template>
       <div v-if="detail" class="posting-event-detail">
         <ElTabs
+          class="art-card-xs art-overlay-tab-card"
           v-if="canViewPayload && (payloadItems.length || referenceItems.length)"
           v-model="activeDetailTab"
           ><ElTabPane name="overview" label="处理信息"

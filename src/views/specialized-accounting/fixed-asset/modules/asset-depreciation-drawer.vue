@@ -9,55 +9,38 @@
         <template #title>会计期间加载失败，请重新加载后再计算。</template>
         <ElButton plain type="primary" @click="loadPeriods">重新加载期间</ElButton>
       </ElAlert>
-      <section class="depreciation-workbench__controls">
-        <ElSelect
-          v-model="accountSetId"
-          filterable
-          aria-label="所属账套"
-          :disabled="calculating"
-          placeholder="选择账套"
-          :no-data-text="ACCOUNTING_SELECT_EMPTY_TEXT.accountSet"
-          @change="loadPeriods"
-          ><ElOption
-            v-for="item in accountSetOptions"
-            :key="item.value"
-            :label="item.label"
-            :value="item.value"
-        /></ElSelect>
-        <ElSelect
-          v-model="periodId"
-          aria-label="会计期间"
-          placeholder="选择开放期间"
-          :loading="periodsLoading"
-          :disabled="!accountSetId || periodsLoading || periodLoadFailed || calculating"
-          :no-data-text="
-            accountSetId
-              ? ACCOUNTING_SELECT_EMPTY_TEXT.openAccountingPeriod
-              : ACCOUNTING_SELECT_EMPTY_TEXT.chooseAccountSet
-          "
-          ><ElOption
-            v-for="item in periodOptions"
-            :key="item.value"
-            :label="item.label"
-            :value="item.value"
-        /></ElSelect>
-        <ElButton
-          v-auth="'FinanceFixedAsset:Depreciation'"
-          type="primary"
-          :disabled="
-            !periodId ||
-            !canCalculate ||
-            periodsLoading ||
-            periodLoadFailed ||
-            runsLoading ||
-            Boolean(runsError)
-          "
-          :loading="calculating"
-          :title="canCalculate ? undefined : '需要资产价值字段编辑权限'"
-          @click="calculate"
-          >计算本期折旧</ElButton
-        >
-      </section>
+      <ArtForm
+        v-model="calculationScope"
+        :items="scopeItems"
+        :span="24"
+        :gutter="0"
+        :label-position="isCompact ? 'top' : 'right'"
+        label-width="84px"
+        root-class="p-0!"
+      >
+        <template #layout="{ fields: Fields, items }">
+          <div class="depreciation-workbench__controls">
+            <component :is="Fields" :items="items.slice(0, 1)" :actions="false" />
+            <component :is="Fields" :items="items.slice(1)" :actions="false" />
+            <ElButton
+              v-auth="'FinanceFixedAsset:Depreciation'"
+              type="primary"
+              :disabled="
+                !periodId ||
+                !canCalculate ||
+                periodsLoading ||
+                periodLoadFailed ||
+                runsLoading ||
+                Boolean(runsError)
+              "
+              :loading="calculating"
+              :title="canCalculate ? undefined : '需要资产价值字段编辑权限'"
+              @click="calculate"
+              >计算本期折旧</ElButton
+            >
+          </div>
+        </template>
+      </ArtForm>
       <ArtSectionCard
         title="折旧批次"
         subtitle="选择批次查看资产折旧明细"
@@ -66,7 +49,13 @@
         @retry="loadRuns"
         :empty="!runs.length"
         empty-title="暂无折旧批次"
-        empty-description="选择开放期间并计算本期折旧后，批次会显示在这里。"
+        :empty-description="
+          !accountSetId
+            ? '选择账套后可查看折旧批次。'
+            : canCalculate
+              ? '选择开放期间并计算本期折旧后，批次会显示在这里。'
+              : '当前账套暂无折旧批次，请联系有权限的人员完成计算后查看。'
+        "
         :empty-visual-size="72"
         :min-height="188"
         preserve-content-structure
@@ -250,6 +239,7 @@
   import { createFinancePrerequisiteOverlay } from '../../../modules/use-finance-account-set-prerequisite'
   import ArtTable from '@/components/core/tables/art-table/index.vue'
   import ArtButtonTable from '@/components/core/forms/art-button-table/index.vue'
+  import ArtForm, { type FormItem } from '@/components/core/forms/art-form/index.vue'
   import BusinessTableRowActions from '@/components/business/business-table-row-actions/index.vue'
   import BusinessTableIdentityCell from '@/components/business/business-table-identity-cell/index.vue'
   import ArtDrawer from '@/components/core/drawers/art-drawer/index.vue'
@@ -276,22 +266,30 @@
   const drawerRef = ref<ArtDrawerExpose>()
   const prerequisiteOverlay = createFinancePrerequisiteOverlay(drawerRef)
   const accountSetOptions = ref<Api.Fms.AccountSetOption[]>([])
-  const accountSetId = ref('')
+  const calculationScope = ref({ accountSetId: '', periodId: '' })
+  const accountSetId = computed({
+    get: () => calculationScope.value.accountSetId,
+    set: (value) => {
+      calculationScope.value.accountSetId = value
+    }
+  })
+  const periodId = computed({
+    get: () => calculationScope.value.periodId,
+    set: (value) => {
+      calculationScope.value.periodId = value
+    }
+  })
   const loadError = ref(false)
   const requestedAccountSetId = ref<string>()
   const requestedRunNo = ref<string>()
-  const periodId = ref('')
   const {
     periodOptions,
+    periodFieldText,
     periodsLoading,
     periodLoadFailed,
     loadPeriods: loadPeriodOptions,
     resetPeriods
-  } = useAccountingPeriodOptions(
-    accountSetId,
-    periodId,
-    computed(() => false)
-  )
+  } = useAccountingPeriodOptions(accountSetId, periodId)
   const runsLoading = ref(false)
   const runsError = ref('')
   const linesLoading = ref(false)
@@ -324,6 +322,43 @@
   )
   const canViewRunValues = computed(() => canViewField(effectiveRunAccess.value, 'assetValues'))
   const canViewLineValues = computed(() => canViewField(effectiveLineAccess.value, 'assetValues'))
+  const scopeItems = computed<FormItem[]>(() => [
+    {
+      key: 'accountSetId',
+      label: '所属账套',
+      type: 'select',
+      props: {
+        options: accountSetOptions.value,
+        clearable: false,
+        filterable: true,
+        disabled: calculating.value,
+        placeholder: '选择账套',
+        noDataText: ACCOUNTING_SELECT_EMPTY_TEXT.accountSet,
+        onChange: loadPeriods
+      }
+    },
+    {
+      key: 'periodId',
+      label: '会计期间',
+      type: 'select',
+      ...periodFieldText.value,
+      props: {
+        options: periodOptions.value,
+        clearable: false,
+        filterable: false,
+        loading: periodsLoading.value,
+        disabled:
+          !accountSetId.value ||
+          periodsLoading.value ||
+          periodLoadFailed.value ||
+          calculating.value,
+        placeholder: '选择开放期间',
+        noDataText: accountSetId.value
+          ? ACCOUNTING_SELECT_EMPTY_TEXT.openAccountingPeriod
+          : ACCOUNTING_SELECT_EMPTY_TEXT.chooseAccountSet
+      }
+    }
+  ])
   async function loadPeriods(): Promise<void> {
     selectedRun.value = undefined
     ++linesRequestId
@@ -478,6 +513,7 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 12px;
+    align-items: start;
     padding: 16px;
     background: var(--el-fill-color-lighter);
     border: 1px solid var(--el-border-color-lighter);
@@ -491,6 +527,10 @@
 
     > :first-child {
       grid-column: 1 / -1;
+    }
+
+    :deep(.el-form-item) {
+      margin-bottom: 0;
     }
   }
 

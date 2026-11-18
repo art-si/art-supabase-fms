@@ -97,8 +97,8 @@
           v-if="hasAuth(form.data.id ? 'FinanceVoucherCenter:Edit' : 'FinanceVoucherCenter:Add')"
           :type="hasAuth('FinanceVoucherCenter:Submit') ? undefined : 'primary'"
           :loading="loading && submitMode === 'save'"
-          :disabled="templateLoading"
-          @click="handleFooterConfirm(api, 'save')"
+          :disabled="loading || templateLoading"
+          @click="handleFooterConfirm(api, 'save', $event)"
         >
           保存草稿
         </ElButton>
@@ -109,8 +109,8 @@
           "
           type="primary"
           :loading="loading && submitMode === 'submit'"
-          :disabled="templateLoading"
-          @click="handleFooterConfirm(api, 'submit')"
+          :disabled="loading || templateLoading"
+          @click="handleFooterConfirm(api, 'submit', $event)"
         >
           保存并提交
         </ElButton>
@@ -170,7 +170,7 @@
   type Voucher = Api.Fms.SecureVoucherRecord
   type FormData = Api.Fms.SaveVoucherPayload & { templateId?: string }
   type SubmitMode = 'save' | 'submit'
-  type FooterApi = Pick<ArtDialogExpose<Voucher | undefined>, 'handleConfirm'>
+  type FooterApi = Pick<ArtDialogExpose<Voucher | undefined>, 'handleConfirm' | 'confirmLoading'>
 
   interface DialogContext {
     accountSet: Api.Fms.AccountSetOption
@@ -724,9 +724,14 @@
     })
   }
 
-  async function handleFooterConfirm(api: FooterApi, mode: SubmitMode): Promise<void> {
+  async function handleFooterConfirm(
+    api: FooterApi,
+    mode: SubmitMode,
+    event: MouseEvent
+  ): Promise<void> {
+    if (api.confirmLoading.value) return
     submitMode.value = mode
-    await api.handleConfirm()
+    await api.handleConfirm(event)
   }
 
   defineExpose({ handleOpen })

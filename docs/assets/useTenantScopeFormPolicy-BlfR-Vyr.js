@@ -1,0 +1,1 @@
+import{On as e,pa as t,r as n}from"./sys-Nfr1rsgJ.js";import{t as r}from"./tenant-scope-CVvU-Duo.js";function i(){let{isAllTenants:i,effectiveTenantId:a}=e(r()),o=n();return{effectiveTenantId:t(()=>a.value??null),defaultWriteTenantId:t(()=>a.value??o.getUserInfo.tenantId??null),shouldExposeTenantField:t(()=>i.value),isTenantScopeItem:e=>e.key===`tenantId`}}export{i as t};

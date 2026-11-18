@@ -45,7 +45,7 @@
             </div>
           </section>
 
-          <ElTabs v-model="activeDetailTab"
+          <ElTabs class="art-card-xs art-overlay-tab-card" v-model="activeDetailTab"
             ><ElTabPane name="overview" label="凭证信息"
               ><div class="space-y-4"
                 ><ArtSectionCard title="凭证信息" preserve-content-structure>

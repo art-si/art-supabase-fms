@@ -21,7 +21,7 @@
         <ElButton type="primary" plain @click="retryLoad">重新加载</ElButton>
       </template>
       <div v-if="detail" class="payment-application-detail">
-        <ElTabs v-model="activeDetailTab"
+        <ElTabs class="art-card-xs art-overlay-tab-card" v-model="activeDetailTab"
           ><ElTabPane name="overview" label="申请信息"
             ><div class="space-y-4"
               ><ArtSectionCard title="申请信息" preserve-content-structure>

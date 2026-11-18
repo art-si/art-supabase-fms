@@ -19,7 +19,7 @@
     >
       <template v-if="document">
         <ArtDescriptions :data="identity" :items="identityItems" :columns="4" class="mb-5" />
-        <ElTabs v-model="activeDocumentTab"
+        <ElTabs class="art-card-xs art-overlay-tab-card" v-model="activeDocumentTab"
           ><ElTabPane name="overview" label="单据资料"
             ><div class="space-y-4"
               ><ArtForm

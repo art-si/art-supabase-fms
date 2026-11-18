@@ -170,11 +170,8 @@
         class="opening-balance-page__filter-search"
         :items="balanceSearchItems"
         :span="8"
-        :gutter="12"
-        label-position="left"
         label-width="76px"
         :show-expand="false"
-        :button-left-limit="0"
         @search="applyBalanceFilters"
         @reset="resetBalanceFilters"
       />

@@ -5,6 +5,7 @@
       :api-fn="rows"
       :columns-factory="columns"
       :header-actions="actions"
+      :table-props="{ height: 'clamp(320px, 60vh, 480px)' }"
     />
   </ArtDialog>
 </template>

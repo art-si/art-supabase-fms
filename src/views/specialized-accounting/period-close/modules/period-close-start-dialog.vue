@@ -35,23 +35,29 @@
   const formRef = ref<{ validate: () => Promise<boolean>; clearValidate: () => void }>()
   const accountSetOptions = ref<Api.Fms.AccountSetOption[]>([])
   const form = ref({ accountSetId: '', periodId: '' })
-  const { periodOptions, periodsLoading, periodLoadFailed, loadPeriods, resetPeriods } =
-    useAccountingPeriodOptions(
-      computed({
-        get: () => form.value.accountSetId,
-        set: (value) => {
-          form.value.accountSetId = value
-        }
-      }),
-      computed({
-        get: () => form.value.periodId,
-        set: (value) => {
-          form.value.periodId = value
-        }
-      }),
-      computed(() => Boolean(false)),
-      ['open', 'closing']
-    )
+  const {
+    periodOptions,
+    periodFieldText,
+    periodsLoading,
+    periodLoadFailed,
+    loadPeriods,
+    resetPeriods
+  } = useAccountingPeriodOptions(
+    computed({
+      get: () => form.value.accountSetId,
+      set: (value) => {
+        form.value.accountSetId = value
+      }
+    }),
+    computed({
+      get: () => form.value.periodId,
+      set: (value) => {
+        form.value.periodId = value
+      }
+    }),
+    false,
+    ['open', 'closing']
+  )
   const rules: FormRules = {
     accountSetId: [{ required: true, message: '请选择账套', trigger: 'change' }],
     periodId: [{ required: true, message: '请选择会计期间', trigger: 'change' }]
@@ -72,13 +78,14 @@
       label: '会计期间',
       key: 'periodId',
       type: 'select',
+      ...periodFieldText.value,
       props: {
         options: periodOptions.value,
         placeholder: '选择开放或关账中期间',
         disabled: !form.value.accountSetId || periodsLoading.value || periodLoadFailed.value,
         loading: periodsLoading.value,
         noDataText: form.value.accountSetId
-          ? ACCOUNTING_SELECT_EMPTY_TEXT.openAccountingPeriod
+          ? ACCOUNTING_SELECT_EMPTY_TEXT.accountingPeriod
           : ACCOUNTING_SELECT_EMPTY_TEXT.chooseAccountSet
       }
     }
@@ -87,12 +94,16 @@
     try {
       if (periodsLoading.value || periodLoadFailed.value) return false
       if (!(await validateArtFormForSubmit(formRef.value))) return false
+      dialogRef.value?.setOptions({ loadingText: '正在执行关账检查…' })
+      dialogRef.value?.setLoading(true)
       await runPeriodCloseChecks(form.value.periodId)
       emit('success')
       return true
     } catch (error) {
       notifyFriendlyError(error, '期末结账检查失败，请稍后重试')
       return false
+    } finally {
+      dialogRef.value?.setLoading(false)
     }
   }
   async function handleOpen() {

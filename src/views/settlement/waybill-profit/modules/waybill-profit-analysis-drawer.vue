@@ -316,6 +316,7 @@
   import ArtAsyncState from '@/components/core/feedback/art-async-state/index.vue'
   import ArtDrawer from '@/components/core/drawers/art-drawer/index.vue'
   import type { ArtDrawerExpose } from '@/components/core/drawers/art-drawer/types'
+  import { useArtOverlaySession } from '@/hooks/core/useArtOverlay'
   import { analyzeWaybillProfitByAi } from '@fms/api'
   import { getWaybillStatusPresentation } from '../../../modules/waybill-status'
 
@@ -333,6 +334,7 @@
   }
 
   const drawerRef = ref<ArtDrawerExpose<Record<string, never>>>()
+  const assessmentSession = useArtOverlaySession(() => Boolean(unref(drawerRef.value?.visible)))
   const state: UnwrapNestedRefs<AnalysisState> = reactive<AnalysisState>({
     data: null,
     error: '',
@@ -388,8 +390,13 @@
     assessment.value.metrics.bookGrossProfit < 0 ? 'is-danger' : 'is-neutral'
   )
 
-  async function handleOpen(): Promise<void> {
+  function resetAssessment(): void {
+    assessmentSession.invalidate()
     Object.assign(state, { data: null, error: '', loading: false })
+  }
+
+  async function handleOpen(): Promise<void> {
+    resetAssessment()
     await drawerRef.value?.handleOpen(
       {},
       {
@@ -398,7 +405,7 @@
         size: 'xl',
         showFooter: false,
         onOpen: loadAssessment,
-        onReset: () => Object.assign(state, { data: null, error: '', loading: false }),
+        onReset: resetAssessment,
         drawerProps: {
           appendToBody: true,
           closeOnClickModal: true,
@@ -410,18 +417,23 @@
 
   async function loadAssessment(): Promise<void> {
     if (state.loading) return
+    const request = assessmentSession.invalidate()
+    const isCurrent = () => assessmentSession.isCurrent(request)
+    if (!isCurrent()) return
     state.loading = true
     state.error = ''
     try {
       const { data, error } = await analyzeWaybillProfitByAi()
+      if (!isCurrent()) return
       if (error) throw error
       if (!data) throw new Error('利润诊断服务未返回结果')
       state.data = data
     } catch (error) {
+      if (!isCurrent()) return
       state.data = null
       state.error = getFriendlySupabaseErrorMessage(error, '利润诊断服务暂时不可用，请稍后重试')
     } finally {
-      state.loading = false
+      if (isCurrent()) state.loading = false
     }
   }
 

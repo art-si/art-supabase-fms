@@ -44,25 +44,32 @@
     socialSecurityPayableSubjectId: null,
     remark: null
   })
+  const isEditing = computed(() => Boolean(form.value.id))
   const canEditReferences = computed(
-    () => !form.value.id || canEditField(fieldAccess.value, 'payrollReferences')
+    () => !isEditing.value || canEditField(fieldAccess.value, 'payrollReferences')
   )
-  const { periodOptions, periodsLoading, periodLoadFailed, loadPeriods, resetPeriods } =
-    useAccountingPeriodOptions(
-      computed({
-        get: () => form.value.accountSetId,
-        set: (value) => {
-          form.value.accountSetId = value
-        }
-      }),
-      computed({
-        get: () => form.value.accountingPeriodId,
-        set: (value) => {
-          form.value.accountingPeriodId = value
-        }
-      }),
-      computed(() => Boolean(form.value.id))
-    )
+  const {
+    periodOptions,
+    periodFieldText,
+    periodsLoading,
+    periodLoadFailed,
+    loadPeriods,
+    resetPeriods
+  } = useAccountingPeriodOptions(
+    computed({
+      get: () => form.value.accountSetId,
+      set: (value) => {
+        form.value.accountSetId = value
+      }
+    }),
+    computed({
+      get: () => form.value.accountingPeriodId,
+      set: (value) => {
+        form.value.accountingPeriodId = value
+      }
+    }),
+    isEditing
+  )
   const rules: FormRules = {
     accountSetId: [{ required: true, message: '请选择账套', trigger: 'change' }],
     accountingPeriodId: [{ required: true, message: '请选择开放期间', trigger: 'change' }]
@@ -76,7 +83,7 @@
         options: accountSetOptions.value,
         filterable: true,
         onChange: loadPeriods,
-        disabled: Boolean(form.value.id),
+        disabled: isEditing.value,
         noDataText: ACCOUNTING_SELECT_EMPTY_TEXT.accountSet
       }
     },
@@ -84,10 +91,11 @@
       label: '会计期间',
       key: 'accountingPeriodId',
       type: 'select',
+      ...periodFieldText.value,
       props: {
         options: periodOptions.value,
         disabled:
-          Boolean(form.value.id) ||
+          isEditing.value ||
           !form.value.accountSetId ||
           periodsLoading.value ||
           periodLoadFailed.value,
@@ -109,6 +117,8 @@
     try {
       if (periodsLoading.value || periodLoadFailed.value) return false
       if (!(await validateArtFormForSubmit(formRef.value))) return false
+      dialogRef.value?.setOptions({ loadingText: '正在保存薪资批次…' })
+      dialogRef.value?.setLoading(true)
       const result = await savePayrollRun({
         id: form.value.id,
         accountingPeriodId: form.value.accountingPeriodId,
@@ -128,6 +138,8 @@
     } catch (error) {
       notifyFriendlyError(error, '工资批次保存失败，请检查内容后重试')
       return false
+    } finally {
+      dialogRef.value?.setLoading(false)
     }
   }
   async function handleOpen(row?: Api.Fms.PayrollRunRecord, accountSetId?: string): Promise<void> {

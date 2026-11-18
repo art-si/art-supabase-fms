@@ -284,7 +284,12 @@
       label: '对账期间',
       key: 'statementDateRange',
       type: 'daterange',
-      props: { valueFormat: 'YYYY-MM-DD' }
+      span: 12,
+      props: {
+        valueFormat: 'YYYY-MM-DD',
+        startPlaceholder: '开始日期',
+        endPlaceholder: '结束日期'
+      }
     },
     {
       label: '关键字',

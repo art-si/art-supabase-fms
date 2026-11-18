@@ -79,7 +79,7 @@
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import type { TableRequestOptions } from '@/hooks/core/useTable'
   import { buildSupabasePageRange } from '@/utils/supabase/pagination'
-  import { documentGroupSpan } from '@/utils/business/document-detail-list'
+  import { createDocumentGroupSpan } from '@/utils/business/document-detail-list'
   import { formatCurrencyValue } from '@/utils/ui'
   import {
     fetchTravelApplicationList,
@@ -226,23 +226,12 @@
     const result = await fetchTravelApplicationList(query, options)
     return { ...result, total: result.total ?? 0 }
   }
-  function mergeDocumentCells({
-    rowIndex,
-    column
-  }: {
-    rowIndex: number
-    column: { property?: string }
-  }) {
-    return search.value.displayMode === 'line'
-      ? documentGroupSpan(
-          (tableRef.value?.dataState.rows.value as TableRecord[] | undefined) ?? [],
-          rowIndex,
-          column.property,
-          lineProperties,
-          (row) => applicationOf(row).id ?? ''
-        )
-      : ([1, 1] as [number, number])
-  }
+  const mergeDocumentCells = createDocumentGroupSpan(
+    () => search.value.displayMode,
+    () => tableRef.value?.dataState.rows.value as readonly TableRecord[] | undefined,
+    lineProperties,
+    (row) => applicationOf(row).id ?? ''
+  )
   const applicationOf = (row: TableRecord): TravelApplication =>
     'application' in row ? row.application : row
   const money = (value: number | null | undefined): string =>

@@ -9,7 +9,7 @@
     size="xl"
   >
     <div class="flex min-w-0 flex-col gap-4">
-      <ElTabs v-model="activeDocumentTab"
+      <ElTabs class="art-card-xs art-overlay-tab-card" v-model="activeDocumentTab"
         ><ElTabPane name="overview" label="还款资料"
           ><div class="space-y-4"
             ><ArtSectionCard v-if="readonly" title="基本信息">

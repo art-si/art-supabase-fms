@@ -17,7 +17,7 @@
         <ElButton type="primary" plain @click="retryLoad">重新加载</ElButton>
       </template>
       <div v-if="detail" class="fund-transfer-detail">
-        <ElTabs v-model="activeTab">
+        <ElTabs class="art-card-xs art-overlay-tab-card" v-model="activeTab">
           <ElTabPane name="details" label="调拨资料" class="grid gap-4">
             <ArtSectionCard title="调拨信息" preserve-content-structure>
               <ArtDescriptions

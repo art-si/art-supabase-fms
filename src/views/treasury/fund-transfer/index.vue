@@ -308,7 +308,12 @@
       label: '调拨日期',
       key: 'transferDateRange',
       type: 'daterange',
-      props: { valueFormat: 'YYYY-MM-DD' }
+      span: 12,
+      props: {
+        valueFormat: 'YYYY-MM-DD',
+        startPlaceholder: '开始日期',
+        endPlaceholder: '结束日期'
+      }
     },
     {
       label: '关键字',

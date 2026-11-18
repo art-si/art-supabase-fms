@@ -96,7 +96,7 @@
   import { useTenantScopeStore } from '@/store/modules/tenant-scope'
   import type { TableRequestOptions } from '@/hooks/core/useTable'
   import { buildSupabasePageRange } from '@/utils/supabase/pagination'
-  import { documentGroupSpan } from '@/utils/business/document-detail-list'
+  import { createDocumentGroupSpan } from '@/utils/business/document-detail-list'
   import { formatCurrencyValue } from '@/utils/ui'
   import { startWorkflow } from '@/api/workflow'
   import { notifyFriendlyError, useArtFeedback } from '@/hooks/core/useArtFeedback'
@@ -241,23 +241,12 @@
     const result = await fetchTravelLoanList(query, options)
     return { ...result, total: result.total ?? 0 }
   }
-  function mergeDocumentCells({
-    rowIndex,
-    column
-  }: {
-    rowIndex: number
-    column: { property?: string }
-  }) {
-    return search.value.displayMode === 'line'
-      ? documentGroupSpan(
-          (tableRef.value?.dataState.rows.value as TableRecord[] | undefined) ?? [],
-          rowIndex,
-          column.property,
-          lineProperties,
-          (row) => loanOf(row).id ?? ''
-        )
-      : ([1, 1] as [number, number])
-  }
+  const mergeDocumentCells = createDocumentGroupSpan(
+    () => search.value.displayMode,
+    () => tableRef.value?.dataState.rows.value as readonly TableRecord[] | undefined,
+    lineProperties,
+    (row) => loanOf(row).id ?? ''
+  )
   const loanOf = (row: TableRecord): TravelLoan => ('loan' in row ? row.loan : row)
   function selectedLoan(rows: unknown[]): TravelLoan | undefined {
     const loans = uniqBy((rows as TableRecord[]).map(loanOf), (row) => row.id)

@@ -18,7 +18,7 @@
       @retry="retryLoad"
     >
       <div v-if="run" class="close-detail">
-        <ElTabs v-model="activeDetailTab"
+        <ElTabs class="art-card-xs art-overlay-tab-card" v-model="activeDetailTab"
           ><ElTabPane name="overview" label="关账概览"
             ><div class="space-y-4"
               ><ArtSectionCard title="关账概览" preserve-content-structure>

@@ -38,11 +38,9 @@
       :search-bar-props="{
         span: 8,
         gutter: 16,
-        labelPosition: 'left',
         labelWidth: '76px',
         isExpand: true,
-        showExpand: false,
-        buttonLeftLimit: 0
+        showExpand: false
       }"
       :table-props="{
         rowKey: 'id',

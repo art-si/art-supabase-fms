@@ -18,7 +18,7 @@
       @retry="reloadDetail"
     >
       <div v-if="run" class="payroll-detail">
-        <ElTabs v-model="activeDetailTab"
+        <ElTabs class="art-card-xs art-overlay-tab-card" v-model="activeDetailTab"
           ><ElTabPane name="overview" label="批次信息"
             ><div class="space-y-4"
               ><ArtSectionCard title="批次信息" preserve-content-structure>
@@ -480,9 +480,7 @@
 
     strong,
     small {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+      overflow-wrap: anywhere;
     }
   }
 

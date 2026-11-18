@@ -23,7 +23,7 @@
       </template>
       <template v-if="bill">
         <div class="commercial-bill-detail">
-          <ElTabs v-model="activeDetailTab"
+          <ElTabs class="art-card-xs art-overlay-tab-card" v-model="activeDetailTab"
             ><ElTabPane name="overview" label="票据信息"
               ><div class="space-y-4"
                 ><ArtSectionCard title="票据信息" preserve-content-structure>

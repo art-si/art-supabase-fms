@@ -183,6 +183,8 @@
         remark: normalizeNullableText(form.value.remark)
       }
       const type = form.value.id ? 'edit' : 'add'
+      dialogRef.value?.setOptions({ loadingText: '正在保存费用项目…' })
+      dialogRef.value?.setLoading(true)
       await (form.value.id
         ? editExpenseItem({ ...payload, id: form.value.id })
         : addExpenseItem(payload))
@@ -191,6 +193,8 @@
     } catch (error) {
       notifyFriendlyError(error, '费用项目保存失败，请检查内容后重试')
       return false
+    } finally {
+      dialogRef.value?.setLoading(false)
     }
   }
 
