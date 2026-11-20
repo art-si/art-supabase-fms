@@ -1,5 +1,10 @@
 <template>
-  <ArtDialog ref="dialogRef" size="md">
+  <ArtDialog
+    ref="dialogRef"
+    size="md"
+    @close="prerequisiteOverlay.invalidate"
+    @reset="prerequisiteOverlay.invalidate"
+  >
     <template v-if="!form.id" #subtitle
       >类别定义折旧方法、默认使用寿命和残值率，新增资产时自动带入。</template
     >
@@ -165,6 +170,7 @@
     accountSetId?: string,
     row?: Api.Fms.AssetCategoryRecord
   ): Promise<void> {
+    const opening = prerequisiteOverlay.beginOpen()
     accountSetOptions.value = []
     delete form.value.id
     Object.assign(form.value, initial())
@@ -192,18 +198,22 @@
       loading: true,
       loadingText: '正在加载账套…',
       onConfirm: submit,
-      onOpen: async () => {
+      onOpen: async (_openData, api) => {
+        opening.attach(api)
+        if (!opening.isCurrent()) return
         formRef.value?.clearValidate()
         try {
           await Promise.all([
             userStore.ensureDictLoaded('commonEnabledStatus'),
             userStore.ensureDictLoaded('fmsDepreciationMethod')
           ])
+          if (!opening.isCurrent()) return
           const { data, error } = await fetchAccountSetOptions({
             status: 'active',
             from: 0,
             to: 999
           })
+          if (!opening.isCurrent()) return
           if (error) throw error
           accountSetOptions.value = data ?? []
           if (
@@ -214,10 +224,11 @@
           }
           form.value.accountSetId = accountSetId ?? accountSetOptions.value[0]?.value ?? ''
         } catch (error) {
+          if (!opening.isCurrent()) return
           notifyFriendlyError(error, '账套加载失败，请重新打开重试')
-          await dialogRef.value?.handleClose()
+          await api.handleClose()
         } finally {
-          prerequisiteOverlay.finishLoading()
+          opening.finishLoading()
         }
       },
       dialogProps: { closeOnClickModal: false }

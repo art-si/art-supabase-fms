@@ -560,7 +560,7 @@
   async function locateReferencedAsset(): Promise<boolean> {
     const context = deleteContext.value
     if (!context.active || !context.recordId || !context.recordNo) return false
-    await categoryDialogRef.value?.dismiss()
+    await categoryDialogRef.value?.currentSession()?.dismiss()
     const { data, error } = await fetchFixedAssetDetail(context.recordId)
     if (error || !data) return true
     table.search.accountSetId = data.accountSetId

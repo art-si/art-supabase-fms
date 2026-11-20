@@ -1,5 +1,10 @@
 <template>
-  <ArtDialog ref="dialogRef" size="md">
+  <ArtDialog
+    ref="dialogRef"
+    size="md"
+    @close="prerequisiteOverlay.invalidate"
+    @reset="prerequisiteOverlay.invalidate"
+  >
     <template v-if="!isEditing" #subtitle
       >资产先以草稿登记；确认转固后进入折旧与处置生命周期，核心价值字段不可直接修改。</template
     >
@@ -66,6 +71,8 @@
   const vehiclesLoading = ref(false)
   let vehicleRequestId = 0
   async function loadVehicles(keyword = ''): Promise<void> {
+    const opening = prerequisiteOverlay.currentSession()
+    if (!opening?.isCurrent()) return
     const requestId = ++vehicleRequestId
     if (!form.value.accountSetId || !canView('assetReferences')) {
       vehicleOptions.value = []
@@ -79,16 +86,16 @@
         keyword,
         form.value.vehicleId
       )
-      if (requestId !== vehicleRequestId) return
+      if (!opening.isCurrent() || requestId !== vehicleRequestId) return
       if (result.error) throw result.error
       vehicleOptions.value = result.data ?? []
     } catch (error) {
-      if (requestId === vehicleRequestId) {
+      if (opening.isCurrent() && requestId === vehicleRequestId) {
         vehicleOptions.value = []
         notifyFriendlyError(error, '车辆选项加载失败，请重新搜索车牌')
       }
     } finally {
-      if (requestId === vehicleRequestId) vehiclesLoading.value = false
+      if (opening.isCurrent() && requestId === vehicleRequestId) vehiclesLoading.value = false
     }
   }
   let categoryRequestId = 0
@@ -352,6 +359,8 @@
     return result
   })
   async function loadCategories(accountSetId: string): Promise<void> {
+    const opening = prerequisiteOverlay.currentSession()
+    if (!opening?.isCurrent()) return
     const requestId = ++categoryRequestId
     categoryOptions.value = []
     categoriesFailed.value = false
@@ -359,7 +368,12 @@
     if (!accountSetId) return
     try {
       const { data, error } = await fetchAssetCategoryList(accountSetId)
-      if (requestId !== categoryRequestId || accountSetId !== form.value.accountSetId) return
+      if (
+        !opening.isCurrent() ||
+        requestId !== categoryRequestId ||
+        accountSetId !== form.value.accountSetId
+      )
+        return
       if (error) throw error
       categoryOptions.value = (data ?? [])
         .filter((item) => item.isEnabled)
@@ -370,17 +384,20 @@
           rate: item.defaultResidualRate
         }))
     } catch {
-      if (requestId === categoryRequestId) categoriesFailed.value = true
+      if (opening.isCurrent() && requestId === categoryRequestId) categoriesFailed.value = true
     } finally {
-      if (requestId === categoryRequestId) categoriesLoading.value = false
+      if (opening.isCurrent() && requestId === categoryRequestId) categoriesLoading.value = false
     }
   }
   watch(
     () => form.value.accountSetId,
     async (value) => {
+      const opening = prerequisiteOverlay.currentSession()
+      if (!opening?.isCurrent()) return
       if (!form.value.id) form.value.categoryId = ''
       if (!form.value.id) form.value.vehicleId = null
       await loadCategories(value)
+      if (!opening.isCurrent() || value !== form.value.accountSetId) return
       await loadVehicles()
     }
   )
@@ -453,12 +470,21 @@
     }
   }
   async function handleOpen(row?: Api.Fms.FixedAssetRecord, accountSetId?: string): Promise<void> {
+    const opening = prerequisiteOverlay.beginOpen()
     activeTab.value = 'identitySection'
     if (!hasAuth(row?.id ? 'FinanceFixedAsset:Edit' : 'FinanceFixedAsset:Add')) {
       ElMessage.warning('当前账号无权新增或编辑固定资产')
       return
     }
     currentRecord.value = row
+    fieldAccess.value = {}
+    ++categoryRequestId
+    ++vehicleRequestId
+    categoryOptions.value = []
+    vehicleOptions.value = []
+    categoriesLoading.value = false
+    categoriesFailed.value = false
+    vehiclesLoading.value = false
     form.value.id = undefined
     Object.assign(form.value, initial())
     const prepare = async () => {
@@ -467,9 +493,11 @@
         from: 0,
         to: 999
       })
+      if (!opening.isCurrent()) return
       if (accountSetError) throw accountSetError
       accountSetOptions.value = accountSets ?? []
       const detailResult = row ? await fetchFixedAssetDetail(row.id) : undefined
+      if (!opening.isCurrent()) return
       if (detailResult?.error) throw detailResult.error
       if (row && !detailResult?.data) throw new Error('资产记录不存在，请刷新列表后重试')
       const record = detailResult?.data ?? undefined
@@ -519,6 +547,7 @@
         form.value.accountSetId = accountSetId ?? accountSetOptions.value[0]?.value ?? ''
       }
       if (form.value.accountSetId) await loadCategories(form.value.accountSetId)
+      if (!opening.isCurrent()) return
       await loadVehicles()
     }
     await dialogRef.value?.handleOpen(undefined, {
@@ -527,15 +556,19 @@
       loading: true,
       loadingText: '正在加载资产与账套…',
       onConfirm: submit,
-      onOpen: async () => {
+      onOpen: async (_openData, api) => {
+        opening.attach(api)
+        if (!opening.isCurrent()) return
         try {
           await prepare()
+          if (!opening.isCurrent()) return
           formRef.value?.clearValidate()
         } catch (error) {
+          if (!opening.isCurrent()) return
           notifyFriendlyError(error, '资产资料加载失败，请重新打开重试')
-          dialogRef.value?.handleClose()
+          await api.handleClose()
         } finally {
-          prerequisiteOverlay.finishLoading()
+          opening.finishLoading()
         }
       },
       dialogProps: { closeOnClickModal: false }

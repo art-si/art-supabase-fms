@@ -1,4 +1,13 @@
-import { computed, ref, shallowRef, toValue, type MaybeRefOrGetter, type Ref } from 'vue'
+import {
+  computed,
+  getCurrentScope,
+  onScopeDispose,
+  ref,
+  shallowRef,
+  toValue,
+  type MaybeRefOrGetter,
+  type Ref
+} from 'vue'
 import { fetchAccountingPeriodList } from '@fms/api'
 import type { FormItem } from '@/components/core/forms/art-form/index.vue'
 
@@ -33,6 +42,7 @@ export function useAccountingPeriodOptions(
     periodsLoading.value = false
     periodLoadFailed.value = false
   }
+  if (getCurrentScope()) onScopeDispose(resetPeriods)
 
   async function loadPeriods(): Promise<void> {
     const currentRequest = ++requestId

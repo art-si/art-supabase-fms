@@ -121,10 +121,6 @@
     hasFilters: boolean
   }
 
-  interface DialogExpose {
-    handleOpen: (row?: Account) => Promise<void>
-  }
-
   const { runWithAccountSet } = useFinanceAccountSetPrerequisite()
   const userStore = useUserStore()
   const tenantScope = useTenantScopeStore()
@@ -139,7 +135,7 @@
   const captureOperation = useTenantOperationGuard()
   const { getDictMap } = storeToRefs(userStore)
   const tableRef = ref<ArtTableQueryExpose>()
-  const dialogRef = ref<DialogExpose>()
+  const dialogRef = ref<InstanceType<typeof FundAccountDialog>>()
   const { hasAuth } = useAuth()
   const { deleteGuardRef, deleteRecord } = useRecordDeleteGuard('fms_fund_account', '资金账户', {
     fms_bank_statement_line: {
@@ -246,7 +242,8 @@
             activeRequired: true,
             available: accountSetOptions.value.length > 0
           },
-          () => dialogRef.value?.handleOpen()
+          () => dialogRef.value?.handleOpen(),
+          dialogRef.value
         )
     }
   ])

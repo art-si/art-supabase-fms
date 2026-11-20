@@ -166,7 +166,10 @@
     }
   ])
 
-  async function handleSubmit(): Promise<boolean> {
+  async function handleSubmit(
+    _openData: unknown,
+    api: ArtDialogExpose<{ row?: ExpenseItem; parent?: ExpenseItem }>
+  ): Promise<boolean> {
     try {
       if (!checkSavePermission()) return false
       if (!(await validateArtFormForSubmit(formRef.value))) return false
@@ -183,8 +186,8 @@
         remark: normalizeNullableText(form.value.remark)
       }
       const type = form.value.id ? 'edit' : 'add'
-      dialogRef.value?.setOptions({ loadingText: '正在保存费用项目…' })
-      dialogRef.value?.setLoading(true)
+      api.setOptions({ loadingText: '正在保存费用项目…' })
+      api.setLoading(true)
       await (form.value.id
         ? editExpenseItem({ ...payload, id: form.value.id })
         : addExpenseItem(payload))
@@ -194,7 +197,7 @@
       notifyFriendlyError(error, '费用项目保存失败，请检查内容后重试')
       return false
     } finally {
-      dialogRef.value?.setLoading(false)
+      api.setLoading(false)
     }
   }
 

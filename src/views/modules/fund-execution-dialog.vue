@@ -1,5 +1,10 @@
 <template>
-  <ArtDialog ref="dialogRef" size="sm">
+  <ArtDialog
+    ref="dialogRef"
+    size="sm"
+    @close="prerequisiteOverlay.invalidate"
+    @reset="prerequisiteOverlay.invalidate"
+  >
     <ElAlert
       class="fund-execution-dialog__notice mb-4"
       :type="context.direction === 'inflow' ? 'success' : 'warning'"
@@ -126,12 +131,10 @@
       `${context.direction === 'inflow' ? '资金流入' : '资金流出'} · ${formatCurrencyValue(context.amount)}`
   )
 
-  async function reset(): Promise<void> {
+  function reset(): void {
     Object.assign(form.data, createInitialForm())
     accountOptions.value = []
     submitter.value = undefined
-    await nextTick()
-    formRef.value?.clearValidate()
   }
 
   async function handleSubmit(): Promise<boolean> {
@@ -155,7 +158,11 @@
     options: FundExecutionOptions,
     onSubmit: (payload: FundExecutionPayload) => Promise<void>
   ): Promise<void> {
-    await reset()
+    const opening = prerequisiteOverlay.beginOpen()
+    reset()
+    await nextTick()
+    if (!opening.isCurrent()) return
+    formRef.value?.clearValidate()
     Object.assign(context, options)
     submitter.value = onSubmit
     accountOptions.value = []
@@ -166,27 +173,31 @@
       contentMaxHeight: '64vh',
       loading: true,
       loadingText: '正在加载资金账户…',
-      onOpen: async () => {
+      onOpen: async (_openData, api) => {
+        opening.attach(api)
+        if (!opening.isCurrent()) return
         try {
           const { data, error } = await fetchFundAccountOptions({
             accountSetId: options.accountSetId,
             status: 'active',
             baseCurrencyOnly: true
           })
+          if (!opening.isCurrent()) return
           if (error) {
-            await dialogRef.value?.handleClose(true)
+            await api.handleClose(true)
             return
           }
           accountOptions.value = data ?? []
         } catch (error) {
+          if (!opening.isCurrent()) return
           notifyFriendlyError(error, '资金账户加载失败，请重新打开重试')
-          await dialogRef.value?.handleClose(true)
+          await api.handleClose(true)
         } finally {
-          prerequisiteOverlay.finishLoading()
+          opening.finishLoading()
         }
       },
       onConfirm: handleSubmit,
-      onReset: () => void reset(),
+      onReset: reset,
       dialogProps: { appendToBody: true, closeOnClickModal: false }
     })
   }

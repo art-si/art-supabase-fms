@@ -1,5 +1,5 @@
 <template>
-  <ArtDialog ref="dialogRef" size="md"
+  <ArtDialog ref="dialogRef" size="md" @close="invalidateOpening" @reset="invalidateOpening"
     ><template v-if="!form.id" #subtitle
       >按账套、会计期间和税种建立台账，再维护计税明细与调整金额。</template
     >
@@ -75,6 +75,10 @@
     }),
     isEditing
   )
+  function invalidateOpening(): void {
+    prerequisiteOverlay.invalidate()
+    resetPeriods()
+  }
   const rules: FormRules = {
     accountSetId: [{ required: true, message: '请选择账套', trigger: 'change' }],
     accountingPeriodId: [{ required: true, message: '请选择期间', trigger: 'change' }],
@@ -203,16 +207,20 @@
     }
   }
   async function handleOpen(row?: Api.Fms.TaxPeriodRecord, accountSetId?: string) {
+    const opening = prerequisiteOverlay.beginOpen()
     resetPeriods()
     accountSetOptions.value = []
     currentRecord.value = undefined
     form.value.id = undefined
     const prepare = async () => {
       await userStore.ensureDictLoaded('fmsTaxType')
+      if (!opening.isCurrent()) return
       const { data, error } = await fetchAccountSetOptions({ status: 'active', from: 0, to: 999 })
+      if (!opening.isCurrent()) return
       if (error) throw error
       accountSetOptions.value = data ?? []
       const detailResult = row ? await fetchTaxPeriodDetail(row.id) : undefined
+      if (!opening.isCurrent()) return
       if (detailResult?.error) throw detailResult.error
       if (row && !detailResult?.data) throw new Error('税务期间不存在或已不可访问，请刷新列表')
       const record = detailResult?.data ?? undefined
@@ -247,15 +255,18 @@
       loading: true,
       loadingText: '正在加载税务期间与账套…',
       onConfirm: submit,
-      onOpen: async () => {
+      onOpen: async (_openData, api) => {
+        opening.attach(api)
         try {
           await prepare()
+          if (!opening.isCurrent()) return
           formRef.value?.clearValidate()
         } catch (error) {
+          if (!opening.isCurrent()) return
           notifyFriendlyError(error, '税务期间加载失败，请重新打开重试')
-          await dialogRef.value?.handleClose()
+          await api.handleClose()
         } finally {
-          prerequisiteOverlay.finishLoading()
+          opening.finishLoading()
         }
       },
       dialogProps: { closeOnClickModal: false }

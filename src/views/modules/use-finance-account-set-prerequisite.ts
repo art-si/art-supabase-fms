@@ -4,7 +4,10 @@ import { fetchAccountSetOptions, fetchAccountingReadiness } from '@fms/api'
 import type { FinancePrerequisiteOverlay } from './finance-prerequisite-overlay'
 
 export { createFinancePrerequisiteOverlay } from './finance-prerequisite-overlay'
-export type { FinancePrerequisiteOverlay } from './finance-prerequisite-overlay'
+export type {
+  FinancePrerequisiteOverlay,
+  FinancePrerequisiteSession
+} from './finance-prerequisite-overlay'
 
 interface FinanceAccountSetPrerequisiteOptions {
   actionLabel: string
@@ -31,46 +34,54 @@ export function useFinanceAccountSetPrerequisite() {
     message: string,
     title: string,
     confirmButtonText: string,
-    routeName: string
+    routeName: string,
+    isCurrent: () => boolean = () => true
   ): Promise<void> {
+    if (!isCurrent()) return
     try {
       await confirmAction(message, title, {
         type: 'info',
         confirmButtonText,
         cancelButtonText: '暂不处理'
       })
-      await router.push({ name: routeName })
+      if (isCurrent()) await router.push({ name: routeName })
     } catch (error) {
       if (!isMessageBoxDismissed(error)) throw error
     }
   }
 
-  async function ensureAccountSet({
-    actionLabel,
-    activeRequired = false,
-    accountSetId,
-    available,
-    foundationRequired = false,
-    fundAccountRequired = false
-  }: FinanceAccountSetPrerequisiteOptions): Promise<boolean> {
+  async function ensureAccountSet(
+    {
+      actionLabel,
+      activeRequired = false,
+      accountSetId,
+      available,
+      foundationRequired = false,
+      fundAccountRequired = false
+    }: FinanceAccountSetPrerequisiteOptions,
+    isCurrent: () => boolean = () => true
+  ): Promise<boolean> {
+    if (!isCurrent()) return false
     if (!available) {
       const { data, error } = await fetchAccountSetOptions({
         status: activeRequired ? 'active' : undefined,
         from: 0,
         to: 0
       })
-      if (error) return false
+      if (!isCurrent() || error) return false
       available = Boolean(data?.length)
     }
     if (available) {
       if (!foundationRequired || !accountSetId) return true
       const { data } = await fetchAccountingReadiness(accountSetId)
+      if (!isCurrent()) return false
       if (!data?.foundationReady) {
         await confirmAndNavigate(
           `“${actionLabel}”需要先补齐核心科目、自动制证规则和财务报表映射。初始化只新增缺失项，不覆盖已有配置。`,
           '核算基础尚未就绪',
           '前往会计科目',
-          financeRouteNames.accountingSubject
+          financeRouteNames.accountingSubject,
+          isCurrent
         )
         return false
       }
@@ -79,7 +90,8 @@ export function useFinanceAccountSetPrerequisite() {
           `“${actionLabel}”需要至少一个已启用的资金账户。请先维护银行账户、现金账户或第三方支付账户。`,
           '需要配置资金账户',
           '前往资金账户',
-          financeRouteNames.fundAccount
+          financeRouteNames.fundAccount,
+          isCurrent
         )
         return false
       }
@@ -94,7 +106,8 @@ export function useFinanceAccountSetPrerequisite() {
       `“${actionLabel}”需要先配置${stateText}。${nextStepText}`,
       '需要完善财务基础配置',
       '前往账套管理',
-      financeRouteNames.accountSet
+      financeRouteNames.accountSet,
+      isCurrent
     )
     return false
   }
@@ -118,22 +131,30 @@ export function useFinanceAccountSetPrerequisite() {
     if (options.available && options.foundationRequired && options.accountSetId && overlay) {
       const opening = Promise.resolve(action())
       void opening.catch(() => undefined)
-      overlay.setPrerequisiteLoading(true)
+      // Business handleOpen establishes its intent synchronously, before any reset awaits.
+      const session = overlay.currentSession()
+      if (!session) {
+        await opening
+        return false
+      }
+      session.setPrerequisiteLoading(true)
       try {
-        if (!(await ensureAccountSet(options))) {
-          await overlay.dismiss()
+        if (!(await ensureAccountSet(options, session.isCurrent))) {
+          await session.dismiss()
           return false
         }
         await opening
-        return true
+        return session.isCurrent()
       } catch (error) {
-        await overlay.dismiss()
+        await session.dismiss()
         throw error
       } finally {
-        overlay.setPrerequisiteLoading(false)
+        session.setPrerequisiteLoading(false)
       }
     }
-    if (!(await ensureAccountSet(options))) return false
+    const reservation = overlay?.reserveOpen()
+    const isCurrent = reservation?.isCurrent ?? (() => true)
+    if (!(await ensureAccountSet(options, isCurrent)) || !isCurrent()) return false
     await action()
     return true
   }

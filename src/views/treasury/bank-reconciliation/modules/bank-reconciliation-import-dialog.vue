@@ -1,6 +1,8 @@
 <template>
   <ArtDialog
     ref="dialogRef"
+    @close="prerequisiteOverlay.invalidate"
+    @reset="prerequisiteOverlay.invalidate"
     @open="
       () => {
         activeTab = ''
@@ -152,6 +154,7 @@
   const { getDictMap } = storeToRefs(userStore)
   const dialogRef = ref<ArtDialogExpose>()
   const prerequisiteOverlay = createFinancePrerequisiteOverlay(dialogRef)
+  let accountOptionsRequestId = 0
   const activeTab = ref('')
   const formRef = ref<InstanceType<typeof ArtForm>>()
   type ImportLine = FormData['lines'][number]
@@ -306,6 +309,9 @@
   }
 
   async function handleAccountSetChange(value: string): Promise<void> {
+    const opening = prerequisiteOverlay.currentSession()
+    const requestId = ++accountOptionsRequestId
+    if (!opening?.isCurrent()) return
     accountSetId.value = value
     form.data.fundAccountId = ''
     if (!value) {
@@ -313,6 +319,12 @@
       return
     }
     const { data } = await fetchFundAccountOptions({ accountSetId: value, status: 'active' })
+    if (
+      !opening.isCurrent() ||
+      requestId !== accountOptionsRequestId ||
+      accountSetId.value !== value
+    )
+      return
     accountOptions.value = (data ?? []).filter(
       (item) => item.accountType !== 'cash' && item.reconciliationEnabled
     )
@@ -379,6 +391,7 @@
   }
 
   async function handleOpen(): Promise<void> {
+    const opening = prerequisiteOverlay.beginOpen()
     submitError.value = ''
     accountSetOptions.value = []
     accountSetId.value = ''
@@ -391,24 +404,28 @@
       loadingText: '正在加载账套…',
       onConfirm: handleSubmit,
       onOpen: async (_openData, api) => {
+        opening.attach(api)
         formRef.value?.clearValidate()
         try {
           await userStore.ensureDictLoaded('fmsFundLedgerDirection')
+          if (!opening.isCurrent()) return
           const { data, error } = await fetchAccountSetOptions({
             status: 'active',
             from: 0,
             to: 999
           })
+          if (!opening.isCurrent()) return
           if (error) throw error
           accountSetOptions.value = data ?? []
           if (accountSetOptions.value.length === 1) {
             await handleAccountSetChange(accountSetOptions.value[0].value)
           }
         } catch (error) {
+          if (!opening.isCurrent()) return
           notifyFriendlyError(error, '银行对账导入基础资料加载失败，请重试')
           await api.handleClose()
         } finally {
-          prerequisiteOverlay.finishLoading()
+          opening.finishLoading()
         }
       },
       dialogProps: { closeOnClickModal: false, destroyOnClose: true }

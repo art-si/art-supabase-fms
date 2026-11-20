@@ -7,6 +7,8 @@
       }
     "
     size="lg"
+    @close="prerequisiteOverlay.invalidate"
+    @reset="prerequisiteOverlay.invalidate"
   >
     <template v-if="!isEditing" #subtitle>
       先登记票面与往来信息，保存为草稿；确认收票或出票后进入受控生命周期，不再允许直接修改。
@@ -339,6 +341,7 @@
   }
 
   async function handleOpen(row?: Bill): Promise<void> {
+    const opening = prerequisiteOverlay.beginOpen()
     currentRecord.value = undefined
     fieldAccess.value = {}
     Object.assign(form.data, createInitialForm())
@@ -348,10 +351,13 @@
         userStore.ensureDictLoaded('fmsBillType'),
         userStore.ensureDictLoaded('commonBoolean')
       ])
+      if (!opening.isCurrent()) return
       const { data, error } = await fetchAccountSetOptions({ status: 'active', from: 0, to: 999 })
+      if (!opening.isCurrent()) return
       if (error) throw error
       accountSetOptions.value = data ?? []
       const detailResult = row ? await fetchCommercialBillDetail(row.id) : undefined
+      if (!opening.isCurrent()) return
       if (detailResult?.error) throw detailResult.error
       if (row && !detailResult?.data) throw new Error('票据不存在或已不可访问，请刷新列表')
       const record = detailResult?.data ?? undefined
@@ -411,15 +417,19 @@
       loading: true,
       loadingText: '正在加载票据与账套…',
       onConfirm: handleSubmit,
-      onOpen: async () => {
+      onOpen: async (_openData, api) => {
+        opening.attach(api)
+        if (!opening.isCurrent()) return
         try {
           await prepare()
+          if (!opening.isCurrent()) return
           formRef.value?.clearValidate()
         } catch (error) {
+          if (!opening.isCurrent()) return
           notifyFriendlyError(error, '商业票据加载失败，请重新打开重试')
-          await dialogRef.value?.handleClose()
+          await api.handleClose()
         } finally {
-          prerequisiteOverlay.finishLoading()
+          opening.finishLoading()
         }
       },
       dialogProps: { closeOnClickModal: false, destroyOnClose: true }

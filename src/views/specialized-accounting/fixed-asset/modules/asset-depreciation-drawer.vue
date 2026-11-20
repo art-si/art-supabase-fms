@@ -1,5 +1,11 @@
 <template>
-  <ArtDrawer header-icon="ri:line-chart-line" ref="drawerRef" :show-footer="false">
+  <ArtDrawer
+    header-icon="ri:line-chart-line"
+    ref="drawerRef"
+    :show-footer="false"
+    @close="invalidateOpening"
+    @reset="invalidateOpening"
+  >
     <div class="depreciation-workbench">
       <ElAlert v-if="loadError" type="error" :closable="false" show-icon>
         <template #title>折旧数据加载失败</template>
@@ -235,6 +241,7 @@
 </template>
 
 <script setup lang="ts">
+  import { useArtOverlaySession } from '@/hooks/core/useArtOverlay'
   import { useAccountingPeriodOptions } from '../../../modules/use-accounting-period-options'
   import { createFinancePrerequisiteOverlay } from '../../../modules/use-finance-account-set-prerequisite'
   import ArtTable from '@/components/core/tables/art-table/index.vue'
@@ -264,6 +271,7 @@
   const { confirmAction } = useArtFeedback()
   const isCompact = useMediaQuery('(max-width: 640px)')
   const drawerRef = ref<ArtDrawerExpose>()
+  const loadSession = useArtOverlaySession(() => Boolean(unref(drawerRef.value?.visible)))
   const prerequisiteOverlay = createFinancePrerequisiteOverlay(drawerRef)
   const accountSetOptions = ref<Api.Fms.AccountSetOption[]>([])
   const calculationScope = ref({ accountSetId: '', periodId: '' })
@@ -297,6 +305,13 @@
   const calculating = ref(false)
   let runsRequestId = 0
   let linesRequestId = 0
+  function invalidateOpening(): void {
+    prerequisiteOverlay.invalidate()
+    loadSession.invalidate()
+    ++runsRequestId
+    ++linesRequestId
+    resetPeriods()
+  }
   const runs = ref<Api.Fms.AssetDepreciationRunRecord[]>([])
   const selectedRun = ref<Api.Fms.AssetDepreciationRunRecord>()
   const lines = ref<Api.Fms.AssetDepreciationLineRecord[]>([])
@@ -453,10 +468,15 @@
     }
   }
   async function loadInitialData(): Promise<void> {
+    const opening = prerequisiteOverlay.currentSession()
+    if (!opening?.isCurrent()) return
+    const requestVersion = loadSession.invalidate()
+    if (!loadSession.isCurrent(requestVersion)) return
     loadError.value = false
     drawerRef.value?.setLoading(true)
     try {
       const { data, error } = await fetchAccountSetOptions({ status: 'active', from: 0, to: 999 })
+      if (!loadSession.isCurrent(requestVersion)) return
       if (error) {
         loadError.value = true
         return
@@ -464,15 +484,18 @@
       accountSetOptions.value = data ?? []
       accountSetId.value = requestedAccountSetId.value || accountSetOptions.value[0]?.value || ''
       await loadPeriods()
+      if (!loadSession.isCurrent(requestVersion)) return
       const requestedRun = runs.value.find((run) => run.runNo === requestedRunNo.value)
       if (requestedRun) await selectRun(requestedRun)
     } catch {
-      loadError.value = true
+      if (loadSession.isCurrent(requestVersion)) loadError.value = true
     } finally {
-      prerequisiteOverlay.finishLoading()
+      if (loadSession.isCurrent(requestVersion)) opening.finishLoading()
     }
   }
   async function handleOpen(currentAccountSetId?: string, runNo?: string): Promise<void> {
+    const opening = prerequisiteOverlay.beginOpen()
+    loadSession.invalidate()
     ++runsRequestId
     ++linesRequestId
     resetPeriods()
@@ -495,7 +518,11 @@
       size: 'xl',
       loading: true,
       loadingText: '正在加载折旧数据…',
-      onOpen: loadInitialData,
+      onOpen: async (_openData, api) => {
+        opening.attach(api)
+        if (!opening.isCurrent()) return
+        await loadInitialData()
+      },
       drawerProps: { appendToBody: true, resizable: true, closeOnClickModal: true }
     })
   }

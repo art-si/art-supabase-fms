@@ -1,5 +1,5 @@
 <template>
-  <ArtDialog ref="dialogRef" size="sm"
+  <ArtDialog ref="dialogRef" size="sm" @close="invalidateOpening" @reset="invalidateOpening"
     ><template #subtitle
       >执行后期间进入“关账中”，系统生成九项检查结果；阻断项修复后可重新检查。</template
     >
@@ -58,6 +58,10 @@
     false,
     ['open', 'closing']
   )
+  function invalidateOpening(): void {
+    prerequisiteOverlay.invalidate()
+    resetPeriods()
+  }
   const rules: FormRules = {
     accountSetId: [{ required: true, message: '请选择账套', trigger: 'change' }],
     periodId: [{ required: true, message: '请选择会计期间', trigger: 'change' }]
@@ -90,12 +94,12 @@
       }
     }
   ])
-  async function submit() {
+  async function submit(_openData: unknown, api: ArtDialogExpose): Promise<boolean> {
     try {
       if (periodsLoading.value || periodLoadFailed.value) return false
       if (!(await validateArtFormForSubmit(formRef.value))) return false
-      dialogRef.value?.setOptions({ loadingText: '正在执行关账检查…' })
-      dialogRef.value?.setLoading(true)
+      api.setOptions({ loadingText: '正在执行关账检查…' })
+      api.setLoading(true)
       await runPeriodCloseChecks(form.value.periodId)
       emit('success')
       return true
@@ -103,10 +107,11 @@
       notifyFriendlyError(error, '期末结账检查失败，请稍后重试')
       return false
     } finally {
-      dialogRef.value?.setLoading(false)
+      api.setLoading(false)
     }
   }
   async function handleOpen() {
+    const opening = prerequisiteOverlay.beginOpen()
     accountSetOptions.value = []
     resetPeriods()
     form.value.periodId = ''
@@ -117,7 +122,8 @@
       loading: true,
       loadingText: '正在加载账套与会计期间…',
       onConfirm: submit,
-      onOpen: async () => {
+      onOpen: async (_openData, api) => {
+        opening.attach(api)
         formRef.value?.clearValidate()
         try {
           const { data, error } = await fetchAccountSetOptions({
@@ -125,15 +131,17 @@
             from: 0,
             to: 999
           })
+          if (!opening.isCurrent()) return
           if (error) throw error
           accountSetOptions.value = data ?? []
           form.value.accountSetId = accountSetOptions.value[0]?.value ?? ''
           await loadPeriods()
         } catch (error) {
+          if (!opening.isCurrent()) return
           notifyFriendlyError(error, '账套加载失败，请重新打开重试')
-          await dialogRef.value?.handleClose()
+          await api.handleClose()
         } finally {
-          prerequisiteOverlay.finishLoading()
+          opening.finishLoading()
         }
       },
       dialogProps: { closeOnClickModal: false }

@@ -1,5 +1,10 @@
 <template>
-  <ArtDialog ref="dialogRef" size="md">
+  <ArtDialog
+    ref="dialogRef"
+    size="md"
+    @close="prerequisiteOverlay.invalidate"
+    @reset="prerequisiteOverlay.invalidate"
+  >
     <template #subtitle>
       同账套、同币种账户间调拨；执行时同步登记转出、转入及手续费流水。
     </template>
@@ -46,6 +51,7 @@
   const accountSetId = ref('')
   const accountSetOptions = ref<Api.Fms.AccountSetOption[]>([])
   const accountOptions = ref<Api.Fms.FundAccountOption[]>([])
+  let accountOptionsRequestId = 0
   const currentRecord = shallowRef<Transfer>()
   const fieldAccess = ref<Api.Fms.FundTransferFieldAccessMap>({})
 
@@ -298,6 +304,9 @@
   })
 
   async function handleAccountSetChange(value: string): Promise<void> {
+    const opening = prerequisiteOverlay.currentSession()
+    const requestId = ++accountOptionsRequestId
+    if (!opening?.isCurrent()) return
     accountSetId.value = value
     form.data.sourceAccountId = ''
     form.data.targetAccountId = ''
@@ -306,6 +315,12 @@
       return
     }
     const { data } = await fetchFundAccountOptions({ accountSetId: value, status: 'active' })
+    if (
+      !opening.isCurrent() ||
+      requestId !== accountOptionsRequestId ||
+      accountSetId.value !== value
+    )
+      return
     accountOptions.value = data ?? []
   }
 
@@ -360,13 +375,16 @@
   }
 
   async function handleOpen(row?: Transfer): Promise<void> {
+    const opening = prerequisiteOverlay.beginOpen()
     currentRecord.value = row
     Object.assign(form.data, createInitialForm())
     const prepare = async () => {
       const { data, error } = await fetchAccountSetOptions({ status: 'active', from: 0, to: 999 })
+      if (!opening.isCurrent()) return
       if (error) throw error
       accountSetOptions.value = data ?? []
       const detail = row ? await fetchFundTransferDetail(row.id) : undefined
+      if (!opening.isCurrent()) return
       if (detail?.error) throw detail.error
       if (row && !detail?.data) throw new Error('资金调拨不存在或无权查看，请刷新列表')
       const record = detail?.data ?? undefined
@@ -399,10 +417,12 @@
       )
       accountSetId.value = record?.accountSetId ?? ''
       if (accountSetId.value && (!record || canEditField(record.fieldAccess, 'transferAccounts'))) {
+        const requestedAccountSetId = accountSetId.value
         const { data: accounts, error: accountsError } = await fetchFundAccountOptions({
-          accountSetId: accountSetId.value,
+          accountSetId: requestedAccountSetId,
           status: 'active'
         })
+        if (!opening.isCurrent() || accountSetId.value !== requestedAccountSetId) return
         if (accountsError) throw accountsError
         accountOptions.value = accounts ?? []
       } else {
@@ -416,14 +436,17 @@
       loadingText: '正在加载资金账户…',
       onConfirm: handleSubmit,
       onOpen: async (_openData, api) => {
+        opening.attach(api)
         try {
           await prepare()
+          if (!opening.isCurrent()) return
           formRef.value?.clearValidate()
         } catch (error) {
+          if (!opening.isCurrent()) return
           notifyFriendlyError(error, '资金调拨加载失败，请重试')
           await api.handleClose()
         } finally {
-          prerequisiteOverlay.finishLoading()
+          opening.finishLoading()
         }
       },
       dialogProps: { closeOnClickModal: false, destroyOnClose: true }

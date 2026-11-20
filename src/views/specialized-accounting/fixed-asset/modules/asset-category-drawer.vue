@@ -1,5 +1,11 @@
 <template>
-  <ArtDrawer header-icon="ri:folder-settings-line" ref="drawerRef" :show-footer="false">
+  <ArtDrawer
+    header-icon="ri:folder-settings-line"
+    ref="drawerRef"
+    :show-footer="false"
+    @close="prerequisiteOverlay.invalidate"
+    @reset="prerequisiteOverlay.invalidate"
+  >
     <ArtTableQuery
       ref="tableRef"
       v-model="search"
@@ -151,14 +157,21 @@
   }
 
   async function handleOpen(id?: string): Promise<void> {
+    const opening = prerequisiteOverlay.beginOpen()
     accountSetId.value = id ?? ''
     search.value.keyword = ''
     await drawerRef.value?.handleOpen(undefined, {
       title: '资产类别',
       subtitle: '维护使用寿命与残值率，已被引用的类别需先处理关联',
       size: 'lg',
-      onOpen: async () => {
-        await tableRef.value?.getData()
+      onOpen: async (_openData, api) => {
+        opening.attach(api)
+        if (!opening.isCurrent()) return
+        try {
+          await tableRef.value?.getData()
+        } finally {
+          opening.finishLoading()
+        }
       },
       drawerProps: { closeOnClickModal: true, class: 'fms-asset-category-workspace' }
     })

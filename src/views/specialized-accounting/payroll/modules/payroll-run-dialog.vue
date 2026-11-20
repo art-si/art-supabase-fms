@@ -1,5 +1,5 @@
 <template>
-  <ArtDialog ref="dialogRef" size="sm"
+  <ArtDialog ref="dialogRef" size="sm" @close="invalidateOpening" @reset="invalidateOpening"
     ><template v-if="!form.id" #subtitle
       >每个会计期间仅保留一个薪资批次；创建后在明细工作台维护员工金额。</template
     >
@@ -70,6 +70,10 @@
     }),
     isEditing
   )
+  function invalidateOpening(): void {
+    prerequisiteOverlay.invalidate()
+    resetPeriods()
+  }
   const rules: FormRules = {
     accountSetId: [{ required: true, message: '请选择账套', trigger: 'change' }],
     accountingPeriodId: [{ required: true, message: '请选择开放期间', trigger: 'change' }]
@@ -113,12 +117,12 @@
       props: { type: 'textarea', rows: 3, maxlength: 300 }
     }
   ])
-  async function submit(): Promise<boolean> {
+  async function submit(_openData: unknown, api: ArtDialogExpose): Promise<boolean> {
     try {
       if (periodsLoading.value || periodLoadFailed.value) return false
       if (!(await validateArtFormForSubmit(formRef.value))) return false
-      dialogRef.value?.setOptions({ loadingText: '正在保存薪资批次…' })
-      dialogRef.value?.setLoading(true)
+      api.setOptions({ loadingText: '正在保存薪资批次…' })
+      api.setLoading(true)
       const result = await savePayrollRun({
         id: form.value.id,
         accountingPeriodId: form.value.accountingPeriodId,
@@ -139,10 +143,11 @@
       notifyFriendlyError(error, '工资批次保存失败，请检查内容后重试')
       return false
     } finally {
-      dialogRef.value?.setLoading(false)
+      api.setLoading(false)
     }
   }
   async function handleOpen(row?: Api.Fms.PayrollRunRecord, accountSetId?: string): Promise<void> {
+    const opening = prerequisiteOverlay.beginOpen()
     resetPeriods()
     accountSetOptions.value = []
     fieldAccess.value = {}
@@ -153,9 +158,11 @@
         from: 0,
         to: 999
       })
+      if (!opening.isCurrent()) return
       if (error) throw error
       accountSetOptions.value = accountSets ?? []
       const detailResult = row ? await fetchPayrollRunDetail(row.id) : undefined
+      if (!opening.isCurrent()) return
       if (detailResult?.error) throw detailResult.error
       if (row && !detailResult?.data) throw new Error('薪资批次不存在或已不可访问，请刷新列表')
       const record = detailResult?.data ?? undefined
@@ -194,15 +201,18 @@
       loading: true,
       loadingText: '正在加载薪资批次与账套…',
       onConfirm: submit,
-      onOpen: async () => {
+      onOpen: async (_openData, api) => {
+        opening.attach(api)
         try {
           await prepare()
+          if (!opening.isCurrent()) return
           formRef.value?.clearValidate()
         } catch (error) {
+          if (!opening.isCurrent()) return
           notifyFriendlyError(error, '薪资批次加载失败，请重新打开重试')
-          await dialogRef.value?.handleClose()
+          await api.handleClose()
         } finally {
-          prerequisiteOverlay.finishLoading()
+          opening.finishLoading()
         }
       },
       dialogProps: { closeOnClickModal: false }

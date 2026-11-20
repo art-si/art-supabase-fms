@@ -1,5 +1,10 @@
 <template>
-  <ArtDialog ref="dialogRef" size="md">
+  <ArtDialog
+    ref="dialogRef"
+    size="md"
+    @close="prerequisiteOverlay.invalidate"
+    @reset="prerequisiteOverlay.invalidate"
+  >
     <template #subtitle>
       账号仅在保存时用于生成掩码和不可逆指纹，系统不存储完整明文账号。
     </template>
@@ -37,6 +42,7 @@
 
 <script setup lang="ts">
   import { notifyFriendlyError } from '@/hooks/core/useArtFeedback'
+  import { createFinancePrerequisiteOverlay } from '../../../modules/use-finance-account-set-prerequisite'
   import { validateArtFormForSubmit } from '@/utils/form/validate-art-form'
   import { normalizeNullableText } from '@/utils/form/normalize'
   import type { FormRules } from 'element-plus'
@@ -61,6 +67,7 @@
   const accountStatusOptions = useDictionaryOptions('fmsFundAccountStatus')
   const booleanOptions = useDictionaryOptions('commonBoolean', (value) => value === 'true')
   const dialogRef = ref<ArtDialogExpose>()
+  const prerequisiteOverlay = createFinancePrerequisiteOverlay(dialogRef)
   const formRef = ref<{ validate: () => Promise<boolean>; clearValidate: () => void }>()
   const activeTab = ref('identitySection')
   const accountSetOptions = ref<Api.Fms.AccountSetOption[]>([])
@@ -335,6 +342,8 @@
   ])
 
   async function loadCurrencies(accountSetId: string, reset = false): Promise<void> {
+    const opening = prerequisiteOverlay.currentSession()
+    if (!opening?.isCurrent()) return
     const requestId = ++currencyRequestId
     currencyOptions.value = []
     currencyError.value = false
@@ -347,7 +356,7 @@
     currencyLoading.value = true
     try {
       const { data, error } = await fetchCurrencyList(accountSetId)
-      if (requestId !== currencyRequestId) return
+      if (!opening.isCurrent() || requestId !== currencyRequestId) return
       if (error) throw error
       currencyOptions.value = (data ?? [])
         .filter((item) => item.isEnabled)
@@ -359,11 +368,11 @@
         form.data.currencyId = currencyOptions.value[0].value
       }
     } catch (error) {
-      if (requestId !== currencyRequestId) return
+      if (!opening.isCurrent() || requestId !== currencyRequestId) return
       currencyError.value = true
       notifyFriendlyError(error, '账户币种加载失败，请重试')
     } finally {
-      if (requestId === currencyRequestId) currencyLoading.value = false
+      if (opening.isCurrent() && requestId === currencyRequestId) currencyLoading.value = false
     }
   }
 
@@ -405,6 +414,7 @@
   }
 
   async function handleOpen(row?: Account): Promise<void> {
+    const opening = prerequisiteOverlay.beginOpen()
     activeTab.value = 'identitySection'
     currencyRequestId++
     currencyOptions.value = []
@@ -444,6 +454,7 @@
       loadingText: '正在加载账套与币种…',
       onConfirm: handleSubmit,
       onOpen: async (_openData, api) => {
+        opening.attach(api)
         formRef.value?.clearValidate()
         try {
           const { data, error } = await fetchAccountSetOptions({
@@ -451,6 +462,7 @@
             from: 0,
             to: 999
           })
+          if (!opening.isCurrent()) return
           if (error) throw error
           accountSetOptions.value = data ?? []
           if (!form.data.accountSetId && accountSetOptions.value.length === 1) {
@@ -458,15 +470,16 @@
           }
           if (form.data.accountSetId) await loadCurrencies(form.data.accountSetId)
         } catch (error) {
+          if (!opening.isCurrent()) return
           notifyFriendlyError(error, '资金账户基础资料加载失败，请重试')
           await api.handleClose()
         } finally {
-          api.setLoading(false)
+          opening.finishLoading()
         }
       },
       dialogProps: { closeOnClickModal: false, destroyOnClose: true }
     })
   }
 
-  defineExpose({ handleOpen })
+  defineExpose({ handleOpen, ...prerequisiteOverlay })
 </script>
